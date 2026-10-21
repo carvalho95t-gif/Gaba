@@ -1,7 +1,9 @@
-const CACHE = "gaba-omr-v1";
+const CACHE = "gaba-omr-v2";
 const PRECACHE = [
   "./",
   "./index.html",
+  "./app.js",
+  "./style.css",
   "./dashboard.html",
   "./manifest.json",
   "./js/omrWorker.js",

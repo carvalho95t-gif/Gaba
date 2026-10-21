@@ -7,9 +7,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
-    <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- HTML5-QRCode para o Scanner -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
@@ -23,17 +21,15 @@
 
     <main class="container">
 
-        <!-- Navegação por Abas -->
-        <nav class="tabs">
-            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Painel</button>
-            <button class="tab-btn" onclick="switchTab('turmas')">👥 Turmas</button>
-            <button class="tab-btn" onclick="switchTab('provas')">📝 Provas</button>
-            <button class="tab-btn tab-highlight" onclick="switchTab('scanner')">📷 Leitor</button>
-            <button class="tab-btn" onclick="switchTab('relatorios')">📈 Notas</button>
-            <button class="tab-btn" onclick="switchTab('config')">⚙️ Config</button>
+        <nav class="tabs" id="nav-tabs">
+            <button type="button" class="tab-btn active" data-tab="dashboard">📊 Painel</button>
+            <button type="button" class="tab-btn" data-tab="turmas">👥 Turmas</button>
+            <button type="button" class="tab-btn" data-tab="provas">📝 Provas</button>
+            <button type="button" class="tab-btn tab-highlight" data-tab="scanner">📷 Leitor</button>
+            <button type="button" class="tab-btn" data-tab="relatorios">📈 Notas</button>
+            <button type="button" class="tab-btn" data-tab="config">⚙️ Config</button>
         </nav>
 
-        <!-- ABA 1: DASHBOARD -->
         <section id="tab-dashboard" class="tab-content active">
             <h2>Visão Geral</h2>
             <div class="grid-cards">
@@ -56,7 +52,6 @@
             </div>
         </section>
 
-        <!-- ABA 2: TURMAS E ALUNOS -->
         <section id="tab-turmas" class="tab-content">
             <h2>Gerenciamento de Turmas</h2>
             <div class="form-container">
@@ -86,7 +81,6 @@
             </div>
         </section>
 
-        <!-- ABA 3: PROVAS E GABARITOS -->
         <section id="tab-provas" class="tab-content">
             <h2>Criar Prova / Gabarito</h2>
             <div class="form-container">
@@ -94,8 +88,8 @@
                     <input type="text" id="prova-titulo" placeholder="Título da Prova (Ex: Avaliação Bimestral)" required>
                     <input type="text" id="prova-disciplina" placeholder="Disciplina (Ex: Matemática)" required>
                     <label for="prova-qtd">Quantidade de Questões:</label>
-                    <input type="number" id="prova-qtd" min="1" max="50" value="10" onchange="gerarCamposGabarito()" required>
-                    
+                    <input type="number" id="prova-qtd" min="1" max="50" value="10" required>
+
                     <h4>Gabarito Oficial:</h4>
                     <div id="gabarito-inputs" class="gabarito-grid"></div>
 
@@ -109,15 +103,15 @@
             </div>
         </section>
 
-        <!-- ABA 4: LEITOR / SCANNER -->
         <section id="tab-scanner" class="tab-content">
             <h2>Escaneamento de Folhas</h2>
+            <p class="text-muted">QR esperado: <code>Gaba|NUMERO_ALUNO|A,B,C,D,...</code></p>
             <div class="scanner-controls">
                 <select id="select-prova-scan">
                     <option value="">Selecione a Prova para Corrigir...</option>
                 </select>
-                <button id="btn-iniciar-camera" class="btn-success" onclick="iniciarCamera()">Ligar Câmera</button>
-                <button id="btn-parar-camera" class="btn-danger" onclick="pararCamera()" style="display:none;">Desligar Câmera</button>
+                <button type="button" id="btn-iniciar-camera" class="btn-success">Ligar Câmera</button>
+                <button type="button" id="btn-parar-camera" class="btn-danger" style="display:none;">Desligar Câmera</button>
             </div>
 
             <div id="reader-wrapper">
@@ -130,7 +124,6 @@
             </div>
         </section>
 
-        <!-- ABA 5: RELATÓRIOS -->
         <section id="tab-relatorios" class="tab-content">
             <h2>Relatório de Correções</h2>
             <table class="data-table">
@@ -149,7 +142,6 @@
             </table>
         </section>
 
-        <!-- ABA 6: CONFIGURAÇÕES -->
         <section id="tab-config" class="tab-content">
             <h2>Configurações do Banco de Dados (Supabase)</h2>
             <div class="form-container">
