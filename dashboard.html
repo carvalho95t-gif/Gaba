@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#16a34a" />
+  <title>Gaba — Painel do professor</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <style>
+    :root {
+      --bg: #f4f7fb; --card: #fff; --text: #0f172a; --muted: #64748b;
+      --line: #e2e8f0; --green: #16a34a; --navy: #0f2744;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, Segoe UI, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header {
+      background: var(--navy); color: #fff; padding: 16px 18px calc(16px + env(safe-area-inset-top));
+      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    header a { color: #bbf7d0; text-decoration: none; font-weight: 700; }
+    main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+    .card h3 { margin: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .card p { margin: 8px 0 0; font-size: 28px; font-weight: 800; }
+    .filters { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 8px; margin: 16px 0; }
+    input, select, button {
+      padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font: inherit;
+    }
+    button.primary { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 16px; overflow: hidden; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
+    th { background: #eef4fb; font-size: 12px; color: var(--muted); }
+    .ok { color: var(--green); font-weight: 700; }
+    .bad { color: #dc2626; font-weight: 700; }
+    dialog { border: 1px solid var(--line); border-radius: 16px; width: min(420px, 92vw); }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input[type="text"], input[type="email"], input[type="password"] { width: 100%; }
+    @media (max-width: 800px) {
+      .cards, .filters { grid-template-columns: 1fr; }
+      table { font-size: 12px; display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <strong>Gaba · Painel</strong>
+      <div id="profName" style="opacity:.75;font-size:13px">Professor</div>
+    </div>
+    <nav>
+      <a href="./index.html">Leitor OMR</a>
+      &nbsp;·&nbsp;
+      <a href="#" id="openCfg">Configurar</a>
+    </nav>
+  </header>
+  <main>
+    <section class="cards">
+      <article class="card"><h3>Média</h3><p id="statMedia">–</p></article>
+      <article class="card"><h3>Taxa de aprovação</h3><p id="statAprov">–</p></article>
+      <article class="card"><h3>Total de provas</h3><p id="statTotal">0</p></article>
+    </section>
+    <section class="filters">
+      <input id="fAluno" placeholder="Filtrar por aluno ou matrícula" />
+      <input id="fTurma" placeholder="Turma" />
+      <input id="fData" type="date" />
+      <button class="primary" id="btnXlsx">Exportar Excel</button>
+    </section>
+    <table>
+      <thead>
+        <tr>
+          <th>Aluno</th><th>Matrícula</th><th>Data</th><th>Acertos</th><th>Nota</th><th>Origem</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+
+  <dialog id="cfg">
+    <form method="dialog">
+      <h3>Conexão Supabase</h3>
+      <label>URL</label>
+      <input id="cfgUrl" />
+      <label>Chave anon</label>
+      <input id="cfgKey" />
+      <label>Nome</label>
+      <input id="cfgNome" />
+      <label>E-mail</label>
+      <input id="cfgEmail" type="email" />
+      <p style="display:flex;gap:8px;margin-top:14px">
+        <button value="cancel">Fechar</button>
+        <button id="cfgSave" class="primary" value="default">Salvar</button>
+      </p>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./js/supabaseClient.js"></script>
+  <script src="./js/offlineSync.js"></script>
+  <script>
+    let allRows = [];
+
+    function mergeById(a, b) {
+      const map = new Map();
+      a.concat(b).forEach((row) => { if (row && row.id) map.set(row.id, row); });
+      return Array.from(map.values()).sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
+    }
+
+    async function loadData() {
+      const local = await GabaSync.listResults();
+      let remote = [];
+      try {
+        if (GabaDB.isConfigured() && navigator.onLine) remote = await GabaDB.fetchCorrecoes();
+      } catch (e) { /* offline / schema */ }
+      allRows = mergeById(local, remote);
+      render();
+    }
+
+    function filtered() {
+      const aluno = document.getElementById("fAluno").value.trim().toLowerCase();
+      const turma = document.getElementById("fTurma").value.trim().toLowerCase();
+      const data = document.getElementById("fData").value;
+      return allRows.filter((row) => {
+        const name = String(row.aluno_nome || "").toLowerCase();
+        const mat = String(row.matricula || "").toLowerCase();
+        const t = String((row.raw_payload && row.raw_payload.turma) || row.turma || "").toLowerCase();
+        const d = String(row.created_at || "").slice(0, 10);
+        if (aluno && !name.includes(aluno) && !mat.includes(aluno)) return false;
+        if (turma && !t.includes(turma)) return false;
+        if (data && d !== data) return false;
+        return true;
+      });
+    }
+
+    function render() {
+      const rows = filtered();
+      const tbody = document.getElementById("rows");
+      tbody.innerHTML = rows.map((row) => {
+        const nota = Number(row.nota || 0);
+        const cls = nota >= 6 ? "ok" : "bad";
+        return "<tr><td>" + (row.aluno_nome || "–") + "</td><td>" + (row.matricula || "–") +
+          "</td><td>" + String(row.created_at || "").replace("T", " ").slice(0, 16) +
+          "</td><td>" + (row.acertos || 0) + "/" + (row.total_questoes || 0) +
+          "</td><td class='" + cls + "'>" + nota.toFixed(2) + "</td><td>" + (row.origem || "nuvem") + "</td></tr>";
+      }).join("") || "<tr><td colspan='6'>Nenhuma correção ainda.</td></tr>";
+
+      const notas = rows.map((r) => Number(r.nota || 0));
+      const media = notas.length ? notas.reduce((a, b) => a + b, 0) / notas.length : 0;
+      const aprov = notas.length ? (notas.filter((n) => n >= 6).length / notas.length) * 100 : 0;
+      document.getElementById("statMedia").textContent = notas.length ? media.toFixed(2) : "–";
+      document.getElementById("statAprov").textContent = notas.length ? aprov.toFixed(0) + "%" : "–";
+      document.getElementById("statTotal").textContent = String(rows.length);
+      const cfg = GabaDB.readConfig();
+      document.getElementById("profName").textContent = cfg.professorNome || "Configure o professor";
+    }
+
+    ["fAluno", "fTurma", "fData"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", render);
+    });
+
+    document.getElementById("btnXlsx").onclick = () => {
+      const rows = filtered();
+      const resumo = rows.map((r) => ({
+        Aluno: r.aluno_nome || "",
+        Matricula: r.matricula || "",
+        Data: String(r.created_at || "").slice(0, 10),
+        Acertos: r.acertos || 0,
+        Total: r.total_questoes || 0,
+        Nota: r.nota || 0
+      }));
+      const maxQ = rows.reduce((m, r) => Math.max(m, (r.respostas || []).length), 0);
+      const matriz = rows.map((r) => {
+        const line = { Aluno: r.aluno_nome || "", Matricula: r.matricula || "" };
+        const gabMatrix = (r.raw_payload && r.raw_payload.matrix) || [];
+        for (let i = 0; i < maxQ; i++) {
+          const mark = gabMatrix[i];
+          line["Q" + (i + 1)] = mark == null ? ((r.respostas || [])[i] ? 0 : "") : mark;
+        }
+        return line;
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), "Resumo");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matriz), "Matriz Pedagogica");
+      XLSX.writeFile(wb, "gaba-resultados.xlsx");
+    };
+
+    document.getElementById("openCfg").onclick = (e) => {
+      e.preventDefault();
+      const cfg = GabaDB.readConfig();
+      document.getElementById("cfgUrl").value = cfg.url;
+      document.getElementById("cfgKey").value = cfg.key;
+      document.getElementById("cfgNome").value = cfg.professorNome;
+      document.getElementById("cfg").showModal();
+    };
+    document.getElementById("cfgSave").onclick = async (ev) => {
+      ev.preventDefault();
+      GabaDB.saveConfig(document.getElementById("cfgUrl").value.trim(), document.getElementById("cfgKey").value.trim());
+      const nome = document.getElementById("cfgNome").value.trim();
+      const email = document.getElementById("cfgEmail").value.trim();
+      try {
+        if (nome && email && GabaDB.isConfigured()) await GabaDB.upsertProfessor(nome, email);
+        else if (nome) GabaDB.setProfessor(GabaDB.readConfig().professorId, nome);
+      } catch (err) { /* keep local */ }
+      document.getElementById("cfg").close();
+      loadData();
+    };
+
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
+    loadData();
+    window.addEventListener("online", loadData);
+  </script>
+</body>
+</html>

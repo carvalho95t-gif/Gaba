@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#16a34a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Gaba — Leitor OMR</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: #101b2d;
+      --line: #1f334d;
+      --text: #e8eef7;
+      --muted: #93a4bb;
+      --green: #22c55e;
+      --green-dim: rgba(34, 197, 94, 0.18);
+      --red: #f87171;
+      --amber: #fbbf24;
+      --blue: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: Inter, Segoe UI, system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px calc(10px + env(safe-area-inset-top)); gap: 10px;
+      background: #0b1626; border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .02em; }
+    .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--green); color: #052e16; display: grid; place-items: center; font-size: 14px; }
+    .status { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+    .pill { padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+    .pill.ok { color: var(--green); border-color: #166534; }
+    .pill.off { color: var(--red); border-color: #7f1d1d; }
+    .viewport { position: relative; flex: 1; overflow: hidden; background: #000; }
+    video, canvas.hud { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    canvas.hud { pointer-events: none; }
+    .frame {
+      position: absolute; inset: 12% 8%; border: 2px solid var(--green);
+      border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0,0,0,.38);
+      pointer-events: none;
+    }
+    .frame::before, .frame::after {
+      content: ""; position: absolute; width: 28px; height: 28px; border: 4px solid #bbf7d0;
+    }
+    .frame::before { top: -4px; left: -4px; border-right: 0; border-bottom: 0; }
+    .frame::after { bottom: -4px; right: -4px; border-left: 0; border-top: 0; }
+    .hint {
+      position: absolute; left: 50%; top: 8%; transform: translateX(-50%);
+      background: rgba(7,17,31,.72); padding: 6px 12px; border-radius: 999px; font-size: 12px;
+      white-space: nowrap;
+    }
+    .dock {
+      background: #0b1626; border-top: 1px solid var(--line);
+      padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+      display: grid; gap: 10px;
+    }
+    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .modes button, .actions button, .linkbtn {
+      appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+      border-radius: 12px; padding: 12px 10px; font-weight: 700; cursor: pointer;
+    }
+    .modes button.active { background: var(--green-dim); border-color: var(--green); color: #bbf7d0; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .actions .primary { background: var(--green); color: #052e16; border-color: var(--green); }
+    .result {
+      min-height: 64px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+      background: var(--panel); font-size: 13px; color: var(--muted);
+    }
+    .result strong { color: var(--text); }
+    a.linkbtn { text-align: center; text-decoration: none; font-size: 13px; padding: 10px; }
+    dialog { border: 1px solid var(--line); border-radius: 16px; background: #0f1c2e; color: var(--text); width: min(420px, 92vw); }
+    dialog::backdrop { background: rgba(0,0,0,.55); }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: #0b1626; color: var(--text); }
+    .toast { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); background: #052e16; color: #bbf7d0; padding: 8px 12px; border-radius: 999px; font-size: 12px; display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo">G</span> Gaba OMR</div>
+    <div class="status">
+      <span id="netPill" class="pill off">Offline</span>
+      <span id="pendPill" class="pill">0 pendentes</span>
+    </div>
+  </header>
+
+  <section class="viewport">
+    <video id="cam" playsinline autoplay muted></video>
+    <canvas id="hud" class="hud"></canvas>
+    <div class="frame"></div>
+    <div class="hint" id="hint">Alinhe as 4 marcas pretas na moldura verde</div>
+  </section>
+
+  <section class="dock">
+    <div class="modes">
+      <button id="btnFast" class="active">Modo Rápido</button>
+      <button id="btnStep">Passo a Passo</button>
+    </div>
+    <div class="result" id="resultBox">Aguardando leitura da folha de respostas.</div>
+    <div class="actions">
+      <button id="btnCapture">Capturar</button>
+      <button id="btnConfirm" class="primary" disabled>Confirmar</button>
+      <button id="btnRetry" disabled>Repetir</button>
+    </div>
+    <div class="actions">
+      <a class="linkbtn" href="./dashboard.html">Painel</a>
+      <button id="btnConfig">Configurar</button>
+      <button id="btnSync">Sincronizar</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <dialog id="cfg">
+    <form method="dialog">
+      <h3 style="margin:0 0 8px">Supabase e prova</h3>
+      <label>URL do projeto</label>
+      <input id="cfgUrl" placeholder="https://xxxx.supabase.co" />
+      <label>Chave anon</label>
+      <input id="cfgKey" placeholder="eyJ..." />
+      <label>Seu nome</label>
+      <input id="cfgNome" placeholder="Professor" />
+      <label>E-mail</label>
+      <input id="cfgEmail" type="email" placeholder="voce@escola.com" />
+      <label>Prova ativa (UUID)</label>
+      <input id="cfgProva" placeholder="id da prova no Supabase" />
+      <label>Total de questões</label>
+      <input id="cfgN" type="number" min="1" max="50" value="20" />
+      <label>Gabarito (ex.: ABCDE...)</label>
+      <input id="cfgGab" placeholder="opcional se a prova já estiver no banco" />
+      <p style="display:flex;gap:8px;margin-top:14px">
+        <button value="cancel">Fechar</button>
+        <button id="cfgSave" value="default" class="primary" style="flex:1;background:#22c55e;color:#052e16;border:0;border-radius:10px;font-weight:700">Salvar</button>
+      </p>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./js/supabaseClient.js"></script>
+  <script src="./js/offlineSync.js"></script>
+  <script>
+    const cam = document.getElementById("cam");
+    const hud = document.getElementById("hud");
+    const hint = document.getElementById("hint");
+    const resultBox = document.getElementById("resultBox");
+    const netPill = document.getElementById("netPill");
+    const pendPill = document.getElementById("pendPill");
+    const btnFast = document.getElementById("btnFast");
+    const btnStep = document.getElementById("btnStep");
+    const btnCapture = document.getElementById("btnCapture");
+    const btnConfirm = document.getElementById("btnConfirm");
+    const btnRetry = document.getElementById("btnRetry");
+    const toastEl = document.getElementById("toast");
+
+    let mode = "fast";
+    let busy = false;
+    let lastScan = null;
+    let cooldownUntil = 0;
+    let audioCtx = null;
+    const worker = new Worker("./js/omrWorker.js");
+    let requestId = 0;
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.style.display = "block";
+      setTimeout(() => { toastEl.style.display = "none"; }, 1800);
+    }
+
+    function setNet() {
+      const on = navigator.onLine;
+      netPill.textContent = on ? "Online" : "Offline";
+      netPill.className = "pill " + (on ? "ok" : "off");
+    }
+    window.addEventListener("online", () => { setNet(); GabaSync.flush(); });
+    window.addEventListener("offline", setNet);
+    setNet();
+    GabaSync.onPendingChange((n) => { pendPill.textContent = n + (n === 1 ? " pendente" : " pendentes"); });
+
+    function beep() {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = 880;
+        gain.gain.value = 0.05;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.09);
+      } catch (e) { /* ignore */ }
+    }
+
+    function haptic() {
+      if (navigator.vibrate) navigator.vibrate([100]);
+    }
+
+    function examConfig() {
+      return {
+        provaId: localStorage.getItem("gaba_prova_id") || "",
+        total: Number(localStorage.getItem("gaba_total_q") || 20),
+        gabarito: (localStorage.getItem("gaba_gabarito") || "").toUpperCase().replace(/[^A-E]/g, "").split("")
+      };
+    }
+
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      cam.srcObject = stream;
+      await cam.play();
+    }
+
+    function grabFrame() {
+      const vw = cam.videoWidth;
+      const vh = cam.videoHeight;
+      if (!vw || !vh) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = vw;
+      canvas.height = vh;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(cam, 0, 0);
+      const image = ctx.getImageData(0, 0, vw, vh);
+      return image;
+    }
+
+    function sendFrame() {
+      if (busy) return;
+      if (Date.now() < cooldownUntil) return;
+      const image = grabFrame();
+      if (!image) return;
+      busy = true;
+      requestId += 1;
+      const cfg = examConfig();
+      worker.postMessage({
+        type: "process",
+        requestId,
+        width: image.width,
+        height: image.height,
+        buffer: image.data.buffer,
+        options: { totalQuestoes: cfg.total }
+      }, [image.data.buffer]);
+    }
+
+    function parseQr(raw) {
+      if (!raw) return {};
+      try {
+        const obj = JSON.parse(raw);
+        return {
+          prova_id: obj.prova_id || obj.provaId || "",
+          aluno_id: obj.aluno_id || obj.alunoId || "",
+          matricula: obj.matricula || "",
+          nome: obj.nome || "",
+          n: obj.n
+        };
+      } catch (e) {
+        const parts = String(raw).split("|");
+        if (parts[0] === "GABA") {
+          return { prova_id: parts[1] || "", aluno_id: parts[2] || "", matricula: parts[3] || "" };
+        }
+        return { raw: raw };
+      }
+    }
+
+    function scoreAnswers(answers, gabarito) {
+      if (!gabarito || !gabarito.length) {
+        return { acertos: 0, nota: 0, total: answers.length, matrix: answers.map(() => null) };
+      }
+      const total = Math.min(answers.length, gabarito.length) || gabarito.length;
+      let acertos = 0;
+      const matrix = [];
+      for (let i = 0; i < total; i++) {
+        const ok = answers[i] && gabarito[i] && answers[i] === gabarito[i];
+        matrix.push(ok ? 1 : 0);
+        if (ok) acertos += 1;
+      }
+      const nota = total ? Number(((acertos / total) * 10).toFixed(2)) : 0;
+      return { acertos, nota, total, matrix };
+    }
+
+    function renderScan(scan, pendingConfirm) {
+      if (!scan) {
+        resultBox.textContent = "Aguardando leitura da folha de respostas.";
+        return;
+      }
+      const ans = (scan.answers || []).filter(Boolean).length;
+      resultBox.innerHTML = "<strong>" + (scan.aluno_nome || scan.matricula || "Aluno não identificado") + "</strong><br>" +
+        (scan.message || "") + " · " + ans + " bolhas · nota " + (scan.nota ?? "–") +
+        (pendingConfirm ? " · confirme para salvar" : "");
+    }
+
+    async function enrichAndScore(result) {
+      const qr = parseQr(result.qr);
+      const cfg = examConfig();
+      let prova = null;
+      let gabarito = cfg.gabarito;
+      const provaId = qr.prova_id || cfg.provaId;
+      try {
+        if (provaId && GabaDB.isConfigured() && navigator.onLine) {
+          prova = await GabaDB.lookupProva(provaId);
+          if (prova && Array.isArray(prova.gabarito) && prova.gabarito.length) gabarito = prova.gabarito.map((x) => String(x).toUpperCase());
+          else if (prova) {
+            const qs = await GabaDB.fetchQuestoes(provaId);
+            if (qs.length) gabarito = qs.map((q) => String(q.gabarito).toUpperCase());
+          }
+        }
+      } catch (e) { /* usa gabarito local */ }
+      const scored = scoreAnswers(result.answers || [], gabarito);
+      let aluno = null;
+      try {
+        if (GabaDB.isConfigured() && navigator.onLine) {
+          aluno = await GabaDB.lookupAluno(qr.aluno_id, qr.matricula);
+        }
+      } catch (e) { /* ignore */ }
+      const professor = GabaDB.readConfig();
+      return {
+        id: GabaSync.uuid(),
+        prova_id: provaId || null,
+        aluno_id: (aluno && aluno.id) || qr.aluno_id || null,
+        professor_id: professor.professorId || null,
+        matricula: (aluno && aluno.matricula) || qr.matricula || "",
+        aluno_nome: (aluno && aluno.nome) || qr.nome || "",
+        respostas: result.answers || [],
+        acertos: scored.acertos,
+        total_questoes: scored.total || cfg.total,
+        nota: scored.nota,
+        confianca: result.confidence || 0,
+        qr_payload: result.qr || null,
+        raw_payload: { engine: result.engine, matrix: scored.matrix, message: result.message },
+        created_at: new Date().toISOString(),
+        message: result.message,
+        ok: result.ok
+      };
+    }
+
+    async function persist(scan) {
+      await GabaSync.enqueue(scan);
+      if (navigator.onLine) {
+        const r = await GabaSync.flush();
+        if (r.synced) toast("Sincronizado");
+      } else {
+        toast("Salvo offline");
+      }
+    }
+
+    worker.onmessage = async (ev) => {
+      const msg = ev.data || {};
+      if (msg.type === "ready") {
+        hint.textContent = msg.engine === "opencv" || msg.engine === "opencv-sync"
+          ? "Motor OpenCV pronto · alinhe a folha"
+          : "Motor básico pronto · QR ainda funciona";
+        return;
+      }
+      if (msg.type !== "result") return;
+      busy = false;
+      if (!msg.ok) {
+        hint.textContent = msg.message || "Ajuste o enquadramento";
+        if (mode === "step") resultBox.textContent = msg.message;
+        return;
+      }
+      const scan = await enrichAndScore(msg);
+      lastScan = scan;
+      haptic();
+      beep();
+      if (mode === "fast") {
+        renderScan(scan, false);
+        await persist(scan);
+        cooldownUntil = Date.now() + 2200;
+        hint.textContent = "Lido · próxima folha";
+      } else {
+        renderScan(scan, true);
+        btnConfirm.disabled = false;
+        btnRetry.disabled = false;
+        hint.textContent = "Confira e confirme";
+      }
+    };
+
+    let raf = 0;
+    function loop() {
+      raf = requestAnimationFrame(loop);
+      if (mode === "fast" && cam.readyState >= 2) sendFrame();
+    }
+
+    btnFast.onclick = () => {
+      mode = "fast";
+      btnFast.classList.add("active");
+      btnStep.classList.remove("active");
+      btnConfirm.disabled = true;
+      btnRetry.disabled = true;
+    };
+    btnStep.onclick = () => {
+      mode = "step";
+      btnStep.classList.add("active");
+      btnFast.classList.remove("active");
+    };
+    btnCapture.onclick = () => sendFrame();
+    btnRetry.onclick = () => {
+      lastScan = null;
+      btnConfirm.disabled = true;
+      btnRetry.disabled = true;
+      resultBox.textContent = "Nova captura.";
+      sendFrame();
+    };
+    btnConfirm.onclick = async () => {
+      if (!lastScan) return;
+      await persist(lastScan);
+      renderScan(lastScan, false);
+      btnConfirm.disabled = true;
+      btnRetry.disabled = true;
+      lastScan = null;
+    };
+
+    document.getElementById("btnConfig").onclick = () => {
+      const cfg = GabaDB.readConfig();
+      document.getElementById("cfgUrl").value = cfg.url;
+      document.getElementById("cfgKey").value = cfg.key;
+      document.getElementById("cfgNome").value = cfg.professorNome;
+      document.getElementById("cfgProva").value = localStorage.getItem("gaba_prova_id") || "";
+      document.getElementById("cfgN").value = localStorage.getItem("gaba_total_q") || 20;
+      document.getElementById("cfgGab").value = localStorage.getItem("gaba_gabarito") || "";
+      document.getElementById("cfg").showModal();
+    };
+    document.getElementById("cfgSave").onclick = async (e) => {
+      e.preventDefault();
+      GabaDB.saveConfig(document.getElementById("cfgUrl").value.trim(), document.getElementById("cfgKey").value.trim());
+      localStorage.setItem("gaba_prova_id", document.getElementById("cfgProva").value.trim());
+      localStorage.setItem("gaba_total_q", document.getElementById("cfgN").value);
+      localStorage.setItem("gaba_gabarito", document.getElementById("cfgGab").value.trim());
+      const nome = document.getElementById("cfgNome").value.trim();
+      const email = document.getElementById("cfgEmail").value.trim();
+      try {
+        if (nome && email && GabaDB.isConfigured()) await GabaDB.upsertProfessor(nome, email);
+      } catch (err) {
+        toast("Config salva, professor não sincronizado");
+      }
+      document.getElementById("cfg").close();
+      toast("Configuração salva");
+    };
+    document.getElementById("btnSync").onclick = async () => {
+      const r = await GabaSync.flush();
+      toast("Sincronizadas: " + r.synced + " · falhas: " + r.failed);
+    };
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js");
+    }
+
+    startCamera().then(() => loop()).catch(() => {
+      hint.textContent = "Permita a câmera para corrigir as provas";
+      resultBox.textContent = "Câmera bloqueada. Use HTTPS (GitHub Pages) e autorize o acesso.";
+    });
+  </script>
+</body>
+</html>
