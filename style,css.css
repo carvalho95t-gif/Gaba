@@ -1,0 +1,86 @@
+:root { --primary: #4f46e5; --bg: #f8fafc; --card-bg: #ffffff; --text: #0f172a; --border: #e2e8f0; --success: #16a34a; --danger: #dc2626; }
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+body { background-color: var(--bg); color: var(--text); padding-bottom: 40px; }
+.navbar { background: var(--card-bg); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.logo h1 { font-size: 1.25rem; color: var(--primary); }
+.logo span { color: var(--text); }
+.badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+.badge-on { background-color: #dcfce7; color: var(--success); }
+.badge-off { background-color: #fee2e2; color: var(--danger); }
+.container { max-width: 900px; margin: 20px auto; padding: 0 15px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; -webkit-overflow-scrolling: touch; }
+.tab-btn { padding: 10px 16px; border: 1px solid var(--border); background: var(--card-bg); border-radius: 8px; cursor: pointer; white-space: nowrap; font-weight: 500; transition: all 0.2s; }
+.tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.tab-btn.tab-highlight { border-color: var(--primary); color: var(--primary); }
+.tab-btn.tab-highlight.active { color: white; }
+.tab-content { display: none; animation: fadeIn 0.3s ease; }
+.tab-content.active { display: block; }
+
+/* Grid & Cards */
+.grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-top: 15px; }
+.card { background: var(--card-bg); padding: 20px; border-radius: 10px; border: 1px solid var(--border); text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.card h3 { font-size: 2rem; color: var(--primary); margin-bottom: 5px; }
+.card-accent h3 { color: var(--success); }
+
+/* Forms */
+.form-container { background: var(--card-bg); padding: 20px; border-radius: 10px; border: 1px solid var(--border); margin-top: 15px; margin-bottom: 20px; }
+.form-container form { display: flex; flex-direction: column; gap: 12px; }
+input, select, button { padding: 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 1rem; }
+.gabarito-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin: 10px 0; }
+.gabarito-grid div { display: flex; align-items: center; gap: 5px; }
+.gabarito-grid select { padding: 8px; width: 100%; }
+
+/* Buttons */
+.btn-primary { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
+.btn-success { background: var(--success); color: white; border: none; cursor: pointer; font-weight: bold; }
+.btn-danger { background: var(--danger); color: white; border: none; cursor: pointer; font-weight: bold; }
+
+/* Tables */
+.data-table th, .data-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+.text-muted { color: #64748b; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* =========================================
+   ESTILOS DE IMPRESSÃO (FOLHA DE GABARITO)
+   ========================================= */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #area-impressao, #area-impressao * {
+        visibility: visible;
+    }
+    #area-impressao {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    .folha-gabarito {
+        page-break-after: always;
+        font-family: monospace;
+        padding: 20px;
+        border: 2px solid #000;
+        margin-bottom: 20px;
+    }
+    .bolinhas-grid {
+        display: grid;
+        grid-template-columns: auto repeat(5, 1fr);
+        gap: 10px;
+        margin-top: 20px;
+        align-items: center;
+    }
+    .bolinha {
+        width: 25px;
+        height: 25px;
+        border: 2px solid #000;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 12px;
+    }
+}

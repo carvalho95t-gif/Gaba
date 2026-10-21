@@ -11,154 +11,131 @@
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
-
     <header class="navbar">
-        <div class="logo">
-            <h1>Gaba <span>OMR</span></h1>
-        </div>
+        <div class="logo"><h1>Gaba <span>OMR</span></h1></div>
         <div id="status-conexao" class="badge badge-off">Supabase Desconectado</div>
     </header>
 
     <main class="container">
-
-        <nav class="tabs" id="nav-tabs">
-            <button type="button" class="tab-btn active" data-tab="dashboard">📊 Painel</button>
-            <button type="button" class="tab-btn" data-tab="turmas">👥 Turmas</button>
-            <button type="button" class="tab-btn" data-tab="provas">📝 Provas</button>
-            <button type="button" class="tab-btn tab-highlight" data-tab="scanner">📷 Leitor</button>
-            <button type="button" class="tab-btn" data-tab="relatorios">📈 Notas</button>
-            <button type="button" class="tab-btn" data-tab="config">⚙️ Config</button>
+        <!-- Navegação por Abas -->
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Painel</button>
+            <button class="tab-btn" onclick="switchTab('turmas')">👥 Turmas</button>
+            <button class="tab-btn" onclick="switchTab('provas')">📝 Provas</button>
+            <button class="tab-btn tab-highlight" onclick="switchTab('scanner')">📷 Leitor</button>
+            <button class="tab-btn" onclick="switchTab('relatorios')">📈 Notas</button>
+            <button class="tab-btn" onclick="switchTab('config')">⚙️ Config</button>
         </nav>
 
+        <!-- ABA 1: DASHBOARD -->
         <section id="tab-dashboard" class="tab-content active">
             <h2>Visão Geral</h2>
             <div class="grid-cards">
-                <div class="card">
-                    <h3 id="dash-turmas-count">0</h3>
-                    <p>Turmas Cadastradas</p>
-                </div>
-                <div class="card">
-                    <h3 id="dash-alunos-count">0</h3>
-                    <p>Alunos Cadastrados</p>
-                </div>
-                <div class="card">
-                    <h3 id="dash-provas-count">0</h3>
-                    <p>Provas Ativas</p>
-                </div>
-                <div class="card card-accent">
-                    <h3 id="dash-correcoes-count">0</h3>
-                    <p>Provas Corrigidas</p>
-                </div>
+                <div class="card"><h3 id="dash-turmas-count">0</h3><p>Turmas</p></div>
+                <div class="card"><h3 id="dash-alunos-count">0</h3><p>Alunos</p></div>
+                <div class="card"><h3 id="dash-provas-count">0</h3><p>Provas</p></div>
+                <div class="card card-accent"><h3 id="dash-correcoes-count">0</h3><p>Corrigidas</p></div>
             </div>
         </section>
 
+        <!-- ABA 2: TURMAS E ALUNOS -->
         <section id="tab-turmas" class="tab-content">
             <h2>Gerenciamento de Turmas</h2>
             <div class="form-container">
-                <h3>Criar Nova Turma</h3>
                 <form id="form-turma">
-                    <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 9º Ano A)" required>
-                    <input type="text" id="turma-ano" placeholder="Ano (Ex: 2026)" required>
+                    <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 1º Ano A)" required>
+                    <input type="text" id="turma-ano" placeholder="Ano/Período" required>
                     <button type="submit" class="btn-primary">Salvar Turma</button>
                 </form>
             </div>
-
+            
+            <h2 style="margin-top: 20px;">Cadastrar Aluno</h2>
             <div class="form-container">
-                <h3>Cadastrar Aluno</h3>
                 <form id="form-aluno">
                     <select id="aluno-turma-select" required>
                         <option value="">Selecione a Turma...</option>
                     </select>
-                    <input type="text" id="aluno-nome" placeholder="Nome Completo do Aluno" required>
-                    <input type="number" id="aluno-numero" placeholder="Nº de Chamada / Matrícula" required>
+                    <input type="text" id="aluno-nome" placeholder="Nome do Aluno" required>
+                    <input type="number" id="aluno-numero" placeholder="Nº de Chamada" required>
                     <button type="submit" class="btn-primary">Adicionar Aluno</button>
                 </form>
             </div>
-
-            <h3>Turmas Cadastradas</h3>
-            <div id="lista-turmas" class="card-list">
-                <p class="text-muted">Carregando turmas...</p>
-            </div>
+            <div id="lista-turmas" class="card-list"></div>
         </section>
 
+        <!-- ABA 3: PROVAS E GABARITOS -->
         <section id="tab-provas" class="tab-content">
-            <h2>Criar Prova / Gabarito</h2>
+            <h2>Criar Prova Oficial</h2>
             <div class="form-container">
                 <form id="form-prova">
-                    <input type="text" id="prova-titulo" placeholder="Título da Prova (Ex: Avaliação Bimestral)" required>
-                    <input type="text" id="prova-disciplina" placeholder="Disciplina (Ex: Matemática)" required>
-                    <label for="prova-qtd">Quantidade de Questões:</label>
-                    <input type="number" id="prova-qtd" min="1" max="50" value="10" required>
-
-                    <h4>Gabarito Oficial:</h4>
+                    <input type="text" id="prova-titulo" placeholder="Título (Ex: Bimestral MTM)" required>
+                    <input type="text" id="prova-disciplina" placeholder="Disciplina" required>
+                    <input type="number" id="prova-qtd" min="1" max="50" value="10" onchange="gerarCamposGabarito()" placeholder="Qtd. Questões" required>
+                    
+                    <h3 style="margin-top: 10px; font-size: 1rem;">Gabarito Oficial:</h3>
                     <div id="gabarito-inputs" class="gabarito-grid"></div>
-
-                    <button type="submit" class="btn-primary" style="margin-top: 15px;">Salvar Prova</button>
+                    
+                    <button type="submit" class="btn-primary">Salvar Prova</button>
                 </form>
             </div>
-
-            <h3>Provas Cadastradas</h3>
-            <div id="lista-provas" class="card-list">
-                <p class="text-muted">Carregando provas...</p>
-            </div>
+            <div id="lista-provas" class="card-list"></div>
         </section>
 
+        <!-- ABA 4: SCANNER (OMR) -->
         <section id="tab-scanner" class="tab-content">
-            <h2>Escaneamento de Folhas</h2>
-            <p class="text-muted">QR esperado: <code>Gaba|NUMERO_ALUNO|A,B,C,D,...</code></p>
-            <div class="scanner-controls">
-                <select id="select-prova-scan">
+            <h2>Leitor de Gabaritos</h2>
+            <div class="scanner-controls" style="margin-bottom: 15px;">
+                <select id="select-prova-scan" style="width: 100%; margin-bottom: 10px;">
                     <option value="">Selecione a Prova para Corrigir...</option>
                 </select>
-                <button type="button" id="btn-iniciar-camera" class="btn-success">Ligar Câmera</button>
-                <button type="button" id="btn-parar-camera" class="btn-danger" style="display:none;">Desligar Câmera</button>
+                <button id="btn-iniciar-camera" class="btn-success" onclick="iniciarCamera()" style="width: 100%;">Ligar Câmera</button>
+                <button id="btn-parar-camera" class="btn-danger" onclick="pararCamera()" style="display:none; width: 100%;">Desligar Câmera</button>
             </div>
-
-            <div id="reader-wrapper">
+            <div id="reader-wrapper" style="border: 2px dashed #ccc; border-radius: 8px; overflow: hidden; background: #fff;">
                 <div id="reader"></div>
             </div>
-
-            <div id="resultado-scan" class="resultado-box" style="display:none;">
-                <h3>Resultado da Leitura</h3>
+            <div id="resultado-scan" class="resultado-box" style="display:none; margin-top: 15px; padding: 15px; background: #e0f2fe; border-radius: 8px;">
                 <div id="resultado-detalhes"></div>
             </div>
         </section>
 
+        <!-- ABA 5: RELATÓRIOS -->
         <section id="tab-relatorios" class="tab-content">
             <h2>Relatório de Correções</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Aluno</th>
-                        <th>Turma</th>
-                        <th>Prova</th>
-                        <th>Nota</th>
-                    </tr>
-                </thead>
-                <tbody id="tabela-relatorios">
-                    <tr><td colspan="5" class="text-muted">Nenhuma correção registrada ainda.</td></tr>
-                </tbody>
-            </table>
+            <div style="overflow-x: auto;">
+                <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <thead>
+                        <tr style="background: #f1f5f9; text-align: left;">
+                            <th>Data</th>
+                            <th>Aluno</th>
+                            <th>Turma</th>
+                            <th>Prova</th>
+                            <th>Nota Final</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-relatorios">
+                        <tr><td colspan="5" class="text-muted">Nenhuma correção registrada.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
+        <!-- ABA 6: CONFIGURAÇÕES -->
         <section id="tab-config" class="tab-content">
-            <h2>Configurações do Banco de Dados (Supabase)</h2>
+            <h2>Conexão com Banco de Dados</h2>
+            <p class="text-muted" style="margin-bottom: 15px; font-size: 0.9rem;">Insira os dados do seu projeto Supabase para ativar o aplicativo.</p>
             <div class="form-container">
                 <form id="form-config">
-                    <label for="cfg-url">Project URL do Supabase:</label>
-                    <input type="url" id="cfg-url" placeholder="https://xyz.supabase.co" required>
-
-                    <label for="cfg-key">Chave Pública (anon / public key):</label>
-                    <input type="text" id="cfg-key" placeholder="eyJhbGciOiJIUzI1Ni..." required>
-
+                    <input type="url" id="cfg-url" placeholder="Project URL (https://xyz.supabase.co)" required>
+                    <input type="password" id="cfg-key" placeholder="Chave Pública (anon / public key)" required>
                     <button type="submit" class="btn-primary">Salvar Credenciais</button>
                 </form>
             </div>
         </section>
 
+        <!-- ÁREA EXCLUSIVA PARA IMPRESSÃO DE GABARITOS -->
+        <div id="area-impressao"></div>
     </main>
-
     <script src="app.js"></script>
 </body>
 </html>

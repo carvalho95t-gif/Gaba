@@ -5,30 +5,36 @@
   var STORAGE = {
     url: "gaba_supabase_url",
     key: "gaba_supabase_anon_key",
+    keyAlt: "gaba_supabase_key",
     professorId: "gaba_professor_id",
-    professorNome: "gaba_professor_nome"
+    professorNome: "gaba_professor_nome",
+    professorEmail: "gaba_professor_email"
   };
 
   function readConfig() {
     return {
       url: (localStorage.getItem(STORAGE.url) || "").trim(),
-      key: (localStorage.getItem(STORAGE.key) || "").trim(),
+      key: (localStorage.getItem(STORAGE.key) || localStorage.getItem(STORAGE.keyAlt) || "").trim(),
       professorId: localStorage.getItem(STORAGE.professorId) || "",
-      professorNome: localStorage.getItem(STORAGE.professorNome) || ""
+      professorNome: localStorage.getItem(STORAGE.professorNome) || "",
+      professorEmail: localStorage.getItem(STORAGE.professorEmail) || ""
     };
   }
 
   function saveConfig(url, key) {
     localStorage.setItem(STORAGE.url, url || "");
     localStorage.setItem(STORAGE.key, key || "");
+    localStorage.setItem(STORAGE.keyAlt, key || "");
     global.GabaDB.client = null;
   }
 
-  function setProfessor(id, nome) {
+  function setProfessor(id, nome, email) {
     if (id) localStorage.setItem(STORAGE.professorId, id);
     else localStorage.removeItem(STORAGE.professorId);
     if (nome) localStorage.setItem(STORAGE.professorNome, nome);
     else localStorage.removeItem(STORAGE.professorNome);
+    if (email) localStorage.setItem(STORAGE.professorEmail, email);
+    else localStorage.removeItem(STORAGE.professorEmail);
   }
 
   function getClient() {
@@ -54,58 +60,16 @@
       .select()
       .single();
     if (error) throw error;
-    setProfessor(data.id, data.nome);
+    setProfessor(data.id, data.nome, data.email);
     return data;
-  }
-
-  async function listProvas(professorId) {
-    var client = getClient();
-    if (!client) return [];
-    var query = client.from("provas").select("*").order("created_at", { ascending: false });
-    if (professorId) query = query.eq("professor_id", professorId);
-    var { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  }
-
-  async function listTurmas(professorId) {
-    var client = getClient();
-    if (!client) return [];
-    var query = client.from("turmas").select("*").order("nome");
-    if (professorId) query = query.eq("professor_id", professorId);
-    var { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  }
-
-  async function listAlunos(turmaId) {
-    var client = getClient();
-    if (!client) return [];
-    var query = client.from("alunos").select("*, turmas(nome, professor_id)").order("nome");
-    if (turmaId) query = query.eq("turma_id", turmaId);
-    var { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  }
-
-  async function fetchQuestoes(provaId) {
-    var client = getClient();
-    if (!client) return [];
-    var { data, error } = await client
-      .from("questoes")
-      .select("*")
-      .eq("prova_id", provaId)
-      .order("numero");
-    if (error) throw error;
-    return data || [];
   }
 
   async function fetchCorrecoes() {
     var client = getClient();
     if (!client) return [];
     var { data, error } = await client
-      .from("correcoes_omr")
-      .select("*")
+      .from("correcoes")
+      .select("*, alunos(nome, numero), turmas(nome), provas(titulo)")
       .order("created_at", { ascending: false })
       .limit(2000);
     if (error) throw error;
@@ -115,12 +79,21 @@
   async function insertCorrecao(row) {
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
-    var { data, error } = await client.from("correcoes_omr").insert(row).select().single();
+    var payload = {
+      aluno_id: row.aluno_id,
+      turma_id: row.turma_id,
+      prova_id: row.prova_id,
+      respostas: row.respostas || [],
+      acertos: row.acertos || 0,
+      total_questoes: row.total_questoes || 0,
+      nota: row.nota || 0
+    };
+    var { data, error } = await client.from("correcoes").insert(payload).select().single();
     if (error) throw error;
     return data;
   }
 
-  async function lookupAluno(alunoId, matricula) {
+  async function lookupAluno(alunoId, numeroOuMatricula) {
     var client = getClient();
     if (!client) return null;
     if (alunoId) {
@@ -128,8 +101,13 @@
       if (byId.error) throw byId.error;
       if (byId.data) return byId.data;
     }
-    if (matricula) {
-      var byMat = await client.from("alunos").select("*, turmas(nome)").eq("matricula", matricula).limit(1);
+    if (numeroOuMatricula != null && numeroOuMatricula !== "") {
+      var n = Number(numeroOuMatricula);
+      if (!Number.isNaN(n)) {
+        var byNum = await client.from("alunos").select("*, turmas(nome)").eq("numero", n).limit(1);
+        if (!byNum.error && byNum.data && byNum.data[0]) return byNum.data[0];
+      }
+      var byMat = await client.from("alunos").select("*, turmas(nome)").eq("matricula", String(numeroOuMatricula)).limit(1);
       if (byMat.error) throw byMat.error;
       return (byMat.data && byMat.data[0]) || null;
     }
@@ -153,10 +131,6 @@
     getClient: getClient,
     isConfigured: isConfigured,
     upsertProfessor: upsertProfessor,
-    listProvas: listProvas,
-    listTurmas: listTurmas,
-    listAlunos: listAlunos,
-    fetchQuestoes: fetchQuestoes,
     fetchCorrecoes: fetchCorrecoes,
     insertCorrecao: insertCorrecao,
     lookupAluno: lookupAluno,

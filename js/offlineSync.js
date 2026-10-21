@@ -139,20 +139,13 @@
       var item = pending[i];
       try {
         var payload = {
-          id: item.id,
           prova_id: item.prova_id,
           aluno_id: item.aluno_id || null,
-          professor_id: item.professor_id || null,
-          matricula: item.matricula || null,
-          aluno_nome: item.aluno_nome || null,
+          turma_id: item.turma_id || null,
           respostas: item.respostas || [],
           acertos: item.acertos || 0,
           total_questoes: item.total_questoes || 0,
-          nota: item.nota || 0,
-          confianca: item.confianca || null,
-          qr_payload: item.qr_payload || null,
-          raw_payload: item.raw_payload || null,
-          created_at: item.created_at || item.queued_at
+          nota: item.nota || 0
         };
         await GabaDB.insertCorrecao(payload);
         await removePending(item.id);
