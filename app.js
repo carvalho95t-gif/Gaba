@@ -6,28 +6,32 @@ document.addEventListener('DOMContentLoaded', () => {
     gerarCamposGabarito();
 });
 
-// Troca de Abas
+// Troca de Abas (Corrigida e à prova de falhas)
 function switchTab(tabId) {
-    // Esconde todas as abas e desativa os botões
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    
-    // Mostra a aba selecionada
-    const tabAlvo = document.getElementById(`tab-${tabId}`);
-    if (tabAlvo) {
-        tabAlvo.classList.add('active');
-    }
+    try {
+        // Esconde todas as abas e botões
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        
+        // Mostra a aba selecionada
+        const tabAlvo = document.getElementById(`tab-${tabId}`);
+        if (tabAlvo) tabAlvo.classList.add('active');
 
-    // Ativa o botão clicado
-    if (window.event && window.event.currentTarget) {
-        window.event.currentTarget.classList.add('active');
-    }
+        // Pinta o botão correto
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.getAttribute('onclick').includes(tabId)) {
+                btn.classList.add('active');
+            }
+        });
 
-    // Executa o carregamento de dados da aba
-    if (tabId === 'turmas') carregarTurmas();
-    if (tabId === 'provas') carregarProvas();
-    if (tabId === 'relatorios') carregarRelatorios();
-    if (tabId === 'dashboard') carregarDashboard();
+        // Executa o carregamento de dados da aba
+        if (tabId === 'turmas') carregarTurmas();
+        if (tabId === 'provas') carregarProvas();
+        if (tabId === 'relatorios') carregarRelatorios();
+        if (tabId === 'dashboard') carregarDashboard();
+    } catch (erro) {
+        console.error("Erro ao trocar de aba:", erro);
+    }
 }
 
 // Inicializar Supabase
