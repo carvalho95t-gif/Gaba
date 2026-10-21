@@ -8,12 +8,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Troca de Abas
 function switchTab(tabId) {
+    // Esconde todas as abas e desativa os botões
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     
-    document.getElementById(`tab-${tabId}`).classList.add('active');
-    event.currentTarget.classList.add('active');
+    // Mostra a aba selecionada
+    const tabAlvo = document.getElementById(`tab-${tabId}`);
+    if (tabAlvo) {
+        tabAlvo.classList.add('active');
+    }
 
+    // Ativa o botão clicado
+    if (window.event && window.event.currentTarget) {
+        window.event.currentTarget.classList.add('active');
+    }
+
+    // Executa o carregamento de dados da aba
     if (tabId === 'turmas') carregarTurmas();
     if (tabId === 'provas') carregarProvas();
     if (tabId === 'relatorios') carregarRelatorios();
@@ -26,34 +36,125 @@ function carregarCredenciais() {
     const key = localStorage.getItem('gaba_supabase_key');
 
     if (url && key) {
-        document.getElementById('cfg-url').value = url;
-        document.getElementById('cfg-key').value = key;
+        const inputUrl = document.getElementById('cfg-url');
+        const inputKey = document.getElementById('cfg-key');
+        if (inputUrl) inputUrl.value = url;
+        if (inputKey) inputKey.value = key;
+
         supabase = window.supabase.createClient(url, key);
         
         const badge = document.getElementById('status-conexao');
-        badge.textContent = 'Supabase Conectado';
-        badge.className = 'badge badge-on';
+        if (badge) {
+            badge.textContent = 'Supabase Conectado';
+            badge.className = 'badge badge-on';
+        }
 
         carregarDashboard();
     }
 }
 
 // Salvar Credenciais
-document.getElementById('form-config').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const url = document.getElementById('cfg-url').value.trim();
-    const key = document.getElementById('cfg-key').value.trim();
+const formConfig = document.getElementById('form-config');
+if (formConfig) {
+    formConfig.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const url = document.getElementById('cfg-url').value.trim();
+        const key = document.getElementById('cfg-key').value.trim();
 
-    localStorage.setItem('gaba_supabase_url', url);
-    localStorage.setItem('gaba_supabase_key', key);
-    alert('Credenciais salvas com sucesso!');
-    carregarCredenciais();
-});
+        localStorage.setItem('gaba_supabase_url', url);
+        localStorage.setItem('gaba_supabase_key', key);
+        alert('Credenciais salvas com sucesso!');
+        carregarCredenciais();
+    });
+}
+
+// Carregar Turmas do Supabase
+async function carregarTurmas() {
+    if (!supabase) return;
+    const lista = document.getElementById('lista-turmas');
+    const select = document.getElementById('aluno-turma-select');
+    try {
+        const { data: turmas, error } = await supabase.from('turmas').select('*');
+        if (error) throw error;
+
+        if (lista) {
+            lista.innerHTML = (turmas && turmas.length > 0) ? '' : '<p class="text-muted">Nenhuma turma cadastrada.</p>';
+            turmas?.forEach(t => {
+                lista.innerHTML += `<div class="card"><strong>${t.nome}</strong> (${t.ano})</div>`;
+            });
+        }
+        if (select) {
+            select.innerHTML = '<option value="">Selecione a Turma...</option>';
+            turmas?.forEach(t => {
+                select.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
+            });
+        }
+    } catch (err) {
+        console.error('Erro ao carregar turmas:', err);
+    }
+}
+
+// Carregar Provas do Supabase
+async function carregarProvas() {
+    if (!supabase) return;
+    const lista = document.getElementById('lista-provas');
+    const selectScan = document.getElementById('select-prova-scan');
+    try {
+        const { data: provas, error } = await supabase.from('provas').select('*');
+        if (error) throw error;
+
+        if (lista) {
+            lista.innerHTML = (provas && provas.length > 0) ? '' : '<p class="text-muted">Nenhuma prova cadastrada.</p>';
+            provas?.forEach(p => {
+                lista.innerHTML += `<div class="card"><strong>${p.titulo}</strong> - ${p.disciplina}</div>`;
+            });
+        }
+        if (selectScan) {
+            selectScan.innerHTML = '<option value="">Selecione a Prova para Corrigir...</option>';
+            provas?.forEach(p => {
+                selectScan.innerHTML += `<option value="${p.id}">${p.titulo}</option>`;
+            });
+        }
+    } catch (err) {
+        console.error('Erro ao carregar provas:', err);
+    }
+}
+
+// Carregar Relatórios de Notas
+async function carregarRelatorios() {
+    if (!supabase) return;
+    const tabela = document.getElementById('tabela-relatorios');
+    try {
+        const { data: correcoes, error } = await supabase.from('correcoes').select('*, alunos(nome), turmas(nome), provas(titulo)');
+        if (error) throw error;
+
+        if (tabela) {
+            if (!correcoes || correcoes.length === 0) {
+                tabela.innerHTML = '<tr><td colspan="5" class="text-muted">Nenhuma correção registrada ainda.</td></tr>';
+            } else {
+                tabela.innerHTML = correcoes.map(c => `
+                    <tr>
+                        <td>${new Date(c.created_at).toLocaleDateString()}</td>
+                        <td>${c.alunos?.nome || '-'}</td>
+                        <td>${c.turmas?.nome || '-'}</td>
+                        <td>${c.provas?.titulo || '-'}</td>
+                        <td><strong>${c.nota}</strong></td>
+                    </tr>
+                `).join('');
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao carregar relatórios:', err);
+    }
+}
 
 // Gerar campos de gabarito dinamicamente
 function gerarCamposGabarito() {
-    const qtd = parseInt(document.getElementById('prova-qtd').value) || 10;
+    const inputQtd = document.getElementById('prova-qtd');
+    if (!inputQtd) return;
+    const qtd = parseInt(inputQtd.value) || 10;
     const container = document.getElementById('gabarito-inputs');
+    if (!container) return;
     container.innerHTML = '';
 
     for (let i = 1; i <= qtd; i++) {
@@ -106,9 +207,9 @@ async function carregarDashboard() {
         const { count: alunosCount } = await supabase.from('alunos').select('*', { count: 'exact', head: true });
         const { count: provasCount } = await supabase.from('provas').select('*', { count: 'exact', head: true });
 
-        document.getElementById('dash-turmas-count').textContent = turmasCount || 0;
-        document.getElementById('dash-alunos-count').textContent = alunosCount || 0;
-        document.getElementById('dash-provas-count').textContent = provasCount || 0;
+        if (document.getElementById('dash-turmas-count')) document.getElementById('dash-turmas-count').textContent = turmasCount || 0;
+        if (document.getElementById('dash-alunos-count')) document.getElementById('dash-alunos-count').textContent = alunosCount || 0;
+        if (document.getElementById('dash-provas-count')) document.getElementById('dash-provas-count').textContent = provasCount || 0;
     } catch (err) {
         console.error(err);
     }
