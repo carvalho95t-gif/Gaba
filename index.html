@@ -1,457 +1,172 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#16a34a" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Gaba — Leitor OMR</title>
-  <link rel="manifest" href="./manifest.json" />
-  <link rel="icon" href="./icons/icon-192.png" />
-  <style>
-    :root {
-      --bg: #07111f;
-      --panel: #101b2d;
-      --line: #1f334d;
-      --text: #e8eef7;
-      --muted: #93a4bb;
-      --green: #22c55e;
-      --green-dim: rgba(34, 197, 94, 0.18);
-      --red: #f87171;
-      --amber: #fbbf24;
-      --blue: #38bdf8;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: Inter, Segoe UI, system-ui, sans-serif; }
-    body { display: flex; flex-direction: column; }
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 14px calc(10px + env(safe-area-inset-top)); gap: 10px;
-      background: #0b1626; border-bottom: 1px solid var(--line);
-    }
-    .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .02em; }
-    .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--green); color: #052e16; display: grid; place-items: center; font-size: 14px; }
-    .status { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
-    .pill { padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
-    .pill.ok { color: var(--green); border-color: #166534; }
-    .pill.off { color: var(--red); border-color: #7f1d1d; }
-    .viewport { position: relative; flex: 1; overflow: hidden; background: #000; }
-    video, canvas.hud { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    canvas.hud { pointer-events: none; }
-    .frame {
-      position: absolute; inset: 12% 8%; border: 2px solid var(--green);
-      border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0,0,0,.38);
-      pointer-events: none;
-    }
-    .frame::before, .frame::after {
-      content: ""; position: absolute; width: 28px; height: 28px; border: 4px solid #bbf7d0;
-    }
-    .frame::before { top: -4px; left: -4px; border-right: 0; border-bottom: 0; }
-    .frame::after { bottom: -4px; right: -4px; border-left: 0; border-top: 0; }
-    .hint {
-      position: absolute; left: 50%; top: 8%; transform: translateX(-50%);
-      background: rgba(7,17,31,.72); padding: 6px 12px; border-radius: 999px; font-size: 12px;
-      white-space: nowrap;
-    }
-    .dock {
-      background: #0b1626; border-top: 1px solid var(--line);
-      padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
-      display: grid; gap: 10px;
-    }
-    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .modes button, .actions button, .linkbtn {
-      appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--text);
-      border-radius: 12px; padding: 12px 10px; font-weight: 700; cursor: pointer;
-    }
-    .modes button.active { background: var(--green-dim); border-color: var(--green); color: #bbf7d0; }
-    .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .actions .primary { background: var(--green); color: #052e16; border-color: var(--green); }
-    .result {
-      min-height: 64px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
-      background: var(--panel); font-size: 13px; color: var(--muted);
-    }
-    .result strong { color: var(--text); }
-    a.linkbtn { text-align: center; text-decoration: none; font-size: 13px; padding: 10px; }
-    dialog { border: 1px solid var(--line); border-radius: 16px; background: #0f1c2e; color: var(--text); width: min(420px, 92vw); }
-    dialog::backdrop { background: rgba(0,0,0,.55); }
-    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
-    input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: #0b1626; color: var(--text); }
-    .toast { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); background: #052e16; color: #bbf7d0; padding: 8px 12px; border-radius: 999px; font-size: 12px; display: none; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaba - Leitor de Gabaritos OMR</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- HTML5-QRCode para o Scanner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
-  <header>
-    <div class="brand"><span class="logo">G</span> Gaba OMR</div>
-    <div class="status">
-      <span id="netPill" class="pill off">Offline</span>
-      <span id="pendPill" class="pill">0 pendentes</span>
-    </div>
-  </header>
 
-  <section class="viewport">
-    <video id="cam" playsinline autoplay muted></video>
-    <canvas id="hud" class="hud"></canvas>
-    <div class="frame"></div>
-    <div class="hint" id="hint">Alinhe as 4 marcas pretas na moldura verde</div>
-  </section>
+    <header class="navbar">
+        <div class="logo">
+            <h1>Gaba <span>OMR</span></h1>
+        </div>
+        <div id="status-conexao" class="badge badge-off">Supabase Desconectado</div>
+    </header>
 
-  <section class="dock">
-    <div class="modes">
-      <button id="btnFast" class="active">Modo Rápido</button>
-      <button id="btnStep">Passo a Passo</button>
-    </div>
-    <div class="result" id="resultBox">Aguardando leitura da folha de respostas.</div>
-    <div class="actions">
-      <button id="btnCapture">Capturar</button>
-      <button id="btnConfirm" class="primary" disabled>Confirmar</button>
-      <button id="btnRetry" disabled>Repetir</button>
-    </div>
-    <div class="actions">
-      <a class="linkbtn" href="./dashboard.html">Painel</a>
-      <button id="btnConfig">Configurar</button>
-      <button id="btnSync">Sincronizar</button>
-    </div>
-  </section>
+    <main class="container">
 
-  <div class="toast" id="toast"></div>
+        <!-- Navegação por Abas -->
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Painel</button>
+            <button class="tab-btn" onclick="switchTab('turmas')">👥 Turmas</button>
+            <button class="tab-btn" onclick="switchTab('provas')">📝 Provas</button>
+            <button class="tab-btn tab-highlight" onclick="switchTab('scanner')">📷 Leitor</button>
+            <button class="tab-btn" onclick="switchTab('relatorios')">📈 Notas</button>
+            <button class="tab-btn" onclick="switchTab('config')">⚙️ Config</button>
+        </nav>
 
-  <dialog id="cfg">
-    <form method="dialog">
-      <h3 style="margin:0 0 8px">Supabase e prova</h3>
-      <label>URL do projeto</label>
-      <input id="cfgUrl" placeholder="https://xxxx.supabase.co" />
-      <label>Chave anon</label>
-      <input id="cfgKey" placeholder="eyJ..." />
-      <label>Seu nome</label>
-      <input id="cfgNome" placeholder="Professor" />
-      <label>E-mail</label>
-      <input id="cfgEmail" type="email" placeholder="voce@escola.com" />
-      <label>Prova ativa (UUID)</label>
-      <input id="cfgProva" placeholder="id da prova no Supabase" />
-      <label>Total de questões</label>
-      <input id="cfgN" type="number" min="1" max="50" value="20" />
-      <label>Gabarito (ex.: ABCDE...)</label>
-      <input id="cfgGab" placeholder="opcional se a prova já estiver no banco" />
-      <p style="display:flex;gap:8px;margin-top:14px">
-        <button value="cancel">Fechar</button>
-        <button id="cfgSave" value="default" class="primary" style="flex:1;background:#22c55e;color:#052e16;border:0;border-radius:10px;font-weight:700">Salvar</button>
-      </p>
-    </form>
-  </dialog>
+        <!-- ABA 1: DASHBOARD -->
+        <section id="tab-dashboard" class="tab-content active">
+            <h2>Visão Geral</h2>
+            <div class="grid-cards">
+                <div class="card">
+                    <h3 id="dash-turmas-count">0</h3>
+                    <p>Turmas Cadastradas</p>
+                </div>
+                <div class="card">
+                    <h3 id="dash-alunos-count">0</h3>
+                    <p>Alunos Cadastrados</p>
+                </div>
+                <div class="card">
+                    <h3 id="dash-provas-count">0</h3>
+                    <p>Provas Ativas</p>
+                </div>
+                <div class="card card-accent">
+                    <h3 id="dash-correcoes-count">0</h3>
+                    <p>Provas Corrigidas</p>
+                </div>
+            </div>
+        </section>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./js/supabaseClient.js"></script>
-  <script src="./js/offlineSync.js"></script>
-  <script>
-    const cam = document.getElementById("cam");
-    const hud = document.getElementById("hud");
-    const hint = document.getElementById("hint");
-    const resultBox = document.getElementById("resultBox");
-    const netPill = document.getElementById("netPill");
-    const pendPill = document.getElementById("pendPill");
-    const btnFast = document.getElementById("btnFast");
-    const btnStep = document.getElementById("btnStep");
-    const btnCapture = document.getElementById("btnCapture");
-    const btnConfirm = document.getElementById("btnConfirm");
-    const btnRetry = document.getElementById("btnRetry");
-    const toastEl = document.getElementById("toast");
+        <!-- ABA 2: TURMAS E ALUNOS -->
+        <section id="tab-turmas" class="tab-content">
+            <h2>Gerenciamento de Turmas</h2>
+            <div class="form-container">
+                <h3>Criar Nova Turma</h3>
+                <form id="form-turma">
+                    <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 9º Ano A)" required>
+                    <input type="text" id="turma-ano" placeholder="Ano (Ex: 2026)" required>
+                    <button type="submit" class="btn-primary">Salvar Turma</button>
+                </form>
+            </div>
 
-    let mode = "fast";
-    let busy = false;
-    let lastScan = null;
-    let cooldownUntil = 0;
-    let audioCtx = null;
-    const worker = new Worker("./js/omrWorker.js");
-    let requestId = 0;
+            <div class="form-container">
+                <h3>Cadastrar Aluno</h3>
+                <form id="form-aluno">
+                    <select id="aluno-turma-select" required>
+                        <option value="">Selecione a Turma...</option>
+                    </select>
+                    <input type="text" id="aluno-nome" placeholder="Nome Completo do Aluno" required>
+                    <input type="number" id="aluno-numero" placeholder="Nº de Chamada / Matrícula" required>
+                    <button type="submit" class="btn-primary">Adicionar Aluno</button>
+                </form>
+            </div>
 
-    function toast(msg) {
-      toastEl.textContent = msg;
-      toastEl.style.display = "block";
-      setTimeout(() => { toastEl.style.display = "none"; }, 1800);
-    }
+            <h3>Turmas Cadastradas</h3>
+            <div id="lista-turmas" class="card-list">
+                <p class="text-muted">Carregando turmas...</p>
+            </div>
+        </section>
 
-    function setNet() {
-      const on = navigator.onLine;
-      netPill.textContent = on ? "Online" : "Offline";
-      netPill.className = "pill " + (on ? "ok" : "off");
-    }
-    window.addEventListener("online", () => { setNet(); GabaSync.flush(); });
-    window.addEventListener("offline", setNet);
-    setNet();
-    GabaSync.onPendingChange((n) => { pendPill.textContent = n + (n === 1 ? " pendente" : " pendentes"); });
+        <!-- ABA 3: PROVAS E GABARITOS -->
+        <section id="tab-provas" class="tab-content">
+            <h2>Criar Prova / Gabarito</h2>
+            <div class="form-container">
+                <form id="form-prova">
+                    <input type="text" id="prova-titulo" placeholder="Título da Prova (Ex: Avaliação Bimestral)" required>
+                    <input type="text" id="prova-disciplina" placeholder="Disciplina (Ex: Matemática)" required>
+                    <label for="prova-qtd">Quantidade de Questões:</label>
+                    <input type="number" id="prova-qtd" min="1" max="50" value="10" onchange="gerarCamposGabarito()" required>
+                    
+                    <h4>Gabarito Oficial:</h4>
+                    <div id="gabarito-inputs" class="gabarito-grid"></div>
 
-    function beep() {
-      try {
-        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.frequency.value = 880;
-        gain.gain.value = 0.05;
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.09);
-      } catch (e) { /* ignore */ }
-    }
+                    <button type="submit" class="btn-primary" style="margin-top: 15px;">Salvar Prova</button>
+                </form>
+            </div>
 
-    function haptic() {
-      if (navigator.vibrate) navigator.vibrate([100]);
-    }
+            <h3>Provas Cadastradas</h3>
+            <div id="lista-provas" class="card-list">
+                <p class="text-muted">Carregando provas...</p>
+            </div>
+        </section>
 
-    function examConfig() {
-      return {
-        provaId: localStorage.getItem("gaba_prova_id") || "",
-        total: Number(localStorage.getItem("gaba_total_q") || 20),
-        gabarito: (localStorage.getItem("gaba_gabarito") || "").toUpperCase().replace(/[^A-E]/g, "").split("")
-      };
-    }
+        <!-- ABA 4: LEITOR / SCANNER -->
+        <section id="tab-scanner" class="tab-content">
+            <h2>Escaneamento de Folhas</h2>
+            <div class="scanner-controls">
+                <select id="select-prova-scan">
+                    <option value="">Selecione a Prova para Corrigir...</option>
+                </select>
+                <button id="btn-iniciar-camera" class="btn-success" onclick="iniciarCamera()">Ligar Câmera</button>
+                <button id="btn-parar-camera" class="btn-danger" onclick="pararCamera()" style="display:none;">Desligar Câmera</button>
+            </div>
 
-    async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      cam.srcObject = stream;
-      await cam.play();
-    }
+            <div id="reader-wrapper">
+                <div id="reader"></div>
+            </div>
 
-    function grabFrame() {
-      const vw = cam.videoWidth;
-      const vh = cam.videoHeight;
-      if (!vw || !vh) return null;
-      const canvas = document.createElement("canvas");
-      canvas.width = vw;
-      canvas.height = vh;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(cam, 0, 0);
-      const image = ctx.getImageData(0, 0, vw, vh);
-      return image;
-    }
+            <div id="resultado-scan" class="resultado-box" style="display:none;">
+                <h3>Resultado da Leitura</h3>
+                <div id="resultado-detalhes"></div>
+            </div>
+        </section>
 
-    function sendFrame() {
-      if (busy) return;
-      if (Date.now() < cooldownUntil) return;
-      const image = grabFrame();
-      if (!image) return;
-      busy = true;
-      requestId += 1;
-      const cfg = examConfig();
-      worker.postMessage({
-        type: "process",
-        requestId,
-        width: image.width,
-        height: image.height,
-        buffer: image.data.buffer,
-        options: { totalQuestoes: cfg.total }
-      }, [image.data.buffer]);
-    }
+        <!-- ABA 5: RELATÓRIOS -->
+        <section id="tab-relatorios" class="tab-content">
+            <h2>Relatório de Correções</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Aluno</th>
+                        <th>Turma</th>
+                        <th>Prova</th>
+                        <th>Nota</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-relatorios">
+                    <tr><td colspan="5" class="text-muted">Nenhuma correção registrada ainda.</td></tr>
+                </tbody>
+            </table>
+        </section>
 
-    function parseQr(raw) {
-      if (!raw) return {};
-      try {
-        const obj = JSON.parse(raw);
-        return {
-          prova_id: obj.prova_id || obj.provaId || "",
-          aluno_id: obj.aluno_id || obj.alunoId || "",
-          matricula: obj.matricula || "",
-          nome: obj.nome || "",
-          n: obj.n
-        };
-      } catch (e) {
-        const parts = String(raw).split("|");
-        if (parts[0] === "GABA") {
-          return { prova_id: parts[1] || "", aluno_id: parts[2] || "", matricula: parts[3] || "" };
-        }
-        return { raw: raw };
-      }
-    }
+        <!-- ABA 6: CONFIGURAÇÕES -->
+        <section id="tab-config" class="tab-content">
+            <h2>Configurações do Banco de Dados (Supabase)</h2>
+            <div class="form-container">
+                <form id="form-config">
+                    <label for="cfg-url">Project URL do Supabase:</label>
+                    <input type="url" id="cfg-url" placeholder="https://xyz.supabase.co" required>
 
-    function scoreAnswers(answers, gabarito) {
-      if (!gabarito || !gabarito.length) {
-        return { acertos: 0, nota: 0, total: answers.length, matrix: answers.map(() => null) };
-      }
-      const total = Math.min(answers.length, gabarito.length) || gabarito.length;
-      let acertos = 0;
-      const matrix = [];
-      for (let i = 0; i < total; i++) {
-        const ok = answers[i] && gabarito[i] && answers[i] === gabarito[i];
-        matrix.push(ok ? 1 : 0);
-        if (ok) acertos += 1;
-      }
-      const nota = total ? Number(((acertos / total) * 10).toFixed(2)) : 0;
-      return { acertos, nota, total, matrix };
-    }
+                    <label for="cfg-key">Chave Pública (anon / public key):</label>
+                    <input type="text" id="cfg-key" placeholder="eyJhbGciOiJIUzI1Ni..." required>
 
-    function renderScan(scan, pendingConfirm) {
-      if (!scan) {
-        resultBox.textContent = "Aguardando leitura da folha de respostas.";
-        return;
-      }
-      const ans = (scan.answers || []).filter(Boolean).length;
-      resultBox.innerHTML = "<strong>" + (scan.aluno_nome || scan.matricula || "Aluno não identificado") + "</strong><br>" +
-        (scan.message || "") + " · " + ans + " bolhas · nota " + (scan.nota ?? "–") +
-        (pendingConfirm ? " · confirme para salvar" : "");
-    }
+                    <button type="submit" class="btn-primary">Salvar Credenciais</button>
+                </form>
+            </div>
+        </section>
 
-    async function enrichAndScore(result) {
-      const qr = parseQr(result.qr);
-      const cfg = examConfig();
-      let prova = null;
-      let gabarito = cfg.gabarito;
-      const provaId = qr.prova_id || cfg.provaId;
-      try {
-        if (provaId && GabaDB.isConfigured() && navigator.onLine) {
-          prova = await GabaDB.lookupProva(provaId);
-          if (prova && Array.isArray(prova.gabarito) && prova.gabarito.length) gabarito = prova.gabarito.map((x) => String(x).toUpperCase());
-          else if (prova) {
-            const qs = await GabaDB.fetchQuestoes(provaId);
-            if (qs.length) gabarito = qs.map((q) => String(q.gabarito).toUpperCase());
-          }
-        }
-      } catch (e) { /* usa gabarito local */ }
-      const scored = scoreAnswers(result.answers || [], gabarito);
-      let aluno = null;
-      try {
-        if (GabaDB.isConfigured() && navigator.onLine) {
-          aluno = await GabaDB.lookupAluno(qr.aluno_id, qr.matricula);
-        }
-      } catch (e) { /* ignore */ }
-      const professor = GabaDB.readConfig();
-      return {
-        id: GabaSync.uuid(),
-        prova_id: provaId || null,
-        aluno_id: (aluno && aluno.id) || qr.aluno_id || null,
-        professor_id: professor.professorId || null,
-        matricula: (aluno && aluno.matricula) || qr.matricula || "",
-        aluno_nome: (aluno && aluno.nome) || qr.nome || "",
-        respostas: result.answers || [],
-        acertos: scored.acertos,
-        total_questoes: scored.total || cfg.total,
-        nota: scored.nota,
-        confianca: result.confidence || 0,
-        qr_payload: result.qr || null,
-        raw_payload: { engine: result.engine, matrix: scored.matrix, message: result.message },
-        created_at: new Date().toISOString(),
-        message: result.message,
-        ok: result.ok
-      };
-    }
+    </main>
 
-    async function persist(scan) {
-      await GabaSync.enqueue(scan);
-      if (navigator.onLine) {
-        const r = await GabaSync.flush();
-        if (r.synced) toast("Sincronizado");
-      } else {
-        toast("Salvo offline");
-      }
-    }
-
-    worker.onmessage = async (ev) => {
-      const msg = ev.data || {};
-      if (msg.type === "ready") {
-        hint.textContent = msg.engine === "opencv" || msg.engine === "opencv-sync"
-          ? "Motor OpenCV pronto · alinhe a folha"
-          : "Motor básico pronto · QR ainda funciona";
-        return;
-      }
-      if (msg.type !== "result") return;
-      busy = false;
-      if (!msg.ok) {
-        hint.textContent = msg.message || "Ajuste o enquadramento";
-        if (mode === "step") resultBox.textContent = msg.message;
-        return;
-      }
-      const scan = await enrichAndScore(msg);
-      lastScan = scan;
-      haptic();
-      beep();
-      if (mode === "fast") {
-        renderScan(scan, false);
-        await persist(scan);
-        cooldownUntil = Date.now() + 2200;
-        hint.textContent = "Lido · próxima folha";
-      } else {
-        renderScan(scan, true);
-        btnConfirm.disabled = false;
-        btnRetry.disabled = false;
-        hint.textContent = "Confira e confirme";
-      }
-    };
-
-    let raf = 0;
-    function loop() {
-      raf = requestAnimationFrame(loop);
-      if (mode === "fast" && cam.readyState >= 2) sendFrame();
-    }
-
-    btnFast.onclick = () => {
-      mode = "fast";
-      btnFast.classList.add("active");
-      btnStep.classList.remove("active");
-      btnConfirm.disabled = true;
-      btnRetry.disabled = true;
-    };
-    btnStep.onclick = () => {
-      mode = "step";
-      btnStep.classList.add("active");
-      btnFast.classList.remove("active");
-    };
-    btnCapture.onclick = () => sendFrame();
-    btnRetry.onclick = () => {
-      lastScan = null;
-      btnConfirm.disabled = true;
-      btnRetry.disabled = true;
-      resultBox.textContent = "Nova captura.";
-      sendFrame();
-    };
-    btnConfirm.onclick = async () => {
-      if (!lastScan) return;
-      await persist(lastScan);
-      renderScan(lastScan, false);
-      btnConfirm.disabled = true;
-      btnRetry.disabled = true;
-      lastScan = null;
-    };
-
-    document.getElementById("btnConfig").onclick = () => {
-      const cfg = GabaDB.readConfig();
-      document.getElementById("cfgUrl").value = cfg.url;
-      document.getElementById("cfgKey").value = cfg.key;
-      document.getElementById("cfgNome").value = cfg.professorNome;
-      document.getElementById("cfgProva").value = localStorage.getItem("gaba_prova_id") || "";
-      document.getElementById("cfgN").value = localStorage.getItem("gaba_total_q") || 20;
-      document.getElementById("cfgGab").value = localStorage.getItem("gaba_gabarito") || "";
-      document.getElementById("cfg").showModal();
-    };
-    document.getElementById("cfgSave").onclick = async (e) => {
-      e.preventDefault();
-      GabaDB.saveConfig(document.getElementById("cfgUrl").value.trim(), document.getElementById("cfgKey").value.trim());
-      localStorage.setItem("gaba_prova_id", document.getElementById("cfgProva").value.trim());
-      localStorage.setItem("gaba_total_q", document.getElementById("cfgN").value);
-      localStorage.setItem("gaba_gabarito", document.getElementById("cfgGab").value.trim());
-      const nome = document.getElementById("cfgNome").value.trim();
-      const email = document.getElementById("cfgEmail").value.trim();
-      try {
-        if (nome && email && GabaDB.isConfigured()) await GabaDB.upsertProfessor(nome, email);
-      } catch (err) {
-        toast("Config salva, professor não sincronizado");
-      }
-      document.getElementById("cfg").close();
-      toast("Configuração salva");
-    };
-    document.getElementById("btnSync").onclick = async () => {
-      const r = await GabaSync.flush();
-      toast("Sincronizadas: " + r.synced + " · falhas: " + r.failed);
-    };
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js");
-    }
-
-    startCamera().then(() => loop()).catch(() => {
-      hint.textContent = "Permita a câmera para corrigir as provas";
-      resultBox.textContent = "Câmera bloqueada. Use HTTPS (GitHub Pages) e autorize o acesso.";
-    });
-  </script>
+    <script src="app.js"></script>
 </body>
 </html>
