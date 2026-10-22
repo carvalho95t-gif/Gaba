@@ -102,6 +102,9 @@
   <script>
     let allRows = [];
 
+    const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ESC[c]);
+
     function mergeById(a, b) {
       const map = new Map();
       a.concat(b).forEach((row) => { if (row && row.id) map.set(row.id, row); });
@@ -140,10 +143,10 @@
       tbody.innerHTML = rows.map((row) => {
         const nota = Number(row.nota || 0);
         const cls = nota >= 6 ? "ok" : "bad";
-        return "<tr><td>" + (row.aluno_nome || "–") + "</td><td>" + (row.matricula || "–") +
-          "</td><td>" + String(row.created_at || "").replace("T", " ").slice(0, 16) +
-          "</td><td>" + (row.acertos || 0) + "/" + (row.total_questoes || 0) +
-          "</td><td class='" + cls + "'>" + nota.toFixed(2) + "</td><td>" + (row.origem || "nuvem") + "</td></tr>";
+        return "<tr><td>" + esc(row.aluno_nome || "–") + "</td><td>" + esc(row.matricula || "–") +
+          "</td><td>" + esc(String(row.created_at || "").replace("T", " ").slice(0, 16)) +
+          "</td><td>" + esc(row.acertos || 0) + "/" + esc(row.total_questoes || 0) +
+          "</td><td class='" + cls + "'>" + esc(nota.toFixed(2)) + "</td><td>" + esc(row.origem || "nuvem") + "</td></tr>";
       }).join("") || "<tr><td colspan='6'>Nenhuma correção ainda.</td></tr>";
 
       const notas = rows.map((r) => Number(r.nota || 0));

@@ -4,40 +4,52 @@
 var OPENCV_URL = "https://docs.opencv.org/4.9.0/opencv.js";
 var JSQR_URL = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
 
-var LAYOUT = {
-  pageWmm: 210,
-  pageHmm: 297,
-  pxPerMm: 8,
-  fiducialMm: 12,
-  fiducialInsetMm: 6,
-  qr: { xMm: 18, yMm: 22, wMm: 42, hMm: 42 },
-  grid: {
-    xMm: 18,
-    yMm: 72,
-    cols: 2,
-    questionsPerCol: 25,
-    bubbleMm: 4.2,
-    optionGapMm: 8.2,
-    rowGapMm: 8.4,
-    numberWidthMm: 10,
-    colGapMm: 92
-  },
-  options: ["A", "B", "C", "D", "E"],
-  fillRatio: 0.38
-};
+var GLayout = null;
+var GQR = null;
+var PX_PER_MM = 8;
+var PARAMS = { fillRatio: 0.38, ambigDelta: 0.08, roiScale: 0.82 };
 
 var cvReady = false;
 var loadError = null;
 
-function pageSize() {
+function layoutApi() {
+  if (!GLayout) {
+    GLayout = self.GabaLayout || null;
+  }
+  if (!GLayout) throw new Error("omrWorker: omrLayout.js nao carregou via importScripts.");
+  return GLayout;
+}
+
+function qrApi() {
+  if (!GQR) {
+    GQR = self.GabaQR || null;
+  }
+  return GQR;
+}
+
+function layoutPara(total, alternativas) {
+  var t = Math.max(1, Math.min(layoutApi().MAX_QUESTIONS, parseInt(total, 10) || 10));
+  var a = Math.max(2, Math.min(5, parseInt(alternativas, 10) || 5));
+  return layoutApi().compute(t, a);
+}
+
+function pageSize(layout) {
+  layout = layout || layoutPara(10, 5);
   return {
-    w: Math.round(LAYOUT.pageWmm * LAYOUT.pxPerMm),
-    h: Math.round(LAYOUT.pageHmm * LAYOUT.pxPerMm)
+    w: Math.round(layout.pageWmm * PX_PER_MM),
+    h: Math.round(layout.pageHmm * PX_PER_MM)
   };
 }
 
 function mm(v) {
-  return Math.round(v * LAYOUT.pxPerMm);
+  return Math.round(v * PX_PER_MM);
+}
+
+/* sensibilidade > 1 aceita marcas mais fracas (lapis); < 1 exige marca mais escura.
+   o piso 0,30 fica acima do ruido de uma bolha impressa vazia (~0,23) */
+function sensibilidade(opts) {
+  var mult = Math.max(0.5, Math.min(1.6, Number(opts && opts.sensibilidade) || 1));
+  return Math.max(0.3, Math.min(0.8, PARAMS.fillRatio / mult));
 }
 
 self.Module = {
@@ -45,6 +57,15 @@ self.Module = {
     markCvReady("opencv");
   }
 };
+
+try {
+  importScripts("omrLayout.js", "qrPayload.js");
+  GLayout = self.GabaLayout || null;
+  GQR = self.GabaQR || null;
+} catch (err) {
+  loadError = "layout: " + String(err);
+  postMessage({ type: "engine-error", error: loadError });
+}
 
 try {
   importScripts(JSQR_URL, OPENCV_URL);
@@ -115,7 +136,7 @@ function isSquare(contour, minArea) {
   return ok;
 }
 
-function findFiducials(src) {
+function findFiducials(src, layout) {
   var gray = new cv.Mat();
   var blur = new cv.Mat();
   var thresh = new cv.Mat();
@@ -126,8 +147,14 @@ function findFiducials(src) {
     cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
     cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 8);
     cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    var minArea = (src.rows * src.cols) * 0.00035;
-    var maxArea = (src.rows * src.cols) * 0.04;
+    var px = src.cols / layout.pageWmm;
+    var lado = layout.fiducialMm * px;
+    var minArea = lado * lado * 0.35;
+    var maxArea = lado * lado * 3.2;
+    var qrX0 = (layout.qr.xMm - 3) * px;
+    var qrX1 = (layout.qr.xMm + layout.qr.wMm + 3) * px;
+    var qrY0 = (layout.qr.yMm - 3) * px;
+    var qrY1 = (layout.qr.yMm + layout.qr.hMm + 3) * px;
     var candidates = [];
     for (var i = 0; i < contours.size(); i++) {
       var cnt = contours.get(i);
@@ -135,14 +162,15 @@ function findFiducials(src) {
       if (area < minArea || area > maxArea) continue;
       if (!isSquare(cnt, minArea)) continue;
       var c = contourCenter(cnt);
-      if (c) candidates.push({ x: c.x, y: c.y, area: area });
+      if (!c) continue;
+      if (c.x > qrX0 && c.x < qrX1 && c.y > qrY0 && c.y < qrY1) continue;
+      candidates.push({ x: c.x, y: c.y, area: area });
     }
     if (candidates.length < 4) return null;
     candidates.sort(function (a, b) {
       return b.area - a.area;
     });
-    var best = pickFourCorners(candidates, src.cols, src.rows);
-    return best;
+    return pickFourCorners(candidates);
   } finally {
     gray.delete();
     blur.delete();
@@ -152,49 +180,54 @@ function findFiducials(src) {
   }
 }
 
-function pickFourCorners(candidates, w, h) {
-  var corners = [
-    { x: 0, y: 0, name: "tl" },
-    { x: w, y: 0, name: "tr" },
-    { x: w, y: h, name: "br" },
-    { x: 0, y: h, name: "bl" }
-  ];
-  var used = {};
-  var chosen = [];
-  for (var i = 0; i < corners.length; i++) {
-    var target = corners[i];
-    var best = null;
-    var bestD = Infinity;
+function pickFourCorners(candidates) {
+  var xs = candidates.map(function (c) { return c.x; });
+  var ys = candidates.map(function (c) { return c.y; });
+  var minX = Math.min.apply(null, xs);
+  var maxX = Math.max.apply(null, xs);
+  var minY = Math.min.apply(null, ys);
+  var maxY = Math.max.apply(null, ys);
+  var spanX = Math.max(1, maxX - minX);
+  var spanY = Math.max(1, maxY - minY);
+  var alvos = [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }];
+  var usado = {};
+  var escolhidos = [];
+  for (var i = 0; i < alvos.length; i++) {
+    var melhor = null;
+    var melhorD = Infinity;
     for (var j = 0; j < candidates.length; j++) {
-      if (used[j]) continue;
-      var dx = candidates[j].x - target.x;
-      var dy = candidates[j].y - target.y;
+      if (usado[j]) continue;
+      var dx = candidates[j].x - alvos[i].x;
+      var dy = candidates[j].y - alvos[i].y;
       var d = dx * dx + dy * dy;
-      if (d < bestD) {
-        bestD = d;
-        best = j;
+      if (d < melhorD) {
+        melhorD = d;
+        melhor = j;
       }
     }
-    if (best == null) return null;
-    used[best] = true;
-    chosen.push({ x: candidates[best].x, y: candidates[best].y });
+    if (melhor === null) return null;
+    usado[melhor] = true;
+    escolhidos.push({ x: candidates[melhor].x, y: candidates[melhor].y });
   }
-  return orderCorners(chosen);
+  return orderCorners(escolhidos);
 }
 
-function warpPage(src, corners) {
-  var size = pageSize();
+function warpPage(src, corners, layout) {
+  var size = pageSize(layout);
   var srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
     corners[0].x, corners[0].y,
     corners[1].x, corners[1].y,
     corners[2].x, corners[2].y,
     corners[3].x, corners[3].y
   ]);
+  /* as marcas ficam 12mm para dentro da folha: mapear para os cantos da pagina
+     encolheria tudo e deslocaria a grade uns 4mm para fora das bolhas impressas */
+  var alvos = layout.fiducialCenters();
   var dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    0, 0,
-    size.w, 0,
-    size.w, size.h,
-    0, size.h
+    mm(alvos[0].x), mm(alvos[0].y),
+    mm(alvos[1].x), mm(alvos[1].y),
+    mm(alvos[2].x), mm(alvos[2].y),
+    mm(alvos[3].x), mm(alvos[3].y)
   ]);
   var M = cv.getPerspectiveTransform(srcTri, dstTri);
   var warped = new cv.Mat();
@@ -221,14 +254,19 @@ function matToImageData(mat) {
   return imageData;
 }
 
-function decodeQr(warpedRgba) {
+function decodeQr(warpedRgba, layout) {
   if (typeof jsQR !== "function") return null;
-  var x = mm(LAYOUT.qr.xMm);
-  var y = mm(LAYOUT.qr.yMm);
-  var w = mm(LAYOUT.qr.wMm + 8);
-  var h = mm(LAYOUT.qr.hMm + 8);
-  w = Math.min(w, warpedRgba.cols - x);
-  h = Math.min(h, warpedRgba.rows - y);
+  /* zona de silencio para os quatro lados: sem folga acima e a esquerda o jsQR
+     perde o padrao de iniciacao quando a folha esta um pouco girada */
+  var folga = 6;
+  var x0 = Math.max(0, layout.qr.xMm - folga);
+  var y0 = Math.max(0, layout.qr.yMm - folga);
+  var x1 = Math.min(layout.pageWmm, layout.qr.xMm + layout.qr.wMm + folga);
+  var y1 = Math.min(layout.pageHmm, layout.qr.yMm + layout.qr.hMm + folga);
+  var x = mm(x0);
+  var y = mm(y0);
+  var w = Math.min(mm(x1 - x0), warpedRgba.cols - x);
+  var h = Math.min(mm(y1 - y0), warpedRgba.rows - y);
   var roi = warpedRgba.roi(new cv.Rect(x, y, w, h));
   var imageData = matToImageData(roi);
   roi.delete();
@@ -239,22 +277,13 @@ function decodeQr(warpedRgba) {
   return result && result.data ? result.data : null;
 }
 
-function bubbleCenters() {
+function bubbleCenters(layout) {
   var points = [];
-  var g = LAYOUT.grid;
-  var total = g.cols * g.questionsPerCol;
-  for (var q = 0; q < total; q++) {
-    var col = Math.floor(q / g.questionsPerCol);
-    var row = q % g.questionsPerCol;
-    var baseX = mm(g.xMm + col * g.colGapMm + g.numberWidthMm);
-    var baseY = mm(g.yMm + row * g.rowGapMm);
+  for (var q = 0; q < layout.total; q++) {
     var opts = [];
-    for (var o = 0; o < LAYOUT.options.length; o++) {
-      opts.push({
-        x: baseX + mm(o * g.optionGapMm) + mm(g.bubbleMm / 2),
-        y: baseY + mm(g.bubbleMm / 2),
-        r: mm(g.bubbleMm / 2)
-      });
+    for (var o = 0; o < layout.options; o++) {
+      var c = layout.bubbleCenterMm(q, o);
+      opts.push({ x: mm(c.x), y: mm(c.y), r: mm(layout.grid.bubbleMm / 2) });
     }
     points.push(opts);
   }
@@ -262,68 +291,104 @@ function bubbleCenters() {
 }
 
 function fillRatio(binInv, cx, cy, r) {
-  var x0 = clamp(Math.round(cx - r), 0, binInv.cols - 1);
-  var y0 = clamp(Math.round(cy - r), 0, binInv.rows - 1);
-  var x1 = clamp(Math.round(cx + r), 0, binInv.cols - 1);
-  var y1 = clamp(Math.round(cy + r), 0, binInv.rows - 1);
+  var raio = Math.max(1, Math.round(r));
+  var x0 = clamp(Math.round(cx - raio), 0, binInv.cols - 1);
+  var y0 = clamp(Math.round(cy - raio), 0, binInv.rows - 1);
+  var x1 = clamp(Math.round(cx + raio), 0, binInv.cols - 1);
+  var y1 = clamp(Math.round(cy + raio), 0, binInv.rows - 1);
   var w = Math.max(1, x1 - x0);
   var h = Math.max(1, y1 - y0);
+  /* amostra o circulo, nao o quadrado envolvente: no quadrado o traco impresso da
+     bolha entra na media e uma folha em branco chega a ~0,35 do corte de 0,38 */
+  var mask = cv.Mat.zeros(h, w, cv.CV_8UC1);
+  cv.circle(mask, new cv.Point(Math.round(cx - x0), Math.round(cy - y0)), raio, new cv.Scalar(255), -1);
   var roi = binInv.roi(new cv.Rect(x0, y0, w, h));
-  var mean = cv.mean(roi);
+  var mean = cv.mean(roi, mask);
   roi.delete();
+  mask.delete();
   return mean[0] / 255;
 }
 
-function readBubbles(warped) {
+function readBubbles(warped, layout, opts) {
   var gray = new cv.Mat();
   var blur = new cv.Mat();
   var thresh = new cv.Mat();
+  var corte = sensibilidade(opts);
+  var delta = Math.max(0.02, Math.min(0.4, Number(opts && opts.ambiguidade) || PARAMS.ambigDelta));
+  var escala = Math.max(0.5, Math.min(1, Number(opts && opts.roi) || PARAMS.roiScale));
   cv.cvtColor(warped, gray, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0);
-  cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 10);
-  var centers = bubbleCenters();
-  var answers = [];
-  var confidences = [];
+  /* o bloco precisa ser bem maior que a bolha: com bloco menor que o circulo a
+     propria marca vira o fundo da media local e o lapis nunca passa no corte */
+  var bloco = Math.max(21, mm(layout.grid.bubbleMm * 3)) | 1;
+  cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, bloco, 8);
+  var centers = bubbleCenters(layout);
+  var respostas = [];
+  var confidencial = [];
   for (var q = 0; q < centers.length; q++) {
-    var ratios = [];
+    var v = [];
     for (var o = 0; o < centers[q].length; o++) {
       var b = centers[q][o];
-      ratios.push(fillRatio(thresh, b.x, b.y, b.r * 0.82));
+      v.push(fillRatio(thresh, b.x, b.y, b.r * escala));
     }
-    var ranked = ratios.map(function (v, i) {
-      return { i: i, v: v };
+    var ranked = v.map(function (val, i) {
+      return { i: i, v: val };
     }).sort(function (a, b) {
       return b.v - a.v;
     });
     var top = ranked[0];
-    var second = ranked[1];
-    var marked = top.v >= LAYOUT.fillRatio;
-    var ambiguous = marked && second && top.v - second.v < 0.08 && second.v >= LAYOUT.fillRatio * 0.9;
-    answers.push(marked && !ambiguous ? LAYOUT.options[top.i] : null);
-    confidences.push(marked ? clamp(top.v, 0, 1) : 1 - top.v);
+    var second = ranked[1] || { v: 0, i: -1 };
+    var marcada = top.v >= corte;
+    var ambigua = marcada && second.i >= 0 && (top.v - second.v) < delta && second.v >= corte * 0.85;
+    respostas.push({
+      numero: q + 1,
+      letra: marcada && !ambigua ? layout.optionLetters[top.i] : null,
+      ambigua: ambigua,
+      marcada: marcada,
+      ratios: v
+    });
+    confidencial.push(marcada ? clamp(top.v, 0, 1) : 1 - top.v);
   }
   gray.delete();
   blur.delete();
   thresh.delete();
-  var meanConf = confidences.reduce(function (a, b) {
+  var media = confidencial.reduce(function (a, b) {
     return a + b;
-  }, 0) / Math.max(confidences.length, 1);
-  return { answers: answers, confidence: meanConf };
+  }, 0) / Math.max(confidencial.length, 1);
+  return {
+    respostas: respostas,
+    answers: respostas.map(function (r) { return r.letra; }),
+    confidence: media,
+    corte: corte
+  };
 }
 
 function fallbackProcess(imageData) {
-  var qr = null;
+  var texto = null;
+  var meta = null;
   if (typeof jsQR === "function") {
     var decoded = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-    if (decoded) qr = decoded.data;
+    if (decoded) texto = decoded.data;
+  }
+  if (texto && qrApi()) {
+    try {
+      meta = qrApi().decode(texto);
+    } catch (err) {
+      meta = null;
+    }
   }
   return {
-    ok: Boolean(qr),
+    ok: Boolean(texto),
     engine: "fallback",
-    qr: qr,
+    qr_texto: texto,
+    qr: meta,
+    respostas: [],
     answers: [],
-    confidence: qr ? 0.4 : 0,
-    message: qr ? "QR lido sem OpenCV; bolhas não detectadas." : "Não foi possível ler a folha."
+    ratio: null,
+    confusao: [],
+    totalLidas: 0,
+    confidence: texto ? 0.4 : 0,
+    message: texto ? "QR lido sem OpenCV; bolhas nao detectadas." : "Nao foi possivel ler a folha."
   };
 }
 
@@ -334,48 +399,80 @@ function matFromImageData(imageData) {
   return mat;
 }
 
-function processFrame(imageData, options) {
-  options = options || {};
+function resultadoErro(engine, msg, extra) {
+  var r = {
+    ok: false,
+    engine: engine,
+    qr_texto: null,
+    qr: null,
+    respostas: [],
+    answers: [],
+    ratio: null,
+    confusao: [],
+    totalLidas: 0,
+    confidence: 0,
+    message: msg
+  };
+  if (extra) {
+    Object.keys(extra).forEach(function (k) {
+      r[k] = extra[k];
+    });
+  }
+  return r;
+}
+
+function processFrame(imageData, opts) {
+  opts = opts || {};
   if (!cvReady || typeof cv === "undefined" || !cv.Mat) {
     return fallbackProcess(imageData);
   }
+  var layout = layoutPara(opts.totalQuestoes, opts.alternativas);
   var src = matFromImageData(imageData);
   var warped = null;
   try {
-    var corners = findFiducials(src);
+    var corners = findFiducials(src, layout);
     if (!corners) {
-      return {
-        ok: false,
-        engine: "opencv",
-        qr: null,
-        answers: [],
-        confidence: 0,
-        message: "Enquadre a folha para ver as 4 marcas pretas dos cantos."
-      };
+      return resultadoErro("opencv", "Enquadre a folha: as 4 marcas pretas dos cantos precisam aparecer por inteiro.", { layout: layout.grid });
     }
-    warped = warpPage(src, corners);
-    var qr = decodeQr(warped);
-    var read = readBubbles(warped);
-    var maxQ = options.totalQuestoes || read.answers.length;
-    var answers = read.answers.slice(0, maxQ);
+    warped = warpPage(src, corners, layout);
+    var qrTexto = decodeQr(warped, layout);
+    var meta = null;
+    if (qrTexto && qrApi()) {
+      try {
+        meta = qrApi().decode(qrTexto);
+      } catch (err) {
+        meta = null;
+      }
+    }
+    var totalQ = opts.totalQuestoes || (meta && meta.total) || layout.total;
+    var read = readBubbles(warped, layout, opts);
+    var respostas = read.respostas.slice(0, totalQ);
+    var confusao = respostas.filter(function (r) {
+      return r.ambigua || (r.marcada && !r.letra);
+    }).map(function (r) {
+      return r.numero;
+    });
+    var lidas = respostas.filter(function (r) {
+      return Boolean(r.letra);
+    }).length;
     return {
-      ok: true,
+      ok: lidas > 0 || Boolean(qrTexto),
       engine: "opencv",
-      qr: qr,
-      answers: answers,
-      confidence: read.confidence,
+      layout: layout.grid,
+      corte: read.corte,
       corners: corners,
-      message: qr ? "Folha lida." : "Bolhas lidas; QR não encontrado."
+      qr_texto: qrTexto,
+      qr: meta,
+      respostas: respostas,
+      answers: respostas.map(function (r) { return r.letra; }),
+      ratio: respostas.map(function (r) { return r.ratios; }),
+      confusao: confusao,
+      totalLidas: lidas,
+      confidence: read.confidence,
+      message: !qrTexto ? "Bolhas lidas; QR nao encontrado." : (confusao.length ? "Folha lida com " + confusao.length + " duvida(s)." : "Folha lida.")
     };
   } catch (err) {
-    return {
-      ok: false,
-      engine: "opencv",
-      qr: null,
-      answers: [],
-      confidence: 0,
-      message: "Falha no OMR: " + (err && err.message ? err.message : String(err))
-    };
+    return resultadoErro("opencv", "Falha no OMR: " + (err && err.message ? err.message : String(err)));
   } finally {
     src.delete();
     if (warped) warped.delete();
@@ -385,7 +482,15 @@ function processFrame(imageData, options) {
 self.onmessage = function (event) {
   var msg = event.data || {};
   if (msg.type === "ping") {
-    postMessage({ type: "pong", cvReady: cvReady });
+    postMessage({ type: "pong", cvReady: cvReady, layout: Boolean(GLayout), qr: Boolean(GQR) });
+    return;
+  }
+  if (msg.type === "layout") {
+    try {
+      postMessage({ type: "layout-ok", layout: layoutPara(msg.total, msg.alternativas).grid });
+    } catch (err) {
+      postMessage({ type: "engine-error", error: String(err) });
+    }
     return;
   }
   if (msg.type !== "process") return;

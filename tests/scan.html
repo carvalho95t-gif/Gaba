@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Folha OMR isolada</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; }
+  #alvo { width: 210mm; }
+  .folha-a4 { margin: 0 !important; box-shadow: none !important; }
+</style>
+</head>
+<body>
+<div id="alvo">carregando...</div>
+<script src="/js/omrLayout.js"></script>
+<script src="/js/qrPayload.js"></script>
+<script src="/js/versoes.js"></script>
+<script src="/js/docxParser.js"></script>
+<script src="/js/folha.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>
+(async function () {
+  var alvo = document.getElementById("alvo");
+  var para = new URLSearchParams(location.search);
+  var qs = Number(para.get("q") || 0);
+  try {
+    var prova;
+    var receita = null;
+    if (para.get("pid")) {
+      /* reconstroi exatamente o lote que foi para a impressora: mesma seed, mesmos codigos */
+      receita = {
+        prova_id: para.get("pid"),
+        modo: para.get("modo") || "turma",
+        numTipos: Number(para.get("tipos") || 4),
+        salt: para.get("salt") || undefined,
+        turma_id: para.get("turma") || null,
+        embaralharAlternativas: para.get("alt") !== "0",
+        codigo: para.get("cod") || null
+      };
+    }
+    if (qs > 0) {
+      var letras = "ABCDE";
+      prova = {
+        id: receita ? receita.prova_id : "sintetica-" + qs,
+        titulo: "PROVA SINTETICA DE " + qs + " QUESTOES",
+        alunos: [{ numero: 1, nome: "ALUNO TESTE DE 90 QUESTOES" }],
+        questoes: []
+      };
+      for (var i = 0; i < qs; i++) {
+        prova.questoes.push({
+          numero: i + 1,
+          enunciado: "Enunciado sintético da questão " + (i + 1) + " usado apenas para medir a geometria da folha.",
+          alternativas: [0, 1, 2, 3, 4].map(function (k) { return { letra: letras[k], texto: "alternativa " + letras[k] }; }),
+          gabarito: letras[(i * 7 + 3) % 5]
+        });
+      }
+    } else {
+      var buf = await (await fetch("/_sample.docx")).arrayBuffer();
+      var parsed = await GabaDocx.parseDocx(buf);
+      prova = GabaDocx.toProva(parsed, parsed.titulo || "prova");
+      prova.id = receita ? receita.prova_id : "docx-scan-harness";
+    }
+    var op = receita || {
+      modo: qs > 0 ? "fixa" : "turma",
+      numTipos: qs > 0 ? 1 : ((prova.tipos || []).length || 4),
+      turma_id: null,
+      salt: undefined,
+      embaralharAlternativas: true
+    };
+    var batch = GabaVersoes.batch(prova, prova.alunos || [], {
+      modo: op.modo,
+      numTipos: op.numTipos,
+      prova_id: prova.id,
+      turma_id: op.turma_id || null,
+      salt: op.salt,
+      embaralharAlternativas: !!op.embaralharAlternativas
+    });
+    var item = batch.itens[Number(para.get("n") || 0)];
+    if (op.codigo && item.versao.codigo !== op.codigo) {
+      alvo.textContent = "CODIGO DIFERE DO LOTE IMPRESSO: " + item.versao.codigo + " != " + op.codigo;
+      document.title = "ERRO";
+      return;
+    }
+    var caderno = await GabaFolha.cadernoHtml(prova, item.aluno, {
+      versao: item.versao,
+      config: { escola: "ESCOLA TESTE", turma: "1ºM1", data: "01/01/2026", comQuestoes: false, comCartao: true, questoesPorPagina: 10 }
+    });
+    alvo.innerHTML = caderno.html;
+    document.title = "FOLHA " + caderno.payload + " | " + item.versao.gabarito.join("");
+    window.__folha = { payload: caderno.payload, gabarito: item.versao.gabarito, aluno: item.aluno, versao: item.versao };
+  } catch (err) {
+    alvo.textContent = "ERRO: " + (err && err.message ? err.message : err);
+    document.title = "ERRO";
+  }
+})();
+</script>
+</body>
+</html>

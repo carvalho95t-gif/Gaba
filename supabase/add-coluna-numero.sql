@@ -1,3 +1,5 @@
+-- SUPERSEDIDO: esta correcao ja esta dentro de supabase/schema.sql, que e o arquivo
+-- unico para rodar no SQL Editor. Guarde este so como referencia de uma correcao pontual.
 -- Cole SOMENTE este bloco no SQL Editor e clique em Run.
 -- Ele cria a coluna numero em alunos (se ainda não existir)
 -- e mostra as colunas da tabela no resultado.

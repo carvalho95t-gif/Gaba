@@ -1,108 +1,42 @@
--- Gaba / App OMR — schema PostgreSQL para Supabase
--- Execute no SQL Editor do Supabase (uma vez por projeto).
-
-create extension if not exists "pgcrypto";
-
--- ---------------------------------------------------------------------------
--- Tabelas
--- ---------------------------------------------------------------------------
-
-create table if not exists public.professores (
-  id uuid primary key default gen_random_uuid(),
-  nome text not null,
-  email text not null unique,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.turmas (
-  id uuid primary key default gen_random_uuid(),
-  professor_id uuid not null references public.professores(id) on delete cascade,
-  nome text not null,
-  ano integer,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.alunos (
-  id uuid primary key default gen_random_uuid(),
-  turma_id uuid not null references public.turmas(id) on delete cascade,
-  matricula text not null,
-  nome text not null,
-  created_at timestamptz not null default now(),
-  unique (turma_id, matricula)
-);
-
-create table if not exists public.provas (
-  id uuid primary key default gen_random_uuid(),
-  professor_id uuid not null references public.professores(id) on delete cascade,
-  titulo text not null,
-  data date,
-  total_questoes integer not null default 20,
-  alternativas integer not null default 5,
-  gabarito jsonb not null default '[]'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.questoes (
-  id uuid primary key default gen_random_uuid(),
-  prova_id uuid not null references public.provas(id) on delete cascade,
-  numero integer not null,
-  enunciado text,
-  gabarito char(1) not null,
-  peso numeric(6, 2) not null default 1,
-  unique (prova_id, numero),
-  constraint questoes_gabarito_chk check (upper(gabarito) in ('A', 'B', 'C', 'D', 'E'))
-);
-
-create table if not exists public.correcoes_omr (
-  id uuid primary key default gen_random_uuid(),
-  prova_id uuid references public.provas(id) on delete cascade,
-  aluno_id uuid references public.alunos(id) on delete set null,
-  professor_id uuid references public.professores(id) on delete set null,
-  matricula text,
-  aluno_nome text,
-  respostas jsonb not null default '[]'::jsonb,
-  acertos integer not null default 0,
-  total_questoes integer not null default 0,
-  nota numeric(6, 2) not null default 0,
-  confianca numeric(5, 4),
-  qr_payload text,
-  raw_payload jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_turmas_professor on public.turmas (professor_id);
-create index if not exists idx_alunos_turma on public.alunos (turma_id);
-create index if not exists idx_provas_professor on public.provas (professor_id);
-create index if not exists idx_questoes_prova on public.questoes (prova_id, numero);
-create index if not exists idx_correcoes_prova on public.correcoes_omr (prova_id, created_at desc);
-create index if not exists idx_correcoes_aluno on public.correcoes_omr (aluno_id);
-
--- ---------------------------------------------------------------------------
--- RLS — políticas permissivas para o cliente anon (PWA no GitHub Pages).
--- Ajuste depois com auth.uid() se ligar o Supabase Auth.
--- ---------------------------------------------------------------------------
-
-alter table public.professores enable row level security;
-alter table public.turmas enable row level security;
-alter table public.alunos enable row level security;
-alter table public.provas enable row level security;
-alter table public.questoes enable row level security;
-alter table public.correcoes_omr enable row level security;
-
-drop policy if exists professores_all on public.professores;
-create policy professores_all on public.professores for all using (true) with check (true);
-
-drop policy if exists turmas_all on public.turmas;
-create policy turmas_all on public.turmas for all using (true) with check (true);
-
-drop policy if exists alunos_all on public.alunos;
-create policy alunos_all on public.alunos for all using (true) with check (true);
-
-drop policy if exists provas_all on public.provas;
-create policy provas_all on public.provas for all using (true) with check (true);
-
-drop policy if exists questoes_all on public.questoes;
-create policy questoes_all on public.questoes for all using (true) with check (true);
-
-drop policy if exists correcoes_all on public.correcoes_omr;
-create policy correcoes_all on public.correcoes_omr for all using (true) with check (true);
+-- ============================================================================
+-- Gaba — este arquivo nao cria mais nada.
+--
+-- O schema real (idempotente, com as colunas que o app escreve hoje) esta em:
+--     supabase/schema.sql
+-- Cole aquele arquivo no SQL Editor do Supabase e clique em Run. Ele pode ser
+-- executado mais de uma vez: cria o que falta e nao apaga dado nenhum.
+--
+-- Motivo de existir so um: as duas versoes deste schema divergiram. O arquivo
+-- antigo daqui descrevia professores + questoes (tabela) + correcoes_omr, com
+-- professor_id obrigatorio; o banco em producao usa turmas, alunos, provas e
+-- correcoes sem essas amarras. Manter duas verdades gerava migracao que nao
+-- batia com o que o app escreve.
+--
+-- Tabelas hoje usadas pelo app:
+--   turmas        — nome, ano, escola, professor_id
+--   alunos        — turma_id, matricula, nome, numero, tipo, responsavel,
+--                   email_responsavel, telefone_responsavel
+--   provas        — gabarito, questoes (jsonb com enunciado, alternativas,
+--                   gabarito, peso, descritor, habilidade_bncc), pesos,
+--                   descritores, tipos, modo (fixa|turma|aluno), num_tipos,
+--                   embaralhar_questoes, embaralhar_alternativas, salt,
+--                   alternativas, quantidade_questoes (1..90), escola, data
+--   prova_versoes — uma linha por caderno impresso: codigo, tipo, ordem das
+--                   questoes, mapa das alternativas e gabarito daquele aluno
+--   correcoes     — respostas (na ordem da prova base), respostas_originais
+--                   (como a folha foi marcada), versao, codigo, qr_payload,
+--                   confusao, branco, acertos, nota, engine
+--   professores   — nome e e-mail do professor (chave fica no aparelho)
+--
+-- A coluna correcoes.respostas vem na ordem da prova base; respostas_originais na
+-- ordem embaralhada que o aluno viu no caderno. confusao sao os numeros de
+-- questao NA ORDEM DO CADERNO (como no papel), porque e assim que o professor
+-- rev a folha.
+--
+-- Sem rodar supabase/schema.sql o app funciona so no aparelho e a sincronizacao
+-- quebra em tres pontos: as colunas novas de provas/correcoes, o index unique
+-- (prova_id, qr_payload) que transforma a mesma folha lida duas vezes em update, e
+-- a tabela prova_versoes. Em prova_versoes, aluno_id e turma_id nao tem foreign key
+-- de proposito: apagar um aluno da lista nao pode apagar o registro da folha que
+-- ja esta impressa na mao dele.
+-- ============================================================================

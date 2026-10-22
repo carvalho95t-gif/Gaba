@@ -4,3 +4,11 @@ __pycache__/
 venv/
 .DS_Store
 Thumbs.db
+
+# dados reais de alunos: as provas e chamadas ficam so no aparelho do professor
+tests/fixtures/
+# artefatos que as suites geram (folhas impressas, PDFs nominais, relatorios)
+tests/*.pdf
+tests/*.png
+tests/previa-cadernos.html
+tests/_prev.html

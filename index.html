@@ -6,13 +6,19 @@
     <title>Gaba - Leitor de Gabaritos OMR</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#4f46e5">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 </head>
 <body>
     <header class="navbar">
         <div class="logo"><h1>Gaba <span>OMR</span></h1></div>
+        <div class="escola-filtro" id="escola-filtro-box" hidden>
+            <label for="filtro-escola">Escola</label>
+            <select id="filtro-escola"></select>
+        </div>
         <div id="status-conexao" class="badge badge-off">Supabase Desconectado</div>
     </header>
 
@@ -22,10 +28,13 @@
             <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Painel</button>
             <button class="tab-btn" onclick="switchTab('turmas')">👥 Turmas</button>
             <button class="tab-btn" onclick="switchTab('provas')">📝 Provas</button>
-            <button class="tab-btn tab-highlight" onclick="switchTab('scanner')">📷 Leitor</button>
+            <button class="tab-btn" onclick="switchTab('caderno'); GabaCaderno &amp;&amp; GabaCaderno.aoAbrir()">🖨️ Cadernos</button>
+            <button class="tab-btn tab-highlight" onclick="switchTab('scanner'); GabaScanner &amp;&amp; GabaScanner.aoAbrir()">📷 Leitor</button>
             <button class="tab-btn" onclick="switchTab('relatorios')">📈 Notas</button>
             <button class="tab-btn" onclick="switchTab('config')">⚙️ Config</button>
         </nav>
+
+        <p id="app-status" class="app-status"></p>
 
         <!-- ABA 1: DASHBOARD -->
         <section id="tab-dashboard" class="tab-content active">
@@ -36,6 +45,7 @@
                 <div class="card"><h3 id="dash-provas-count">0</h3><p>Provas</p></div>
                 <div class="card card-accent"><h3 id="dash-correcoes-count">0</h3><p>Corrigidas</p></div>
             </div>
+            <p class="text-muted" id="dash-nota"></p>
         </section>
 
         <!-- ABA 2: TURMAS E ALUNOS -->
@@ -45,8 +55,11 @@
                 <form id="form-turma">
                     <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 1º Ano A)" required>
                     <input type="text" id="turma-ano" placeholder="Ano/Período" required>
+                    <input type="text" id="turma-escola" list="lista-escolas" placeholder="Escola (Ex: EEFM da Serra)" autocomplete="off">
+                    <datalist id="lista-escolas"></datalist>
                     <button type="submit" class="btn-primary">Salvar Turma</button>
                 </form>
+                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola é o que separa as turmas das unidades diferentes: escolha-a no seletor do topo para trabalhar em uma só por vez.</p>
             </div>
             
             <h2 style="margin-top: 20px;">Cadastrar Aluno</h2>
@@ -60,17 +73,46 @@
                     <button type="submit" class="btn-primary">Adicionar Aluno</button>
                 </form>
             </div>
+
+            <h2 style="margin-top: 20px;">Importar a lista de chamada</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">
+                Solte o .xlsx da escola, um CSV salvo do Excel, ou cole as células direto da planilha.
+                A coluna é encontrada sozinha (Nº, Nome, Matrícula, Responsável, E-mail, Telefone, Tipo de Prova)
+                e nada é gravado antes de você ver a prévia. Tudo lido aqui no aparelho.
+            </p>
+            <div class="form-container">
+                <div class="cad-linha">
+                    <div>
+                        <label for="imp-turma">Turma que recebe a lista</label>
+                        <select id="imp-turma"></select>
+                    </div>
+                    <div>
+                        <label for="imp-arquivo">Arquivo .xlsx, .csv, .txt ou .tsv</label>
+                        <input type="file" id="imp-arquivo" accept=".xlsx,.csv,.txt,.tsv">
+                    </div>
+                </div>
+                <label for="imp-texto">Ou cole aqui do Excel</label>
+                <textarea id="imp-texto" rows="6" spellcheck="false"></textarea>
+                <div class="cad-linha">
+                    <button type="button" id="imp-ver" class="btn-ghost">Ver o que a lista tem</button>
+                    <button type="button" id="imp-salvar" class="btn-primary" disabled>Salvar na turma</button>
+                    <button type="button" id="imp-limpar" class="btn-ghost">Limpar</button>
+                </div>
+                <p id="imp-status" class="app-status"></p>
+                <div id="imp-previa"></div>
+            </div>
             <div id="lista-turmas" class="card-list"></div>
         </section>
 
         <!-- ABA 3: PROVAS E GABARITOS -->
         <section id="tab-provas" class="tab-content">
             <h2>Criar Prova Oficial</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Aqui você salva só o gabarito oficial (folha A–E sem enunciados). Para imprimir o caderno com as questões do documento, use Importar documento (.docx, .doc ou PDF) na aba Cadernos.</p>
             <div class="form-container">
                 <form id="form-prova">
                     <input type="text" id="prova-titulo" placeholder="Título (Ex: Bimestral MTM)" required>
                     <input type="text" id="prova-disciplina" placeholder="Disciplina" required>
-                    <input type="number" id="prova-qtd" min="1" max="50" value="10" onchange="gerarCamposGabarito()" placeholder="Qtd. Questões" required>
+                    <input type="number" id="prova-qtd" min="1" max="90" value="10" onchange="gerarCamposGabarito()" placeholder="Qtd. Questões" required>
                     
                     <h3 style="margin-top: 10px; font-size: 1rem;">Gabarito Oficial:</h3>
                     <div id="gabarito-inputs" class="gabarito-grid"></div>
@@ -83,25 +125,46 @@
 
         <!-- ABA 4: SCANNER (OMR) -->
         <section id="tab-scanner" class="tab-content">
-            <h2>Leitor de Gabaritos</h2>
-            <div class="scanner-controls" style="margin-bottom: 15px;">
-                <select id="select-prova-scan" style="width: 100%; margin-bottom: 10px;">
-                    <option value="">Selecione a Prova para Corrigir...</option>
-                </select>
-                <button id="btn-iniciar-camera" class="btn-success" onclick="iniciarCamera()" style="width: 100%;">Ligar Câmera</button>
-                <button id="btn-parar-camera" class="btn-danger" onclick="pararCamera()" style="display:none; width: 100%;">Desligar Câmera</button>
-            </div>
-            <div id="reader-wrapper" style="border: 2px dashed #ccc; border-radius: 8px; overflow: hidden; background: #fff;">
-                <div id="reader"></div>
-            </div>
-            <div id="resultado-scan" class="resultado-box" style="display:none; margin-top: 15px; padding: 15px; background: #e0f2fe; border-radius: 8px;">
-                <div id="resultado-detalhes"></div>
+            <h2>Super Scanner Contínuo</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Aponte a folha e o app lê sozinho: reconhece a versão pelo QR, corrige, apita e salva. Não precisa apertar botão a cada aluno.</p>
+            <div class="form-container">
+                <div class="cad-linha">
+                    <div><label for="scan-prova">Prova</label><select id="scan-prova"></select></div>
+                    <div><label for="scan-turma">Turma</label><select id="scan-turma"></select></div>
+                    <div><label for="scan-sens">Sensibilidade (caneta &harr; lápis)</label>
+                        <input type="range" id="scan-sens" min="0.6" max="1.6" step="0.1" value="1">
+                        <span id="scan-sens-valor">1.0</span>
+                    </div>
+                </div>
+                <div class="cad-acoes">
+                    <button type="button" class="btn-success" id="scan-iniciar">Ligar câmera</button>
+                    <button type="button" class="btn-danger" id="scan-parar" disabled>Parar</button>
+                    <button type="button" class="btn-ghost" id="scan-limpar">Esquecer lidas</button>
+                    <label class="cad-check"><input type="checkbox" id="scan-beep" checked> Apito a cada folha</label>
+                </div>
+                <p class="cad-status" id="scan-status">Escolha a prova e ligue a câmera.</p>
+                <div class="scan-area">
+                    <video id="scan-video" playsinline muted></video>
+                    <canvas id="scan-overlay"></canvas>
+                    <p class="scan-dica" id="scan-alvo"></p>
+                </div>
+                <div class="grid-cards">
+                    <div class="card"><h3 id="scan-total">0</h3><p>Folhas lidas</p></div>
+                    <div class="card card-accent"><h3 id="scan-duvida">0</h3><p>Com dúvida</p></div>
+                    <div class="card"><h3 id="scan-fila">0</h3><p>Na fila offline</p></div>
+                </div>
+                <div id="scan-ultimas" class="scan-ultimas"></div>
             </div>
         </section>
 
         <!-- ABA 5: RELATÓRIOS -->
         <section id="tab-relatorios" class="tab-content">
             <h2>Relatório de Correções</h2>
+            <div class="cad-acoes">
+                <button type="button" class="btn-ghost" id="nota-sincronizar">Subir folhas do aparelho</button>
+                <a href="dashboard.html" class="btn-ghost link-acoes">Análise e Excel</a>
+            </div>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Marcadas com &quot;aparelho&quot; são as folhas lidas que ainda não estão no banco (passe a mouse para ver o motivo).</p>
             <div style="overflow-x: auto;">
                 <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
                     <thead>
@@ -118,6 +181,107 @@
                     </tbody>
                 </table>
             </div>
+
+            <h2 style="margin-top: 24px;">Análise de item e distratores</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">
+                Cada questão mostra quantos acertaram, se ela separa os melhores dos piores (discriminação) e qual
+                alternativa errada mais enganou. Contamos as folhas desta prova — as do banco e as que ainda estão
+                só neste aparelho — sempre na ordem da prova base, mesmo com cadernos embaralhados.
+            </p>
+            <div class="form-container">
+                <div class="cad-linha">
+                    <div><label for="ana-prova">Prova</label><select id="ana-prova"></select></div>
+                    <div><label for="ana-turma">Turma</label><select id="ana-turma"></select></div>
+                    <div><label for="ana-ordenar">Ordenar por</label>
+                        <select id="ana-ordenar">
+                            <option value="numero">Ordem da prova</option>
+                            <option value="acerto">Menos acertos primeiro</option>
+                            <option value="discriminacao">Pior discriminação primeiro</option>
+                            <option value="distrator">Distrator mais forte primeiro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="cad-acoes">
+                    <label class="cad-check"><input type="checkbox" id="ana-revisar"> Mostrar só as questões a revisar</label>
+                    <button type="button" class="btn-ghost" id="ana-csv">Baixar CSV da análise</button>
+                </div>
+                <p class="cad-status" id="ana-status">Escolha a prova.</p>
+                <div class="ana-resumo" id="ana-resumo"></div>
+                <div class="ana-itens" id="ana-itens"></div>
+            </div>
+        </section>
+
+        <!-- ABA: IMPRESSÃO NOMINAL EM LOTE -->
+        <section id="tab-caderno" class="tab-content">
+            <h2>Impressão Nominal A4 em Lote</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Cada aluno recebe o próprio caderno: folha de respostas com QR na página 1, questões embaralhadas da versão a partir da página 2 e verso final em branco.</p>
+            <div class="form-container">
+                <div class="cad-linha">
+                    <div><label for="cad-prova">Prova</label><select id="cad-prova"></select></div>
+                    <div><label for="cad-turma">Turma</label><select id="cad-turma"></select></div>
+                    <div><label for="cad-modo">Embaralhamento</label>
+                        <select id="cad-modo">
+                            <option value="fixa">Única (ordem original)</option>
+                            <option value="turma">Por tipo de caderno</option>
+                            <option value="aluno">Ordem própria por aluno</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="cad-linha" style="margin-top: 12px;">
+                    <div><label for="cad-tipos">Nº de tipos</label><input type="number" id="cad-tipos" min="1" max="26" value="4"></div>
+                    <div><label for="cad-por-pagina">Máximo por página</label><input type="number" id="cad-por-pagina" min="1" max="30" value="30" title="O app mede o papel e fecha as colunas na conta; este número é só o teto."></div>
+                    <div><label for="cad-salt">Chave do embaralhamento</label><input type="text" id="cad-salt" placeholder="vazio = sempre a mesma ordem"></div>
+                </div>
+                <label class="cad-check"><input type="checkbox" id="cad-alt" checked> Embaralhar também as alternativas (A-B-C vira outra letra)</label>
+                <label class="cad-check"><input type="checkbox" id="cad-descritores"> Imprimir o descritor sob cada questão (o caderno do aluno sai limpo se deixar desmarcado)</label>
+                <div class="cad-linha" style="margin-top: 12px;">
+                    <div><label for="cad-modelo">Modelo de prova</label>
+                        <select id="cad-modelo">
+                            <option value="escola">Cabeçalho da escola</option>
+                            <option value="enem">ENEM — duas colunas, “Questão 01”</option>
+                            <option value="paebes">PAEBES / SAEB — cartão na capa</option>
+                            <option value="ama">AMA / SEDU-ES — folha de respostas na capa</option>
+                        </select>
+                    </div>
+                    <div><label for="cad-colunas">Colunas do corpo</label>
+                        <select id="cad-colunas">
+                            <option value="1">Uma coluna</option>
+                            <option value="2">Duas colunas</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="cad-check"><input type="checkbox" id="cad-branco" checked> Folha de respostas na página 1, questões a partir da 2 e último verso em branco (frente e verso)</label>
+                <details class="cad-cabecalho">
+                    <summary>Cabeçalho impresso na folha de respostas</summary>
+                    <div class="cad-linha" style="margin-top: 10px;">
+                        <div><label for="cad-rede">Rede / superintendência</label><input type="text" id="cad-rede" placeholder="Secretaria de Estado da Educação"></div>
+                        <div><label for="cad-escola">Escola</label><input type="text" id="cad-escola" placeholder="EEFM ..."></div>
+                        <div><label for="cad-titulo">Título impresso</label><input type="text" id="cad-titulo" placeholder="Avaliação bimestral"></div>
+                        <div><label for="cad-disciplina">Disciplina</label><input type="text" id="cad-disciplina" placeholder="Língua Portuguesa"></div>
+                        <div><label for="cad-professor">Professor(a)</label><input type="text" id="cad-professor" placeholder="Quem aplicou"></div>
+                        <div><label for="cad-ano">Ano / série</label><input type="text" id="cad-ano" placeholder="2º ano EM"></div>
+                        <div><label for="cad-bimestre">Bimestre</label><input type="text" id="cad-bimestre" placeholder="2º bimestre"></div>
+                        <div><label for="cad-data">Data</label><input type="text" id="cad-data" placeholder="__/__/____"></div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label for="cad-instrucoes" style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:4px;">Instruções impressas na primeira página de questões</label>
+                        <textarea id="cad-instrucoes" rows="3" placeholder="Uma linha por instrução. Deixe vazio para usar o texto do modelo escolhido."></textarea>
+                    </div>
+                </details>
+                <div class="cad-acoes">
+                    <button type="button" class="btn-primary" id="cad-previa">Gerar prévia</button>
+                    <button type="button" class="btn-success" id="cad-imprimir">Imprimir lote</button>
+                    <button type="button" class="btn-ghost" id="cad-baixar">Baixar HTML</button>
+                    <button type="button" class="btn-ghost" id="cad-docx">Importar documento</button>
+                    <button type="button" class="btn-success" id="cad-salvar-prova" hidden>Salvar revisão no banco</button>
+                    <input type="file" id="cad-arquivo" accept=".docx,.doc,.pdf" hidden>
+                </div>
+                <p class="cad-status" id="cad-status">Escolha a prova e a turma.</p>
+                <div class="cad-avisos" id="cad-avisos" hidden></div>
+                <p class="cad-nota" id="cad-nota-prova"></p>
+                <div class="q-editor" id="cad-questoes" hidden></div>
+                <div class="cad-lista" id="cad-alunos" hidden></div>
+            </div>
         </section>
 
         <!-- ABA 6: CONFIGURAÇÕES -->
@@ -133,9 +297,25 @@
             </div>
         </section>
 
-        <!-- ÁREA EXCLUSIVA PARA IMPRESSÃO DE GABARITOS -->
-        <div id="area-impressao"></div>
+        <!-- SOMENTE O QUE GABA FOLHA DESENHA ENTRA AQUI NA HORA DE IMPRIMIR -->
+        <div id="print-root"></div>
+        <div id="print-medidor" aria-hidden="true"></div>
     </main>
+    <script src="js/omrLayout.js"></script>
+    <script src="js/qrPayload.js"></script>
+    <script src="js/versoes.js"></script>
+    <script src="js/docxParser.js"></script>
+    <script src="js/docParser.js"></script>
+    <script src="js/pdfParser.js"></script>
+    <script src="js/planilha.js"></script>
+    <script src="js/listaAlunos.js"></script>
+    <script src="js/folha.js"></script>
+    <script src="js/analise.js"></script>
+    <script src="js/supabaseClient.js"></script>
+    <script src="js/offlineSync.js"></script>
+    <script src="js/escolas.js"></script>
+    <script src="js/uiCaderno.js"></script>
+    <script src="js/uiScanner.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

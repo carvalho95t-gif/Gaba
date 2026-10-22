@@ -1,4 +1,4 @@
-const CACHE = "gaba-omr-v2";
+const CACHE = "gaba-omr-v11";
 const PRECACHE = [
   "./",
   "./index.html",
@@ -6,9 +6,22 @@ const PRECACHE = [
   "./style.css",
   "./dashboard.html",
   "./manifest.json",
+  "./js/omrLayout.js",
+  "./js/qrPayload.js",
+  "./js/versoes.js",
+  "./js/docxParser.js",
+  "./js/docParser.js",
+  "./js/pdfParser.js",
+  "./js/planilha.js",
+  "./js/listaAlunos.js",
+  "./js/folha.js",
+  "./js/analise.js",
+  "./js/uiCaderno.js",
+  "./js/uiScanner.js",
   "./js/omrWorker.js",
   "./js/supabaseClient.js",
   "./js/offlineSync.js",
+  "./js/escolas.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];

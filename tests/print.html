@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Caderno de prova (harness de impressao)</title>
+<link rel="stylesheet" href="../style.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="../js/omrLayout.js"></script>
+<script src="../js/qrPayload.js"></script>
+<script src="../js/versoes.js"></script>
+<script src="../js/docxParser.js"></script>
+<script src="../js/folha.js"></script>
+</head>
+<body>
+<div id="print-root"></div>
+<script>
+(async function () {
+  var para = new URLSearchParams(location.search);
+  var raiz = para.get("alunos");
+  var porPagina = Number(para.get("porPagina") || 8);
+  var modo = para.get("modo") || "turma";
+  var colunas = para.get("colunas") === "2" ? 2 : 1;
+  var resp = await fetch("/_sample.docx");
+  var buf = await resp.arrayBuffer();
+  var parsed = await GabaDocx.parseDocx(buf);
+  var prova = GabaDocx.toProva(parsed, "Prova");
+  prova.id = "provax";
+  var alunos = (raiz ? parsed.alunos.slice(0, Number(raiz)) : parsed.alunos);
+  var batch = GabaVersoes.batch(prova, alunos, { modo: modo, numTipos: 10, turma_id: "t1", prova_id: prova.id });
+  var medidor = document.createElement("div");
+  medidor.id = "print-medidor";
+  document.body.appendChild(medidor);
+  window.__medir = function (por) {
+    var cfg = baseCfg(por);
+    var html = GabaFolha.loteHtml(prova, { itens: batch.itens.slice(0, 1), modo: batch.modo, numTipos: 1 }, cfg);
+    return html.then(function (h) {
+      medidor.innerHTML = h;
+      var area = medidor.querySelector(".folha-questoes .folha-area");
+      var fluxo = medidor.querySelector(".folha-questoes .folha-fluxo");
+      if (!area || !fluxo) return { por: por, folhas: medidor.querySelectorAll(".folha-a4").length, area: 0, corpo: 0 };
+      var MM = 96 / 25.4;
+      return {
+        por: por,
+        folhas: medidor.querySelectorAll(".folha-a4").length,
+        questoesNaFolha: medidor.querySelector(".folha-questoes").querySelectorAll(".folha-questao").length,
+        area: area.clientHeight / MM,
+        corpo: fluxo.getBoundingClientRect().height / MM
+      };
+    });
+  };
+  function baseCfg(por) {
+    return {
+      questoesPorPagina: por, colunas: colunas, modelo: para.get("modelo") || "escola",
+      ultimaEmBranco: true, comCartao: true, comQuestoes: true,
+      cabecalho: {
+        rede: "SECRETARIA DE ESTADO DA EDUCACAO", escola: "EEFM Exemplar", titulo: "Prova bimestral",
+        disciplina: "Lingua Portuguesa", professor: "Prof. Ana", turma: "2M1", ano: "2o ano EM",
+        bimestre: "2o bimestre", data: "21/10/2026"
+      }
+    };
+  }
+  var html = await GabaFolha.loteHtml(prova, batch, baseCfg(porPagina));
+  document.getElementById("print-root").innerHTML = html;
+  document.title = "folhas:" + document.querySelectorAll(".folha-a4").length +
+    " brancas:" + document.querySelectorAll(".folha-branco").length +
+    " cadernos:" + batch.itens.length + " questoes:" + prova.questoes.length + " colunas:" + colunas;
+  window.__pronto = true;
+})().catch(function (e) { document.title = "ERRO " + (e && e.message); });
+</script>
+</body>
+</html>

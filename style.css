@@ -1,0 +1,602 @@
+:root { --primary: #4f46e5; --bg: #f8fafc; --card-bg: #ffffff; --text: #0f172a; --border: #e2e8f0; --success: #16a34a; --danger: #dc2626; }
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+body { background-color: var(--bg); color: var(--text); padding-bottom: 40px; }
+.navbar { background: var(--card-bg); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.logo h1 { font-size: 1.25rem; color: var(--primary); white-space: nowrap; }
+.logo span { color: var(--text); }
+.badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+.badge-on { background-color: #dcfce7; color: var(--success); }
+.badge-off { background-color: #fee2e2; color: var(--danger); }
+.container { max-width: 900px; margin: 20px auto; padding: 0 15px; }
+.escola-filtro { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.escola-filtro[hidden] { display: none; }
+.escola-filtro label { flex: none; font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+.escola-filtro select { min-width: 0; max-width: 42vw; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 0.85rem; }
+@media (max-width: 480px) { .escola-filtro label { display: none; } }
+
+/* Tabs */
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; -webkit-overflow-scrolling: touch; }
+.tab-btn { padding: 10px 16px; border: 1px solid var(--border); background: var(--card-bg); border-radius: 8px; cursor: pointer; white-space: nowrap; font-weight: 500; transition: all 0.2s; }
+.tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.tab-btn.tab-highlight { border-color: var(--primary); color: var(--primary); }
+.tab-btn.tab-highlight.active { color: white; }
+.tab-content { display: none; animation: fadeIn 0.3s ease; }
+.tab-content.active { display: block; }
+
+/* Grid & Cards */
+.grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-top: 15px; }
+.card { background: var(--card-bg); padding: 20px; border-radius: 10px; border: 1px solid var(--border); text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.card h3 { font-size: 2rem; color: var(--primary); margin-bottom: 5px; }
+.card-accent h3 { color: var(--success); }
+
+/* Forms */
+.form-container { background: var(--card-bg); padding: 20px; border-radius: 10px; border: 1px solid var(--border); margin-top: 15px; margin-bottom: 20px; }
+.form-container form { display: flex; flex-direction: column; gap: 12px; }
+input, select, button { padding: 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 1rem; }
+textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border);
+    font: inherit; font-size: 0.9rem; resize: vertical; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.imp-resumo { margin: 12px 0 6px; font-size: 0.9rem; }
+.imp-problemas { margin: 0 0 10px; padding: 10px 12px 10px 28px; border-radius: 8px; background: #fef3c7;
+    color: #92400e; font-size: 0.84rem; }
+.imp-tabela { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.imp-tabela table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.imp-tabela th, .imp-tabela td { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: left;
+    white-space: nowrap; }
+.imp-tabela th { position: sticky; top: 0; background: #f8fafc; }
+.gabarito-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin: 10px 0; }
+.gabarito-grid div { display: flex; align-items: center; gap: 5px; }
+.gabarito-grid select { padding: 8px; width: 100%; }
+
+/* Buttons */
+.btn-primary { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
+.btn-success { background: var(--success); color: white; border: none; cursor: pointer; font-weight: bold; }
+.btn-danger { background: var(--danger); color: white; border: none; cursor: pointer; font-weight: bold; }
+
+/* Tables */
+.data-table th, .data-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+.text-muted { color: #64748b; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- painel de cadernos (uiCaderno) --- */
+.cad-linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.cad-linha label, .field label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; }
+.cad-linha select, .cad-linha input, .field input, .field select {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem;
+}
+.cad-check { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 0.9rem; }
+.cad-check input { width: auto; }
+.cad-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cad-acoes button { padding: 10px 14px; border-radius: 8px; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); cursor: pointer; padding: 10px 14px; border-radius: 8px; }
+a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; font: inherit; line-height: 1.2; }
+.cad-status { margin-top: 12px; font-size: 0.85rem; color: #334155; background: #f1f5f9; border-radius: 8px; padding: 10px; min-height: 20px; }
+.cad-status.erro { background: #fee2e2; color: var(--danger); }
+.cad-lista { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; }
+.cad-lista div { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+
+/* --- revisao da prova: gabarito, peso e descritor por questao (uiCaderno) --- */
+.cad-avisos { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 0.84rem; }
+.cad-avisos h3 { margin: 0 0 6px; font-size: 0.9rem; }
+.cad-avisos ul { margin: 0; padding-left: 18px; }
+.cad-nota { margin: 10px 0 0; font-size: 0.82rem; color: #64748b; }
+.cad-cabecalho { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.cad-cabecalho summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--primary); }
+.q-editor { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px; }
+.q-rev { display: grid; grid-template-columns: 34px minmax(120px, 1fr) 78px 62px minmax(90px, 1fr) minmax(90px, 1fr);
+    gap: 6px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+.q-rev.ruim { background: #fef2f2; }
+.q-num { font-weight: bold; color: #334155; }
+.q-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #475569; }
+.q-rev input, .q-rev select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; width: 100%; font-size: 0.8rem; }
+.q-cab { position: sticky; top: 0; background: #f8fafc; font-weight: bold; color: #475569; z-index: 1; }
+@media (max-width: 720px) {
+    .q-rev { grid-template-columns: 30px 1fr 70px 56px; }
+    .q-rev .q-desc, .q-rev .q-bncc { grid-column: 2 / -1; }
+}
+
+/* --- analise de item e distratores (app.js + analise.js) --- */
+.ana-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0 8px; }
+.ana-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.ana-card h3 { margin: 0; font-size: 1.5rem; color: var(--text); }
+.ana-card p { margin: 2px 0 0; font-size: 0.74rem; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+.ana-detalhe { display: block; margin-top: 4px; font-size: 0.72rem; color: #64748b; }
+.ana-avisos { margin: 0 0 10px; padding-left: 18px; font-size: 0.82rem; color: #92400e; }
+.ana-tabela { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.ana-tabela table { min-width: 900px; font-size: 0.82rem; }
+.ana-tabela tr.sinalizada { background: #fffbeb; }
+.ana-num { font-weight: bold; color: #334155; }
+.ana-pc { white-space: nowrap; }
+.ana-barra { display: inline-block; width: 70px; height: 8px; border-radius: 4px; background: #e2e8f0;
+    overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.ana-barra i { display: block; height: 100%; background: var(--success); }
+.ana-distr { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 7px; border: 1px solid var(--border);
+    border-radius: 999px; background: #f1f5f9; font-size: 0.76rem; color: #334155; }
+.ana-distr.forte { background: #fee2e2; border-color: #fca5a5; color: #991b1b; font-weight: bold; }
+.ana-ped { max-width: 190px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #475569; }
+.ana-chip { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 7px; border-radius: 6px;
+    background: #fef3c7; color: #92400e; font-size: 0.74rem; }
+.ana-ok { color: var(--success); font-size: 0.76rem; }
+@media (max-width: 900px) {
+    .ana-cards { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* --- scanner continuo (uiScanner) --- */
+.scan-area { position: relative; margin-top: 14px; background: #0b1220; border-radius: 10px; overflow: hidden; }
+.scan-area video { display: block; width: 100%; height: auto; max-height: 62vh; object-fit: contain; }
+.scan-area canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.scan-dica { position: absolute; left: 10px; bottom: 8px; color: #e2e8f0; font-size: 0.8rem; text-shadow: 0 1px 2px #000; }
+.scan-ultimas { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.scan-item { display: grid; grid-template-columns: 42px 1fr 130px 110px 1fr; gap: 8px; align-items: center; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 0.85rem; }
+.scan-item.duvida { background: #fef3c7; border-color: #f59e0b; }
+@media (max-width: 720px) {
+    .scan-item { grid-template-columns: 36px 1fr 1fr; }
+}
+/* =========================================
+   IMPRESSAO: somente o que esta em #print-root vai para o papel
+   ========================================= */
+
+/* --- listas de turmas e provas (app.js) --- */
+.app-status { display: none; margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: #f1f5f9; font-size: 0.88rem; }
+.app-status.mostra { display: block; }
+.app-status.ok { background: #dcfce7; color: var(--success); }
+.app-status.erro { background: #fee2e2; color: var(--danger); }
+.card-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.item-lista { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.item-lista.so-aparelho { border-style: dashed; background: #fffbeb; }
+.item-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.item-cab strong { font-size: 1rem; }
+.item-cab > span { font-size: 0.82rem; color: #475569; }
+.item-acoes { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.item-acoes button { padding: 7px 11px; font-size: 0.82rem; border-radius: 7px; }
+.item-lista details { margin-top: 10px; }
+.item-lista summary { cursor: pointer; font-size: 0.85rem; color: var(--primary); }
+.linha-aluno { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+.linha-aluno:last-child { border-bottom: none; }
+button.pequeno { padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; }
+.so-aparelho-tag { background: #fef3c7; color: #92400e; border-radius: 6px; padding: 1px 6px; font-size: 0.7rem; }
+
+/* --- folha A4 (GabaFolha): todo posicionamento em mm vem de GabaLayout --- */
+.folha-a4 {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 0 auto;
+    background: #fff;
+    color: #111318;
+    font-family: "Charter", "Georgia", "Times New Roman", serif;
+    font-size: 9.5pt;
+    line-height: 1.42;
+    text-align: justify;
+    text-justify: inter-word;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+    box-sizing: border-box;
+    -webkit-hyphens: auto;
+    hyphens: auto;
+}
+/* a ultima folha nao pode arrastar uma pagina em branco junto */
+.folha-a4:last-child {
+    page-break-after: auto;
+    break-after: auto;
+}
+.folha-a4 .fiducial {
+    position: absolute;
+    background: #000;
+    line-height: 0;
+}
+.folha-a4 .fiducial i {
+    display: block;
+    position: absolute;
+    left: 36%;
+    top: 36%;
+    width: 28%;
+    height: 28%;
+    background: #fff;
+}
+.folha-a4 .folha-qr {
+    position: absolute;
+    left: var(--qr-x);
+    top: var(--qr-y);
+    width: var(--qr-w);
+    height: var(--qr-h);
+    image-rendering: pixelated;
+}
+/* folha de resposta: o cabecalho divide o topo com o QR e para antes da marca de canto direita */
+.folha-a4.folha-resposta > .folha-cabecalho {
+    position: absolute;
+    left: 60mm;
+    top: 8mm;
+    right: 19mm;
+    max-height: 58mm;
+    overflow: hidden;
+}
+.folha-a4 .folha-cabecalho {
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    text-align: left;
+}
+.folha-a4 .folha-cabecalho h1 {
+    margin: 0 0 0.8mm;
+    font-size: 11pt;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.folha-a4 .folha-cabecalho p {
+    margin: 0 0 0.7mm;
+    font-size: 9pt;
+}
+.folha-a4 .folha-rede {
+    font-size: 7.5pt;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #333;
+}
+.folha-a4 .folha-meta {
+    font-size: 7.6pt;
+}
+.folha-a4 .folha-aluno {
+    border-bottom: 0.5mm solid #1c9f4e;
+    padding-bottom: 1mm;
+    font-size: 9pt;
+}
+.folha-a4 .folha-assina {
+    font-size: 8pt;
+}
+.folha-a4 .folha-linha {
+    display: inline-block;
+    width: 58mm;
+    border-bottom: 0.3mm solid #14181f;
+}
+.folha-a4 .folha-linha-nota {
+    width: 15mm;
+}
+.folha-a4 .folha-tipo {
+    font-size: 8pt;
+    color: #333;
+}
+.folha-a4 .folha-hint {
+    font-size: 6.5pt;
+    line-height: 1.2;
+    color: #555;
+}
+/* paginas de corpo: sem QR e sem marca de canto, entao o texto comeca no topo e flui em colunas */
+.folha-a4.folha-questoes {
+    display: flex;
+    flex-direction: column;
+    padding: 10mm 12mm 14mm;
+}
+.folha-a4.folha-questoes > .folha-cabecalho {
+    position: static;
+}
+.folha-a4 .folha-cabecalho-fino {
+    border-bottom: 0.4mm solid #1a1a1a;
+    padding-bottom: 2mm;
+    margin-bottom: 4mm;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    text-align: left;
+}
+.folha-a4 .folha-cabecalho-fino p {
+    margin: 0;
+    font-size: 7.8pt;
+    color: #222;
+    letter-spacing: 0.01em;
+}
+.folha-a4 .folha-instrucoes {
+    border: 0.35mm solid #222;
+    border-radius: 0.8mm;
+    padding: 3mm 4mm;
+    margin: 0 0 5mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #f8f9fa;
+    text-align: left;
+}
+.folha-a4 .folha-instrucoes h2 {
+    margin: 0 0 1.5mm;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.folha-a4 .folha-instrucoes p {
+    margin: 0 0 1mm;
+    font-size: 8pt;
+    line-height: 1.35;
+}
+/* na folha de resposta as instrucoes vao para a faixa livre abaixo do cartao, fora do cabecalho */
+.folha-a4.folha-resposta .folha-instrucoes-capa {
+    position: absolute;
+    left: 14mm;
+    right: 14mm;
+    margin: 0;
+    overflow: hidden;
+}
+/* faixa de correcao no pe da folha de respostas */
+.folha-a4 .folha-resultado {
+    position: absolute;
+    left: 14mm;
+    right: 14mm;
+    bottom: 22mm;
+    border: 0.35mm solid #222;
+    border-radius: 0.8mm;
+    padding: 3mm 4mm;
+    background: #f8f9fa;
+    text-align: left;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+}
+.folha-a4 .folha-resultado h2 {
+    margin: 0 0 2mm;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.folha-a4 .folha-resultado p {
+    margin: 0 0 2.5mm;
+    font-size: 8.5pt;
+}
+.folha-a4 .folha-resultado p:last-child {
+    margin-bottom: 0;
+}
+.folha-a4 .folha-linha-acertos {
+    width: 16mm;
+}
+.folha-a4 .folha-linha-data {
+    width: 30mm;
+}
+.folha-a4 .folha-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+/* corpo fechado por medida: cada coluna ja vem pronta do empacotador, entao o CSS nao fragmenta nada */
+.folha-a4 .folha-area--colunas { display: flex; align-items: flex-start; }
+.folha-a4 .folha-area--colunas .folha-coluna {
+    flex: 1 1 0;
+    min-width: 0;
+    column-count: 1;
+    column-rule: none;
+}
+.folha-a4 .folha-area--colunas .folha-coluna + .folha-coluna {
+    margin-left: 3.5mm;
+    padding-left: 3.5mm;
+    border-left: 0.25mm solid #c0c5cc;
+}
+.folha-a4 .folha-continua {
+    font-weight: 400;
+    font-style: italic;
+    text-transform: none;
+    color: #555;
+    font-size: 7.8pt;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0.3mm;
+}
+.folha-a4 .folha-fluxo {
+    font-size: 9pt;
+    line-height: 1.42;
+    column-count: var(--colunas, 1);
+    column-gap: 7mm;
+    column-rule: 0.25mm solid #c0c5cc;
+}
+.folha-a4 .folha-questao {
+    margin-bottom: 3.5mm;
+    position: relative;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+.folha-a4 .folha-questao::after {
+    content: "";
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1.8mm;
+    border-bottom: 0.15mm solid #d5d8dd;
+}
+.folha-a4 .folha-questao:last-child::after {
+    display: none;
+}
+.folha-a4 .folha-rotulo {
+    margin: 0 0 1mm;
+    padding-bottom: 0.5mm;
+    border-bottom: 0.3mm solid #222;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-size: 8.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #111;
+    text-align: left;
+}
+.folha-a4 .folha-desc {
+    margin: 0;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-size: 7pt;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    text-align: left;
+}
+.folha-a4 .folha-enunciado {
+    margin: 0 0 1.2mm;
+    text-indent: 0;
+}
+.folha-a4 .folha-qnum {
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-weight: 700;
+}
+.folha-a4 .folha-comando {
+    margin: 0.5mm 0 1.2mm;
+    font-weight: 600;
+    font-style: italic;
+}
+.folha-a4 .folha-alt {
+    margin: 0.6mm 0 0 4mm;
+    padding: 0;
+    list-style: none;
+}
+.folha-a4 .folha-alt li {
+    margin: 0 0 1mm;
+    padding-left: 5.5mm;
+    text-indent: -5.5mm;
+    line-height: 1.38;
+    text-align: left;
+}
+.folha-a4 .folha-letra {
+    display: inline-block;
+    width: 5.5mm;
+    /* o text-indent negativo do li e herdado pelo inline-block e puxaria a letra para fora da coluna */
+    text-indent: 0;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-weight: 700;
+    font-size: 9pt;
+    text-align: left;
+}
+.folha-a4 .folha-cartao {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.folha-a4 .folha-cartao-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+.folha-a4 .folha-cartao-titulo {
+    position: absolute;
+    margin: 0;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.folha-a4 .folha-q {
+    position: absolute;
+    display: block;
+}
+.folha-a4 .folha-q-n {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    padding-right: 2mm;
+    font-size: 7.4pt;
+    font-weight: 700;
+    text-align: right;
+    line-height: var(--bubble);
+}
+.folha-a4 .folha-bubble {
+    position: absolute;
+    top: 0;
+    border: 0.35mm solid #14181f;
+    border-radius: 50%;
+    box-sizing: border-box;
+    background: #fff;
+}
+.folha-a4 .folha-bubble-letra {
+    position: absolute;
+    text-align: center;
+    font-size: 6pt;
+    line-height: 3mm;
+    color: #333;
+}
+.folha-a4 .folha-texto-base {
+    margin: 0.8mm 0 1.5mm;
+    padding: 0.5mm 0 0.5mm 3mm;
+    border-left: 0.4mm solid #888;
+    font-size: 8.8pt;
+    line-height: 1.38;
+    color: #1a1a1a;
+}
+.folha-a4 .folha-texto-base .folha-enunciado {
+    margin: 0;
+}
+.folha-a4 .folha-rodape {
+    position: absolute;
+    left: 14mm;
+    right: 14mm;
+    bottom: 6mm;
+    margin: 0;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-size: 6.5pt;
+    color: #777;
+    text-align: center;
+    letter-spacing: 0.02em;
+    border-top: 0.15mm solid #ddd;
+    padding-top: 1.5mm;
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 0;
+    }
+    * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff;
+    }
+    /* so a casca do app sai do papel: o cabecalho e o rodape da folha sao <header>/<footer> e
+       precisam continuar impressos */
+    header:not(.folha-cabecalho), nav, .tabs, .tab-content, .form-container,
+    footer:not(.folha-rodape), .status-bar {
+        display: none !important;
+    }
+    .container, main {
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    #print-root {
+        display: none !important;
+    }
+    #print-root:not(:empty) {
+        display: block !important;
+        position: static !important;
+        width: auto !important;
+        height: auto !important;
+    }
+    /* o medidor so existe na tela: no papel ele nunca pode aparecer */
+    #print-medidor {
+        display: none !important;
+    }
+}
+#print-root {
+    display: none;
+}
+#print-medidor {
+    position: fixed;
+    left: -1200px;
+    top: 0;
+    width: 210mm;
+    background: #fff;
+    pointer-events: none;
+}
+#print-root.previa {
+    display: block;
+    overflow: auto;
+    background: #d9dde3;
+    padding: 8mm 0;
+}
+/* a previa e so da tela: no papel o fundo cinza pintava as paginas de corte e o padding de 8mm
+   empurrava cada folha para baixo, fazendo a margem inferior da folha aparecer na pagina seguinte */
+@media print {
+    #print-root.previa {
+        background: #fff !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+}

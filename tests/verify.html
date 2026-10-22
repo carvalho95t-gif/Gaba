@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Leitura da folha real</title>
+</head>
+<body>
+<pre id="out">andando...</pre>
+<script src="/js/omrLayout.js"></script>
+<script src="/js/qrPayload.js"></script>
+<script src="/js/versoes.js"></script>
+<script src="/js/docxParser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>
+/* Rode depois de gerar o PNG: node tests/omr-real.js */
+window.__rodar = async function (fonte, titulo) {
+  var out = document.getElementById("out");
+  var linhas = [];
+  var q = Number(new URLSearchParams(location.search).get("q") || 0);
+  function falha(msg) {
+    linhas.push("FALHA " + msg);
+  }
+  try {
+    var prova;
+    if (q > 0) {
+      var letras = "ABCDE";
+      prova = { id: "sintetica-" + q, titulo: "SINTETICA", alunos: [{ numero: 1, nome: "ALUNO TESTE" }], questoes: [] };
+      for (var i = 0; i < q; i++) {
+        prova.questoes.push({
+          numero: i + 1,
+          enunciado: "questao " + (i + 1),
+          alternativas: [0, 1, 2, 3, 4].map(function (k) { return { letra: letras[k], texto: "alt " + letras[k] }; }),
+          gabarito: letras[(i * 7 + 3) % 5]
+        });
+      }
+    } else {
+      var buf = await (await fetch("/_sample.docx")).arrayBuffer();
+      var parsed = await GabaDocx.parseDocx(buf);
+      prova = GabaDocx.toProva(parsed, parsed.titulo || "prova");
+      prova.id = "docx-scan-harness";
+    }
+    var batch = GabaVersoes.batch(prova, prova.alunos || [], {
+      modo: q > 0 ? "fixa" : "turma",
+      numTipos: (prova.tipos || []).length || 4,
+      prova_id: prova.id,
+      embaralharAlternativas: true
+    });
+    var item = batch.itens[0];
+    var gab = item.versao.gabarito.slice();
+    var payload = GabaQR.encode(prova, item.aluno, item.versao);
+    var layout = GabaLayout.compute(gab.length, 5);
+
+    var img = new Image();
+    img.src = fonte;
+    await img.decode();
+    var worker = new Worker("/js/omrWorker.js");
+    await new Promise(function (res, rej) {
+      var t = setTimeout(function () { rej(new Error("worker sem ready")); }, 60000);
+      worker.onmessage = function (e) {
+        if (e.data && e.data.type === "ready") { clearTimeout(t); res(); }
+      };
+    });
+    var seq = 0;
+    function ler(data, sens) {
+      var id = ++seq;
+      return new Promise(function (res, rej) {
+        var t = setTimeout(function () { rej(new Error("timeout caso " + id)); }, 90000);
+        var h = function (e) {
+          var m = e.data || {};
+          if (m.type === "result" && m.requestId === id) {
+            clearTimeout(t); worker.removeEventListener("message", h); res(m);
+          }
+        };
+        worker.addEventListener("message", h);
+        var copia = new ImageData(new Uint8ClampedArray(data.data), data.width, data.height);
+        worker.postMessage({
+          type: "process", buffer: copia.data.buffer, width: copia.width, height: copia.height,
+          requestId: id,
+          options: { sensibilidade: sens, totalQuestoes: gab.length, alternativas: 5 }
+        }, [copia.data.buffer]);
+      });
+    }
+    function quadro(marcas, rot) {
+      rot = Number(rot) || 0;
+      /* a pagina girada precisa caber inteira no quadro: se os cantos forem cortados
+         o teste mede o recorte, nao a leitura de uma folha torta */
+      var w = img.naturalWidth;
+      var h = img.naturalHeight;
+      var sen = Math.abs(Math.sin(rot * Math.PI / 180));
+      var cos = Math.abs(Math.cos(rot * Math.PI / 180));
+      var cv = document.createElement("canvas");
+      cv.width = Math.ceil(w * cos + h * sen);
+      cv.height = Math.ceil(w * sen + h * cos);
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.save();
+      ctx.translate(cv.width / 2, cv.height / 2);
+      if (rot) ctx.rotate(rot * Math.PI / 180);
+      ctx.drawImage(img, -w / 2, -h / 2);
+      var pxmm = w / layout.pageWmm;
+      marcas.forEach(function (m) {
+        var c = layout.bubbleCenterMm(m.q, m.o);
+        ctx.beginPath();
+        ctx.arc(c.x * pxmm - w / 2, c.y * pxmm - h / 2, layout.grid.bubbleMm * 0.42 * pxmm, 0, Math.PI * 2);
+        ctx.fillStyle = m.cor || "#111";
+        ctx.fill();
+      });
+      ctx.restore();
+      return ctx.getImageData(0, 0, cv.width, cv.height);
+    }
+    var idx = function (l) { return layout.optionLetters.indexOf(l); };
+    var cheias = gab.map(function (l, i) { return { q: i, o: idx(l) }; });
+
+    var limpa = await ler(quadro([]), 1);
+    if (limpa.qr_texto !== payload) falha("qr da folha em branco: " + limpa.qr_texto + " != " + payload);
+    if (limpa.totalLidas !== 0) falha("folha em branco leu " + limpa.totalLidas + " marcas");
+    var maxBlank = Math.max.apply(null, [].concat.apply([], limpa.ratio));
+    if (maxBlank > 0.3) falha("bolha vazia marcou " + maxBlank.toFixed(3) + " (sem folga para o corte)");
+    linhas.push((limpa.totalLidas === 0 && limpa.qr_texto === payload && maxBlank <= 0.3 ? "ok      " : "FALHA ") +
+      "folha em branco: qr lido, 0 marcas, maior ratio " + maxBlank.toFixed(3) + " (corte " + limpa.corte.toFixed(2) + ")");
+
+    var cheias_r = await ler(quadro(cheias), 1);
+    var iguais = gab.every(function (l, i) { return cheias_r.answers[i] === l; });
+    if (!iguais || cheias_r.confusao.length) falha("folha cheia: lidas=" + cheias_r.totalLidas + " confusao=" + JSON.stringify(cheias_r.confusao));
+    linhas.push((iguais ? "ok      " : "FALHA ") + "folha cheia (" + gab.length + " questoes): " +
+      cheias_r.totalLidas + " lidas, " + cheias_r.confusao.length + " duvidas, gabarito reproduzido=" + iguais);
+
+    var girada = await ler(quadro(cheias, 4), 1);
+    var iguaisG = gab.every(function (l, i) { return girada.answers[i] === l; });
+    if (!iguaisG || girada.qr_texto !== payload) falha("folha girada 4 graus nao relida");
+    linhas.push((iguaisG ? "ok      " : "FALHA ") + "folha girada 4 graus: " + girada.totalLidas + " lidas, qr=" + girada.qr_texto);
+
+    var amb = cheias.concat([{ q: 2, o: (idx(gab[2]) + 1) % layout.options }]);
+    var rAmb = await ler(quadro(amb), 1);
+    var pego = rAmb.confusao.indexOf(3) >= 0 && !rAmb.answers[2];
+    if (!pego) falha("duas bolhas na questao 3 passaram sem aviso: confusao=" + JSON.stringify(rAmb.confusao));
+    linhas.push((pego ? "ok      " : "FALHA ") + "duas bolhas na mesma questao: duvida=" + JSON.stringify(rAmb.confusao));
+
+    var lapis = gab.map(function (l, i) { return { q: i, o: idx(l), cor: "rgba(95,95,95,0.35)" }; });
+    var rLapis = await ler(quadro(lapis), 1.4);
+    var iguaisL = gab.every(function (l, i) { return rLapis.answers[i] === l; });
+    if (!iguaisL) falha("marcas de lapis nao lidas com sensibilidade 1.4: " + rLapis.totalLidas + "/" + gab.length);
+    linhas.push((iguaisL ? "ok      " : "FALHA ") + "lapis claro com sensibilidade 1.4: " + rLapis.totalLidas + "/" + gab.length);
+
+    worker.terminate();
+    var deuCerto = linhas.every(function (l) { return l.indexOf("FALHA") < 0; });
+    var relatorio = (deuCerto ? "PASS " : "FAIL ") + (titulo || "") + " (" + gab.length + " questoes)\n" + linhas.join("\n");
+    out.textContent = relatorio;
+    document.title = deuCerto ? "PASS" : "FAIL";
+    return relatorio;
+  } catch (err) {
+    var erro = "FAIL excecao: " + (err && err.message ? err.message : err) + "\n" + linhas.join("\n");
+    out.textContent = erro;
+    document.title = "FAIL";
+    return erro;
+  }
+};
+
+if (new URLSearchParams(location.search).get("png")) {
+  window.__rodar(new URLSearchParams(location.search).get("png"), "manual").catch(function (err) {
+    document.getElementById("out").textContent = "FAIL " + (err && err.message ? err.message : err);
+  });
+}
+</script>
+</body>
+</html>

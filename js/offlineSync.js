@@ -2,9 +2,10 @@
   "use strict";
 
   var DB_NAME = "gaba-omr";
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var STORE = "pending";
   var RESULTS = "results";
+  var PROVAS = "provas";
   var dbPromise = null;
   var listeners = [];
 
@@ -20,6 +21,9 @@
         if (!db.objectStoreNames.contains(RESULTS)) {
           var results = db.createObjectStore(RESULTS, { keyPath: "id" });
           results.createIndex("created_at", "created_at");
+        }
+        if (!db.objectStoreNames.contains(PROVAS)) {
+          db.createObjectStore(PROVAS, { keyPath: "id" });
         }
       };
       req.onsuccess = function () {
@@ -122,6 +126,36 @@
     notify();
   }
 
+  /* a prova importada do .docx fica neste aparelho ate o professor salva no banco */
+  async function guardarProva(prova) {
+    if (!prova || !prova.id) throw new Error("A prova precisa de um id para ficar no aparelho.");
+    var db = await openDb();
+    var tx = db.transaction(PROVAS, "readwrite");
+    tx.objectStore(PROVAS).put(Object.assign({}, prova, { atualizado_em: new Date().toISOString() }));
+    await txDone(tx);
+    return prova;
+  }
+
+  async function listarProvas() {
+    var db = await openDb();
+    return new Promise(function (resolve, reject) {
+      var req = db.transaction(PROVAS, "readonly").objectStore(PROVAS).getAll();
+      req.onsuccess = function () {
+        resolve(req.result || []);
+      };
+      req.onerror = function () {
+        reject(req.error);
+      };
+    });
+  }
+
+  async function esquecerProva(id) {
+    var db = await openDb();
+    var tx = db.transaction(PROVAS, "readwrite");
+    tx.objectStore(PROVAS).delete(id);
+    await txDone(tx);
+  }
+
   async function countPending() {
     var items = await listPending();
     return items.length;
@@ -138,16 +172,7 @@
     for (var i = 0; i < pending.length; i++) {
       var item = pending[i];
       try {
-        var payload = {
-          prova_id: item.prova_id,
-          aluno_id: item.aluno_id || null,
-          turma_id: item.turma_id || null,
-          respostas: item.respostas || [],
-          acertos: item.acertos || 0,
-          total_questoes: item.total_questoes || 0,
-          nota: item.nota || 0
-        };
-        await GabaDB.insertCorrecao(payload);
+        await GabaDB.insertCorrecao(item);
         await removePending(item.id);
         synced += 1;
       } catch (err) {
@@ -185,6 +210,9 @@
     listResults: listResults,
     countPending: countPending,
     flush: flush,
-    onPendingChange: onPendingChange
+    onPendingChange: onPendingChange,
+    guardarProva: guardarProva,
+    listarProvas: listarProvas,
+    esquecerProva: esquecerProva
   };
 })(window);
