@@ -443,7 +443,12 @@
       avisos.push("quase nao havia texto neste PDF (" + limpo.length + " caracteres). Se for uma prova digitalizada em imagem, " +
         "e preciso transcrever no Word ou colar o texto na aba Provas.");
     }
-    return { texto: limpo, paginas: paginas.length, avisos: avisos.filter(unico) };
+    return {
+      texto: limpo, paginas: paginas.length, avisos: avisos.filter(unico),
+      /* porPagina preserva as folhas sem texto: quem confere encaixe no papel precisa saber
+         que a pagina existe e esta vazia, e nao que ela sumiu do array */
+      porPagina: textos.map(function (t) { return t || ""; })
+    };
   }
 
   function unico(v, i, arr) { return arr.indexOf(v) === i; }

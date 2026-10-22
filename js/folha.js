@@ -579,12 +579,65 @@
 
   function mmDePx(px) { return (Number(px) || 0) * 25.4 / 96; }
 
+  /* medir com a fonte de fallback e imprimir com a fonte certa da o corte que ninguem ve: a
+     metrica muda por linha. o teto e para a fonte travada nao segurar a previa indefinidamente. */
+  function fontesProntas(tetoMs) {
+    var f = typeof document !== "undefined" && document.fonts && document.fonts.ready;
+    if (!f) return Promise.resolve(false);
+    return Promise.race([
+      f.then(function () { return true; }),
+      new Promise(function (r) { setTimeout(function () { r(false); }, tetoMs || 4000); })
+    ]);
+  }
+
+  /* o empacotador fecha a coluna pela medida; isto confere se o papel desenhado bateu com a
+     medida. sobra de coluna nao e problema — corte de linha alternativa, sim. */
+  var TOLERANCIA_MM = 0.6;
+  function conferirEncaixe(root) {
+    var areas = [].slice.call((root || document).querySelectorAll(".folha-a4 .folha-area"));
+    var problemas = [];
+    areas.forEach(function (area, ai) {
+      var folha = area.closest(".folha-a4");
+      var caixa = area.getBoundingClientRect();
+      var rotulos = [];
+      if (folha) {
+        var versao = folha.getAttribute("data-versao");
+        var pagina = folha.getAttribute("data-pagina");
+        if (versao) rotulos.push("tipo " + versao);
+        if (pagina) rotulos.push("pag " + pagina);
+      }
+      var onde = rotulos.length ? rotulos.join(" ") : "area " + (ai + 1);
+      var num = function (el) {
+        var q = el.closest(".folha-questao");
+        return q ? (q.getAttribute("data-num") || "?") : "?";
+      };
+      [].slice.call(area.querySelectorAll(".folha-enunciado, .folha-comando, .folha-alt li, .folha-rotulo, .folha-desc")).forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (!r.height) return;
+        if (r.bottom > caixa.bottom + TOLERANCIA_MM * 96 / 25.4) {
+          problemas.push(onde + ": linha da questao " + num(el) + " passa " +
+            mmDePx(r.bottom - caixa.bottom).toFixed(1) + " mm do fundo da coluna");
+        }
+        if (r.right > caixa.right + TOLERANCIA_MM * 96 / 25.4) {
+          problemas.push(onde + ": texto da questao " + num(el) + " passa " +
+            mmDePx(r.right - caixa.right).toFixed(1) + " mm da borda direita da pagina");
+        }
+      });
+      if (area.scrollHeight * 25.4 / 96 > mmDePx(area.clientHeight) + TOLERANCIA_MM) {
+        problemas.push(onde + ": sobra " + mmDePx(area.scrollHeight - area.clientHeight).toFixed(1) +
+          " mm de texto cortado pelo limite da area");
+      }
+    });
+    return problemas;
+  }
+
   /* mede no navegador quanto cada tomo pede na largura real da coluna e quanto de coluna cada
      pagina tem. sem isso o corpo ia para o CSS em colunas e o fim da ultima alternativa sumia. */
   async function medirCorpo(prova, questoes, opts) {
     opts = opts || {};
     var host = opts.medidor || (typeof document !== "undefined" ? document.getElementById("print-medidor") : null);
     if (!host || !(questoes || []).length) return null;
+    await fontesProntas();
     var cfg = cfgDe(opts);
     var layout = layoutDa(prova, opts);
     var versao = opts.versao || versaoDo(prova, opts.aluno || {}, opts);
@@ -704,6 +757,8 @@
     rotuloContinua: rotuloContinua,
     empacotar: empacotar,
     medirCorpo: medirCorpo,
+    conferirEncaixe: conferirEncaixe,
+    fontesProntas: fontesProntas,
     assinaturaDa: assinaturaDa,
     MARGEM_QUESTAO_MM: MARGEM_QUESTAO_MM,
     cabecalhoCfg: cabecalhoCfg,

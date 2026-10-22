@@ -14,6 +14,7 @@
     alunos: [],
     batch: null,
     ultimoHtml: "",
+    cortes: [],
     sujo: false
   };
 
@@ -224,6 +225,8 @@
     }
     var doWord = (prova && prova.avisos) || [];
     doWord.forEach(function (a) { itens.push(String(a)); });
+    /* o encaixe medido no papel desenhado: sem isto o corte so aparece na impressora */
+    (estado.cortes || []).forEach(function (t) { itens.push(t); });
     if (!itens.length) {
       box.hidden = true;
       box.innerHTML = "";
@@ -572,6 +575,11 @@
     estado.ultimoHtml = cadernos.map(function (c) { return c.html; }).join(NL);
     root.innerHTML = estado.ultimoHtml;
     root.classList.add("previa");
+    await GabaFolha.fontesProntas();
+    estado.cortes = GabaFolha.conferirEncaixe(root);
+    desenharAvisos(prova);
+    var btnImp = $("cad-imprimir");
+    if (btnImp) btnImp.disabled = estado.cortes.length > 0;
     var folhas = (estado.ultimoHtml.match(/<article class="folha-a4/g) || []).length;
     var brancas = (estado.ultimoHtml.match(/folha-a4 folha-branco/g) || []).length;
     var porAluno = cadernos[0] ? cadernos[0].paginas : 0;
@@ -588,7 +596,9 @@
       (impresso ? "O leitor ja conhece estas versoes. " : "") +
       (p.semGabarito.length ? p.semGabarito.length + " questao(oes) sem gabarito: elas nao dao ponto para ninguem. " : "") +
       "Revise a previa e clique em Imprimir lote.";
-    status(msg);
+    var corte = estado.cortes.length ? " ATENCAO: " + estado.cortes.length +
+      " linha(s) nao caberiam na coluna e sairiam cortadas no papel (lista abaixo)." : "";
+    status(msg + corte, estado.cortes.length > 0);
     sincronizarLote(prova, impresso, msg);
     return { folhas: folhas, batch: batch, impresso: impresso, medidas: medidas, porPagina: porPagina };
   }
@@ -599,6 +609,11 @@
     var root = $("print-root");
     try {
       var r = await gerarLote();
+      if (estado.cortes.length) {
+        status("Nao enviei a impressao: " + estado.cortes[0] +
+          (estado.cortes.length > 1 ? " (mais " + (estado.cortes.length - 1) + " na lista abaixo)." : "."), true);
+        return;
+      }
       var prova = provaSelecionada();
       GabaFolha.imprimirNaJanela();
       localStorage.setItem("gaba_ultimo_lote", JSON.stringify({
