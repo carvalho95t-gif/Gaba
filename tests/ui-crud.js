@@ -1328,6 +1328,24 @@ async function dirigirSelo(marcos) {
   return r;
 }
 
+function enderecosColados() {
+  var chave = "gaba_supabase_url";
+  var antes = localStorage.getItem(chave);
+  var key = GabaDB.readConfig().key;
+  var r = {};
+  GabaDB.saveConfig("  https://abcdefgh.supabase.co/rest/v1/  ", key);
+  r.restV1 = localStorage.getItem(chave);
+  GabaDB.saveConfig("abcdefgh.supabase.co", key);
+  r.semEsquema = localStorage.getItem(chave);
+  localStorage.setItem(chave, "https://abcdefgh.supabase.co/rest/v1");
+  r.jaGuardado = GabaDB.readConfig().url;
+  if (antes === null) localStorage.removeItem(chave);
+  else localStorage.setItem(chave, antes);
+  GabaDB.client = null;
+  r.devolvida = localStorage.getItem(chave) === antes && GabaDB.readConfig().key === key;
+  return r;
+}
+
 function conferirEscolas(es) {
   if (es.parouAqui) return;
   check("o topo so oferece 'todas' e '(sem escola)' enquanto nenhuma turma tem escola",
@@ -1826,6 +1844,15 @@ var LISTA = {
       sl.semBanco.semBanco && !sl.semBanco.login && sl.semBanco.badge === "Só neste aparelho" &&
       sl.foiAjustes.aba && !sl.foiAjustes.aberto, [sl.semBanco, sl.foiAjustes]);
     check("a conexao volta e o selo pede entrada de novo", sl.final.badge === "Precisa entrar", sl.final);
+
+    console.log("\n== o endereco colado do painel vira so a raiz do projeto ==");
+    var en = await c.naPagina(enderecosColados, []);
+    check("com /rest/v1 no fim, o app guarda so a raiz",
+      en.restV1 === "https://abcdefgh.supabase.co", en);
+    check("sem https:// na frente, o app completa", en.semEsquema === "https://abcdefgh.supabase.co", en);
+    check("um endereco que ja estava errado no aparelho se conserta ao ler",
+      en.jaGuardado === "https://abcdefgh.supabase.co", en);
+    check("a conexao de teste volta intacta", en.devolvida, en);
 
     console.log("\n== nada quebrou nem ficou para trás ==");
     var e = await c.naPagina(colherErros, []);

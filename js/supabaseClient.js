@@ -15,11 +15,23 @@
   /* a dupla do pacote publico; vazia enquanto ninguem preencher js/credencial.js */
   function embutida() {
     var p = global.GabaCredencial || {};
-    return { url: String(p.url || "").trim(), key: String(p.key || "").trim() };
+    return { url: enderecoBase(p.url), key: String(p.key || "").trim() };
+  }
+
+  /* o painel do Supabase mostra a url da API com /rest/v1; o cliente quer so a raiz */
+  function enderecoBase(texto) {
+    var t = String(texto || "").trim();
+    if (!t) return "";
+    if (!/^https?:\/\//i.test(t)) t = "https://" + t;
+    try {
+      return new URL(t).origin;
+    } catch (err) {
+      return String(texto).trim();
+    }
   }
 
   function readConfig() {
-    var digitadaUrl = (localStorage.getItem(STORAGE.url) || "").trim();
+    var digitadaUrl = enderecoBase(localStorage.getItem(STORAGE.url));
     var digitadaKey = (localStorage.getItem(STORAGE.key) || localStorage.getItem(STORAGE.keyAlt) || "").trim();
     var doPacote = localStorage.getItem(STORAGE.desligada) === "1" ? { url: "", key: "" } : embutida();
     var url = digitadaUrl || doPacote.url;
@@ -37,7 +49,7 @@
   }
 
   function saveConfig(url, key) {
-    var u = String(url || "").trim();
+    var u = enderecoBase(url);
     var k = String(key || "").trim();
     localStorage.setItem(STORAGE.url, u);
     localStorage.setItem(STORAGE.key, k);
