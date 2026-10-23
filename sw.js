@@ -1,4 +1,4 @@
-const CACHE = "gaba-omr-v11";
+const CACHE = "gaba-omr-v12";
 const PRECACHE = [
   "./",
   "./index.html",
@@ -22,6 +22,7 @@ const PRECACHE = [
   "./js/supabaseClient.js",
   "./js/offlineSync.js",
   "./js/escolas.js",
+  "./js/descritoresMatriz.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];

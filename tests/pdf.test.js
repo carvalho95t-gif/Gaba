@@ -27,6 +27,36 @@ function comStream(n, dict, dados) {
   return Buffer.concat([bruto(n + " 0 obj " + dict + " stream\n"), dados, bruto("\nendstream\nendobj\n")]);
 }
 
+/* camada de texto de digitalizado: um glifo por BT..ET, cada um na sua coordenada absoluta.
+   o codigo do glifo vem deslocado de 100 para a fonte errada nao sair com a mesma letra */
+function camadaDeGlifos(linhas) {
+  var partes = [];
+  var usados = {};
+  linhas.forEach(function (linha, k) {
+    var x = 0;
+    String(linha).split("").forEach(function (ch) {
+      if (ch === " ") { x += 20; return; }
+      var code = ch.charCodeAt(0) + 100;
+      usados[code] = ch.charCodeAt(0);
+      partes.push("BT 1 0 0 1 " + x + " " + (-15 * k) + " Tm /F1 10 Tf <" +
+        ("0000" + code.toString(16).toUpperCase()).slice(-4) + "> Tj ET");
+      x += 5;
+    });
+  });
+  return { conteudo: partes.join("\n"), codigos: Object.keys(usados).map(Number), dest: usados };
+}
+
+function cmapDe(camada) {
+  var pares = camada.codigos.map(function (c) {
+    var origem = ("0000" + c.toString(16).toUpperCase()).slice(-4);
+    var alvo = ("0000" + camada.dest[c].toString(16).toUpperCase()).slice(-4);
+    return "<" + origem + "> <" + alvo + ">";
+  });
+  return ["/CMapName /Gaba-Teste def", "/CMapType 2 def",
+    "1 begincodespacerange", "<0000> <FFFF>", "endcodespacerange",
+    pares.length + " beginbfchar"].concat(pares).concat(["endbfchar"]).join("\n");
+}
+
 var falhas = 0;
 function check(nome, cond, detalhe) {
   console.log((cond ? "  ok   " : "  FALHA ") + nome + (detalhe !== undefined && !cond ? "  ->  " + JSON.stringify(detalhe) : ""));
@@ -115,6 +145,51 @@ function check(nome, cond, detalhe) {
     JSON.stringify(linhas.slice(5, 7)));
   check("questao e comando continuam blocos separados",
     linhas[7] === "QUESTÃO 02 — Outra", JSON.stringify(linhas[7]));
+})();
+
+(function largurasDoCidFont() {
+  console.log("\n== larguras do CIDFont (/W) ==");
+  var w = GabaPdf.parseW("3 [ 1000 20 30 ] 40 60 500 700 9000 250");
+  check("cid com lista de larguras guarda cada posicao da lista",
+    w.pontos[3] === 1000 && w.pontos[5] === 30, w.pontos);
+  check("cidInicial cidFinal largura preenche a faixa toda",
+    w.pontos[40] === 500 && w.pontos[60] === 500, w.pontos);
+  check("faixa longa nao vira mapa: fica como faixa e o /DW responde pelo padrao",
+    w.faixas.length === 1 && w.faixas[0][0] === 700 && w.faixas[0][2] === 250 && w.pontos[8000] == null,
+    { faixas: w.faixas, pontos: Object.keys(w.pontos).length });
+  check("sem /W no dicionario a largura e desconhecida", GabaPdf.parseW("").pontos[3] === undefined);
+})();
+
+(function linhasPorPosicao() {
+  console.log("\n== linha pela coordenada do papel ==");
+  var pedacos = [
+    { x: 20, y: 0, fim: 25, tamanho: 10, texto: "OFICIAL" },
+    { x: 0, y: 0, fim: 5, tamanho: 10, texto: "GA" },
+    { x: 5, y: 0, fim: 10, tamanho: 10, texto: "BARITO" },
+    { x: 0, y: -13, fim: 5, tamanho: 10, texto: "TIPO" },
+    { x: 0, y: -60, fim: 5, tamanho: 10, texto: "FOLHA" }
+  ];
+  var saida = GabaPdf.textoDasRuns(pedacos);
+  var linhas = saida.split("\n").filter(Boolean);
+  check("as pedacas saem na ordem em que caem no papel, nao na ordem do stream",
+    linhas[0] === "GABARITO OFICIAL", JSON.stringify(linhas[0]));
+  check("pedaca colada na anterior emenda sem espaco", /GABARITO OFICIAL/.test(saida), JSON.stringify(saida));
+  check("a linha de baixo fica em outra linha", linhas[1] === "TIPO", JSON.stringify(linhas[1]));
+  check("salto grande de linha fecha o paragrafo", saida.indexOf("TIPO\n\nFOLHA") >= 0, JSON.stringify(saida));
+
+  var perto = GabaPdf.textoDasRuns([
+    { x: 0, y: 0, fim: 5, tamanho: 10, texto: "A" },
+    { x: 0, y: -3, fim: 5, tamanho: 10, texto: "B" }
+  ]);
+  check("fios de linha diferentes nao se emendam, por pouco que fiquem separados",
+    perto === "A\nB", JSON.stringify(perto));
+
+  var folhaNormal = "BT /F1 10 Tf (PRIMEIRA LINHA DO ENUNCIADO) Tj 0 -12 Td (SEGUNDA LINHA DO ENUNCIADO) Tj ET";
+  check("uma folha desenhada linha a linha nao e picada, entao fica no caminho de sempre",
+    GabaPdf.textoPicado(GabaPdf.textoDoConteudo(folhaNormal, { F1: { mapa: null, largura: 1 } })) === false);
+  var letraPorLetra = "BT <00> Tj ET BT <01> Tj ET BT <02> Tj ET BT <03> Tj ET BT <04> Tj ET BT <05> Tj ET";
+  check("uma letra por bloco e o sinal de que falta reconstruir pela posicao",
+    GabaPdf.textoPicado(GabaPdf.textoDoConteudo(letraPorLetra, { F1: { mapa: null, largura: 1 } })) === true);
 })();
 
 (async function documento() {
@@ -269,6 +344,46 @@ function check(nome, cond, detalhe) {
     (lidoNinho.porPagina[0].match(/FILA/g) || []).length === 1,
     JSON.stringify(lidoNinho.porPagina[0]));
 
+  console.log("\n== camada de texto desenhada glifo a glifo ==");
+
+  /* digitalizado com camada de texto letra por letra, cada glifo no seu Tm e tudo dentro de um
+     form escalado: o legado devolve uma letra por linha e so a coordenada do papel emenda */
+  var glifos = camadaDeGlifos(["GABARITO OFICIAL", "TIPO 1 VERDE", "FOLHA A4"]);
+  var mapaGlifos = cmapDe(glifos);
+  var pdfGlifos = new Uint8Array(Buffer.concat([
+    cabeca(),
+    peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+    peca(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 9 0 R >> " +
+      "/XObject << /Fm0 5 0 R >> >> /Contents 4 0 R >>"),
+    comStream(4, "<< >>", bruto("q 2 0 0 2 40 60 cm /Fm0 Do Q")),
+    comStream(5, "<< /Type /XObject /Subtype /Form /Resources << /Font << /F1 7 0 R >> >> >>",
+      bruto(glifos.conteudo)),
+    peca(7, "<< /Type /Font /Subtype /Type0 /BaseFont /GLIFO /Encoding /Identity-H " +
+      "/DescendantFonts [8 0 R] /ToUnicode 10 0 R >>"),
+    peca(8, "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /GLIFO /CIDSystemInfo << >> " +
+      "/FontDescriptor 11 0 R /DW 1000 /W [ 0 1000 500 ] >>"),
+    peca(9, "<< /Type /Font /Subtype /Type1 /BaseFont /TIMES >>"),
+    comStream(10, "<< /Length " + bruto(mapaGlifos).length + " >>", bruto(mapaGlifos)),
+    peca(11, "<< /Type /FontDescriptor /FontName /GLIFO /Flags 4 >>")
+  ]));
+  var lidoGlifos = await GabaPdf.parsePdf(pdfGlifos);
+  var linhasGlifos = String(lidoGlifos.porPagina[0]).split("\n").filter(Boolean);
+  check("a folha desenhada glifo a glifo e reconstruida nas linhas do papel",
+    linhasGlifos[0] === "GABARITO OFICIAL" && linhasGlifos[1] === "TIPO 1 VERDE" &&
+    linhasGlifos[2] === "FOLHA A4", JSON.stringify(linhasGlifos));
+  check("o /F1 do form e outro que o /F1 da pagina: cada fonte decodifica pelo numero do objeto",
+    lidoGlifos.porPagina[0].replace(/\s+/g, "") === "GABARITOOFICIALTIPO1VERDEFOLHAA4",
+    JSON.stringify(lidoGlifos.porPagina[0]));
+
+  /* o form entra escalado e transladado: sem compor a matriz do pai com o Tm, o x do glifo
+     sai na coordenada do form e as linhas de cima se emendam com as de baixo */
+  var corrida = { runs: [], matriz: [2, 0, 0, 2, 40, 60], dos: null };
+  GabaPdf.textoDoConteudo("BT 1 0 0 1 5 -3 Tm /F1 10 Tf (AB) Tj ET",
+    { F1: { mapa: null, largura: 1 } }, corrida);
+  check("a coordenada do glifo ja sai composta com a matriz do form",
+    corrida.runs.length === 1 && corrida.runs[0].x === 50 && corrida.runs[0].y === 54 &&
+    corrida.runs[0].tamanho === 20, JSON.stringify(corrida.runs[0]));
 
   console.log("\n== PDF que o app nao deve tentar ler ==");
 

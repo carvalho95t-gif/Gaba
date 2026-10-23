@@ -263,16 +263,180 @@
         return '<option' + (l === gab ? " selected" : "") + ">" + l + "</option>";
       })).join("") + "</select>" +
       '<input class="q-peso" data-campo="peso" type="number" min="0.5" max="99" step="0.5" value="' + peso + '" title="peso">' +
-      '<input class="q-desc" data-campo="descritor" type="text" value="' + esc(q.descritor || "") + '" placeholder="descritor">' +
+      '<input class="q-desc" data-campo="descritor" type="text" autocomplete="off" role="combobox" aria-expanded="false" ' +
+      'value="' + esc(q.descritor || "") + '" placeholder="descritor" ' +
+      'title="código do descritor: comece a digitar e escolha da lista oficial">' +
       '<input class="q-bncc" data-campo="habilidade_bncc" type="text" value="' + esc(q.habilidade_bncc || "") +
       '" placeholder="habilidade BNCC">' +
       "</div>";
+  }
+
+  /* ---- o seletor de descritor ----
+     A caixa continua aceitando texto livre — o professor de Educação Física que invente o dele se
+     precisar — mas o catalogo oficial (js/descritoresMatriz.js, gerado dos PDFs da SEDU-ES por
+     tests/gerar-descritores.js) aparece embaixo, já filtrado pela disciplina e pelo ano do caderno.
+     Escolher uma linha preenche o código e a habilidade, que são os dois campos que a folha imprime
+     e a análise de descritor usa. */
+  var PICK_MAX = 60;
+  var pick = null;
+
+  function eraDescritor(el) {
+    return !!(el && el.classList && el.classList.contains("q-desc"));
+  }
+
+  function contextoDaProva(prova) {
+    var saved = lerCfg();
+    var turma = turmaAtual() || {};
+    var disc = campo("cad-disciplina", saved.disciplina) || (prova && prova.disciplina) || "";
+    var ano = campo("cad-ano", saved.ano) || turma.ano || (prova && prova.ano) || "";
+    /* "Geral" é o que a criação da prova escreve quando ninguém disse a disciplina: não filtra nada */
+    return { disciplina: disc === "Geral" ? "" : disc, ano: ano };
+  }
+
+  function itensDoDescritor(texto, contexto) {
+    if (!global.GabaDescritores) return [];
+    var alvo = String(texto || "").trim();
+    /* reabrir a lista com o código já na caixa mostraria uma linha só: código não é busca */
+    var ehCodigo = /^[Dd]\d{1,3}(?:_[A-Za-z])?$/.test(alvo) && GabaDescritores.porCodigo(alvo).length;
+    return GabaDescritores.filtrar({
+      disciplina: contexto.disciplina, ano: contexto.ano, busca: ehCodigo ? "" : alvo
+    });
+  }
+
+  function painelDoPick() {
+    var el = document.getElementById("q-pick");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "q-pick";
+    el.className = "q-pick";
+    el.hidden = true;
+    el.setAttribute("role", "listbox");
+    el.addEventListener("mousedown", function (ev) {
+      var item = ev.target.closest ? ev.target.closest(".q-pick-item") : null;
+      if (!item) return;
+      /* mousedown, nao click: sem isto o blur da caixa fecha a lista antes da escolha chegar */
+      ev.preventDefault();
+      escolherPick(Number(item.dataset.i));
+    });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function rotuloDaLinha(r) {
+    return [r.disciplina, r.componente, r.ano, r.banda, r.matriz].filter(function (t) { return t; }).join(" · ");
+  }
+
+  function posicionarPick() {
+    var caixa = pick.el;
+    var r = pick.input.getBoundingClientRect();
+    var largura = Math.min(Math.max(r.width, 280), window.innerWidth - 12);
+    caixa.style.width = largura + "px";
+    caixa.style.left = Math.max(6, Math.min(r.left, window.innerWidth - largura - 6)) + "px";
+    var abaixo = window.innerHeight - r.bottom;
+    if (abaixo < 200 && r.top > abaixo) {
+      caixa.style.bottom = Math.max(6, window.innerHeight - r.top + 2) + "px";
+      caixa.style.top = "auto";
+    } else {
+      caixa.style.top = (r.bottom + 2) + "px";
+      caixa.style.bottom = "auto";
+    }
+    caixa.style.maxHeight = Math.max(140, Math.min(320, (caixa.style.bottom === "auto" ? abaixo : r.top) - 10)) + "px";
+  }
+
+  function desenharPick() {
+    var itens = pick.itens;
+    var visibles = Math.min(itens.length, PICK_MAX);
+    var partes = itens.slice(0, visibles).map(function (r, i) {
+      return '<div class="q-pick-item' + (i === pick.ativo ? " ativo" : "") + '" role="option"' +
+        ' aria-selected="' + (i === pick.ativo) + '" data-i="' + i + '"' +
+        ' title="' + esc(r.matriz + " · página " + r.pagina + " do PDF oficial") + '">' +
+        "<b>" + esc(r.codigo) + "</b><span>" + esc(rotuloDaLinha(r)) + "</span><p>" + esc(r.descricao) + "</p></div>";
+    });
+    if (itens.length > visibles) {
+      partes.push('<div class="q-pick-mais">+' + (itens.length - visibles) +
+        " descritores fora da tela: digite uma palavra da habilidade</div>");
+    }
+    if (!itens.length) {
+      partes.push('<div class="q-pick-mais">' + (global.GabaDescritores ?
+        "nenhum descritor bate com o que está na caixa — o texto livre continua valendo" :
+        "este aparelho ainda não tem o catálogo das matrizes") + "</div>");
+    }
+    var where = [pick.contexto.disciplina, pick.contexto.ano].filter(function (t) { return t; });
+    partes.push('<div class="q-pick-foot">' + (where.join(" · ") || "todas as disciplinas e anos") +
+      " — " + itens.length + " de " + (global.GabaDescritores ? GabaDescritores.total : itens.length) +
+      " descritores das matrizes oficiais</div>");
+    pick.el.innerHTML = partes.join(NL);
+    pick.input.setAttribute("aria-expanded", "true");
+    posicionarPick();
+  }
+
+  function abrirPick(input) {
+    var linha = input.closest("[data-q]");
+    if (!linha) return;
+    fecharPick();
+    var contexto = contextoDaProva(provaSelecionada());
+    var itens = itensDoDescritor(input.value, contexto);
+    pick = {
+      el: painelDoPick(), input: input, linha: linha, contexto: contexto,
+      itens: itens, ativo: itens.length ? 0 : -1
+    };
+    pick.el.hidden = false;
+    desenharPick();
+  }
+
+  function atualizarPick() {
+    if (!pick) return;
+    pick.itens = itensDoDescritor(pick.input.value, pick.contexto);
+    var teto = Math.min(pick.itens.length, PICK_MAX) - 1;
+    pick.ativo = teto < 0 ? -1 : Math.max(0, Math.min(pick.ativo, teto));
+    desenharPick();
+  }
+
+  function fecharPick() {
+    if (!pick) return;
+    var input = pick.input;
+    pick.el.hidden = true;
+    pick.el.innerHTML = "";
+    pick = null;
+    if (input && input.setAttribute) input.setAttribute("aria-expanded", "false");
+  }
+
+  function moverPick(passo) {
+    if (!pick || !pick.itens.length) return;
+    var teto = Math.min(pick.itens.length, PICK_MAX) - 1;
+    pick.ativo = Math.max(0, Math.min(teto, pick.ativo + passo));
+    [].slice.call(pick.el.querySelectorAll(".q-pick-item")).forEach(function (el) {
+      var ligado = Number(el.dataset.i) === pick.ativo;
+      el.classList.toggle("ativo", ligado);
+      el.setAttribute("aria-selected", String(ligado));
+    });
+    var alvo = pick.el.children[pick.ativo];
+    if (alvo && alvo.scrollIntoView) alvo.scrollIntoView({ block: "nearest" });
+  }
+
+  function escolherPick(i) {
+    if (!pick) return;
+    var r = pick.itens[i];
+    var input = pick.input;
+    var linha = pick.linha;
+    if (!r) { fecharPick(); return; }
+    var numero = Number(linha.dataset.q);
+    var bncc = linha.querySelector(".q-bncc");
+    input.value = r.codigo;
+    if (bncc) bncc.value = r.descricao;
+    fecharPick();
+    aplicarEdicao(input);
+    if (bncc) aplicarEdicao(bncc);
+    input.focus();
+    status("Questão " + numero + ": descritor " + r.codigo + " (" + rotuloDaLinha(r) + ").");
   }
 
   function desenharQuestoes(prova) {
     var box = $("cad-questoes");
     var nota = $("cad-nota-prova");
     if (!box) return;
+    /* a lista re-desenhada jogaria fora o input que a busca do descritor está acompanhando */
+    fecharPick();
     var qs = (prova && prova.questoes) || [];
     if (!qs.length) {
       box.hidden = true;
@@ -839,11 +1003,44 @@
       carregarAlunos(prova).catch(function (err) { status(String(err.message || err), true); });
     });
     var painel = $("cad-questoes");
-    if (painel) painel.addEventListener("change", function (ev) {
+    if (painel) {
+      painel.addEventListener("change", function (ev) {
+        var el = ev.target;
+        if (!el || !el.dataset || !el.dataset.campo) return;
+        aplicarEdicao(el);
+      });
+      /* o seletor de descritor: abre no foco, acompanha o teclado e fecha fora dele */
+      painel.addEventListener("focusin", function (ev) {
+        if (eraDescritor(ev.target)) abrirPick(ev.target);
+      });
+      painel.addEventListener("click", function (ev) {
+        if (!eraDescritor(ev.target)) return;
+        if (pick && pick.input === ev.target) atualizarPick();
+        else abrirPick(ev.target);
+      });
+      painel.addEventListener("input", function (ev) {
+        if (!eraDescritor(ev.target)) return;
+        if (pick && pick.input === ev.target) atualizarPick();
+        else abrirPick(ev.target);
+      });
+      painel.addEventListener("keydown", function (ev) {
+        var el = ev.target;
+        if (!eraDescritor(el) || !pick || pick.input !== el) return;
+        if (ev.key === "ArrowDown") { ev.preventDefault(); moverPick(1); }
+        else if (ev.key === "ArrowUp") { ev.preventDefault(); moverPick(-1); }
+        else if (ev.key === "Escape") { fecharPick(); }
+        else if (ev.key === "Enter" && pick.ativo >= 0) { ev.preventDefault(); escolherPick(pick.ativo); }
+      });
+    }
+    document.addEventListener("mousedown", function (ev) {
+      if (!pick) return;
       var el = ev.target;
-      if (!el || !el.dataset || !el.dataset.campo) return;
-      aplicarEdicao(el);
+      if (el === pick.input || (pick.el.contains && pick.el.contains(el))) return;
+      fecharPick();
     });
+    /* a caixa flutua sobre a página: rolar sem fechar tem que levar ela junto */
+    window.addEventListener("scroll", function () { if (pick) posicionarPick(); }, true);
+    window.addEventListener("resize", function () { if (pick) posicionarPick(); });
     var btnSalvarProva = $("cad-salvar-prova");
     if (btnSalvarProva) btnSalvarProva.addEventListener("click", function () {
       salvarProvaNoBanco().then(function (salvo) {
@@ -876,6 +1073,23 @@
     aplicarEdicao: aplicarEdicao,
     esquecerProvaLocal: esquecerProvaLocal,
     salvarProvaNoBanco: salvarProvaNoBanco,
+    /* o seletor de descritor, para o teste bater na campainha sem depender de foco de browser */
+    seletorDeDescritor: {
+      abrir: abrirPick,
+      digitar: function (el, texto) {
+        el.value = texto;
+        if (pick && pick.input === el) atualizarPick();
+        else abrirPick(el);
+      },
+      mover: moverPick,
+      escolher: escolherPick,
+      fechar: fecharPick,
+      aberto: function () { return !!pick; },
+      itens: function () { return pick ? pick.itens.slice() : []; },
+      ativo: function () { return pick ? pick.ativo : -1; },
+      contexto: contextoDaProva,
+      listaDe: function (texto, contexto) { return itensDoDescritor(texto, contexto); }
+    },
     aoAbrir: function () { carregarListas().catch(function () { /* avisado */ }); }
   };
 })(typeof window !== "undefined" ? window : globalThis);

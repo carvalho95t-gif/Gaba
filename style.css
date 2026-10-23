@@ -185,6 +185,19 @@ a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; 
     .q-rev .q-desc, .q-rev .q-bncc { grid-column: 2 / -1; }
 }
 
+/* --- o seletor de descritor (uiCaderno): flutua sobre a pagina inteira, porque dentro do
+   .q-editor ele nasceria cortado pelo overflow do proprio editor --- */
+.q-pick { position: fixed; z-index: 60; background: var(--branco); border: 1px solid var(--linha-2);
+    border-radius: var(--raio-s); box-shadow: var(--sombra-2); overflow: auto; font-size: .78rem; color: var(--tinta-2); }
+.q-pick-item { padding: 6px 10px; border-bottom: 1px solid var(--linha); cursor: pointer; }
+.q-pick-item.ativo { background: var(--menta-fundo); }
+.q-pick-item b { font-size: .8rem; color: var(--tinta); }
+.q-pick-item span { display: block; font-size: .68rem; letter-spacing: .04em; color: var(--tinta-3); }
+.q-pick-item p { margin: 2px 0 0; }
+.q-pick-mais { padding: 7px 10px; color: var(--tinta-3); font-style: italic; }
+.q-pick-foot { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--linha);
+    padding: 4px 10px; font-size: .68rem; color: var(--tinta-3); }
+
 /* --- analise de item e distratores (app.js + analise.js) --- */
 .ana-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0 8px; }
 .ana-card { background: var(--branco); border: 1px solid var(--linha); border-radius: var(--raio-m); padding: 12px 14px; box-shadow: var(--sombra-1); }

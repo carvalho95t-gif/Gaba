@@ -304,7 +304,7 @@
     var i = 0;
     var n = conteudo.length;
     /* estado grafico so interessa no modo por posicao: no legado nada disso muda uma letra */
-    var ctm = IDENTIDADE;
+    var ctm = (cam && cam.matriz) || IDENTIDADE;
     var pilhaCtm = [];
     var tm = IDENTIDADE;
     var tlm = IDENTIDADE;
@@ -501,27 +501,29 @@
 
   /* quem desenha letra por letra (camada de texto de digitalizado, export de Indesign) põe cada
      glifo no seu próprio BT..ET: aqui as peças voltam a virar linha pela coordenada em que
-     caíram no papel, e não pela ordem em que o gravador as escreveu */
-  function textoDasRuns(runs) {
-    var linhas = [];
+     caíram no papel, e não pela ordem em que o gravador as escreveu.
+     não sabe ler coluna: célula que quebra sozinha ainda se embaralha com a vizinha */
+  function linhasDasRuns(runs) {
+    var grupos = [];
     for (var i = 0; i < runs.length; i++) {
       var r = runs[i];
       var tam = r.tamanho || 1;
       var achada = null;
-      for (var k = linhas.length - 1; k >= 0 && k >= linhas.length - 16; k--) {
-        if (Math.abs(linhas[k].y - r.y) <= Math.max(1, 0.34 * tam)) { achada = linhas[k]; break; }
+      /* duas pedacas estao na mesma linha se a base delas bate: a folga e miuda porque o
+         espacamento entre linhas do mesmo paragrafo mal passa do dobro disso */
+      for (var k = grupos.length - 1; k >= 0 && k >= grupos.length - 16; k--) {
+        if (Math.abs(grupos[k].y - r.y) <= Math.max(1, 0.12 * tam)) { achada = grupos[k]; break; }
       }
       if (!achada) {
         achada = { y: r.y, runs: [], tam: 0 };
-        linhas.push(achada);
+        grupos.push(achada);
       }
       achada.runs.push(r);
       if (tam > achada.tam) achada.tam = tam;
     }
-    var saida = "";
-    var anterior = null;
-    for (var t = 0; t < linhas.length; t++) {
-      var linha = linhas[t];
+    var saida = [];
+    for (var t = 0; t < grupos.length; t++) {
+      var linha = grupos[t];
       var corpo = linha.tam || 1;
       linha.runs.sort(function (a, b) { return a.x - b.x; });
       var texto = "";
@@ -534,11 +536,33 @@
         if (pedaco.fim > fim) fim = pedaco.fim;
       }
       if (!texto) continue;
-      if (saida) saida += anterior && Math.abs(anterior.y - linha.y) > Math.max(2, 1.7 * corpo) ? "\n\n" : "\n";
-      saida += texto;
+      saida.push({
+        x: linha.runs[0].x, y: linha.y, tamanho: corpo, texto: texto,
+        /* as pedacas na ordem do papel: quem monta matriz de referencia separa assim a coluna
+           do codigo da coluna da descricao, coisa que o texto corrido nao consegue */
+        partes: linha.runs.map(function (p) { return { x: p.x, fim: p.fim, texto: p.texto }; })
+      });
+    }
+    return saida;
+  }
+
+  function textoDasLinhas(linhas) {
+    var saida = "";
+    var anterior = null;
+    for (var t = 0; t < linhas.length; t++) {
+      var linha = linhas[t];
+      /* um salto de linha maior que a altura de uma linha e paragrafo novo, nao a linha de baixo */
+      if (saida) {
+        saida += anterior && Math.abs(anterior.y - linha.y) > Math.max(2, 1.7 * linha.tamanho) ? "\n\n" : "\n";
+      }
+      saida += linha.texto;
       anterior = linha;
     }
     return saida;
+  }
+
+  function textoDasRuns(runs) {
+    return textoDasLinhas(linhasDasRuns(runs));
   }
 
   /* cada linha do PDF vem num bloco de texto proprio: emendamos na anterior tudo que nao comeca
@@ -736,7 +760,12 @@
       if (camada) {
         var site = camada.dos[chamados - 1];
         var mae = site && site.nome === m[1].slice(1) ? site.matriz : IDENTIDADE;
-        dentro = { runs: camada.runs, matriz: mul(mul(camada.matriz, mae), matrizDoForm(form.dict)), dos: [] };
+        /* o form herda a matriz do ponto onde foi desenhado: sem isso a coordenada do texto
+           fica no espaco do form e nao na folha */
+        dentro = {
+          runs: camada.runs, dos: [],
+          matriz: mul(mul(camada.matriz, mae), matrizDoForm(form.dict))
+        };
       }
       partes.push(await textoEmCamadas(latin1(bruto), fontesDoForm, res, objs, avisos, onde,
         cache, vistos, profundidade + 1, dentro));
@@ -752,7 +781,8 @@
     return numeros.length === 6 ? numeros : IDENTIDADE;
   }
 
-  async function parsePdf(bytes) {
+  async function parsePdf(bytes, opcoes) {
+    var querGeometria = !!(opcoes && opcoes.geometria);
     var avisos = [];
     var buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.byteLength);
     var texto = latin1(buf);
@@ -765,6 +795,7 @@
     var objs = await lerObjetos(buf, texto);
     var cacheMapa = {};
     var paginas = [];
+    var estruturas = [];
     var semMapa = 0;
     /* a mesma folha pode ser lida mais de uma vez; os nomes de fonte sao por pagina */
     var promessas = [];
@@ -798,25 +829,30 @@
         var conteudo = new Uint8Array(total);
         var pos = 0;
         partes.forEach(function (p) { conteudo.set(p, pos); pos += p.length; });
-        if (!conteudo.length) return "";
+        if (!conteudo.length) return { texto: "", linhas: null };
         var corpo = latin1(conteudo);
         var t = await textoEmCamadas(corpo, fontes, resources, objs, avisos, onde, cacheMapa, {}, 0);
-        if (textoPicado(t)) {
-          /* o legado entregou chuva de letra sozinha: refaz a pagina pela coordenada do papel */
+        var linhas = null;
+        if (textoPicado(t) || querGeometria) {
+          /* o legado entregou chuva de letra sozinha: refaz a pagina pela coordenada do papel.
+             com geometria pedida, a corrida roda mesmo quando o legado ja estava bom: quem
+             monta matriz precisa do x e do y para separar as colunas da tabela */
           var corrida = { runs: [], matriz: IDENTIDADE, dos: null };
           await textoEmCamadas(corpo, fontes, resources, objs, avisos, onde, cacheMapa, {}, 0, corrida);
-          var porPosicao = textoDasRuns(corrida.runs);
-          if (global.__gabaCorrida) global.__gabaCorrida.push(corrida.runs);
-          if (semEspaco(porPosicao).length >= semEspaco(t).length * 0.98) t = porPosicao;
+          linhas = linhasDasRuns(corrida.runs);
+          var porPosicao = textoDasLinhas(linhas);
+          if (maisEmendaQue(t, porPosicao)) t = porPosicao;
+          else if (!querGeometria) linhas = null;
         }
         if (!Object.keys(fontes).length && /Tf/.test(corpo)) semMapa++;
-        return t;
+        return { texto: t, linhas: linhas };
       })());
     });
     var textos = await Promise.all(promessas);
-    textos.forEach(function (t) {
-      if (!t) return;
-      paginas.push(t);
+    textos.forEach(function (p) {
+      if (!p.texto) return;
+      paginas.push(p.texto);
+      estruturas.push(p.linhas);
     });
     if (!paginas.length) {
       return {
@@ -836,7 +872,11 @@
       texto: limpo, paginas: paginas.length, avisos: avisos.filter(unico),
       /* porPagina preserva as folhas sem texto: quem confere encaixe no papel precisa saber
          que a pagina existe e esta vazia, e nao que ela sumiu do array */
-      porPagina: textos.map(function (t) { return t || ""; })
+      porPagina: textos.map(function (t) { return (t && t.texto) || ""; }),
+      /* linhas: cada pagina que saiu do modo por posicao vem com as linhas e a coordenada que
+         elas ocupam no papel; quem for mont matriz de referencia precisa disso para saber de
+         que ano e cada descritor. pagina pelo caminho legado vem com null */
+      linhas: estruturas
     };
   }
 
@@ -844,10 +884,7 @@
 
   function semEspaco(texto) { return String(texto || "").replace(/\s+/g, "").length; }
 
-  /* PDF com camada de texto letra por letra: quase toda linha do legado tem uma ou duas
-     letras. um papel de verdade nao pica assim, entao so trocamos para o modo por posicao
-     quando ele aparece — o Word e o Chrome continuam no caminho de sempre. */
-  function textoPicado(texto) {
+  function picagem(texto) {
     var linhas = String(texto || "").split(/\n+/);
     var total = 0;
     var curtas = 0;
@@ -857,7 +894,26 @@
       total++;
       if (linha.length <= 3) curtas++;
     }
-    return total >= 30 && curtas / total >= 0.6;
+    return { total: total, curtas: curtas };
+  }
+
+  /* PDF com camada de texto desenhada pedaca por pedaca: quase toda linha do legado sai com uma
+     ou duas letras, coisa que nenhum papel de verdade faz. So ai tentamos o modo por posicao —
+     um papel do Word, com linhas de verdade, nem chega perto. */
+  function textoPicado(texto) {
+    var p = picagem(texto);
+    var r = p.total ? p.curtas / p.total : 0;
+    return (p.total >= 30 && r >= 0.75) || (p.total >= 5 && r >= 0.85);
+  }
+
+  /* o modo por posicao so substitui o legado quando ele de fato emenda: mesma quantidade de
+     letra e bem menos linha picada. se a folha ja era linha de verdade, fica como estava. */
+  function maisEmendaQue(legado, posicao) {
+    if (!posicao) return false;
+    if (semEspaco(posicao).length < semEspaco(legado).length * 0.98) return false;
+    var a = picagem(legado);
+    var b = picagem(posicao);
+    return a.total >= 5 && b.total >= 1 && b.curtas / b.total <= a.curtas / a.total * 0.5;
   }
 
   global.GabaPdf = {

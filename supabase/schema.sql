@@ -48,6 +48,26 @@ create table if not exists public.professores (
   created_at timestamptz not null default now()
 );
 
+-- O catalogo oficial das matrizes de referencia (PAEBES / AMA). O mesmo conteudo ja vai
+-- embutido no app em js/descritoresMatriz.js; esta tabela existe para o seletor de descritor
+-- poder ser preenchido do banco quando o professor quiser uma lista fora do catalogo do app.
+-- So o seed (supabase/seed-descritores.sql) escreve aqui: o caderno le.
+create table if not exists public.descritores (
+  id uuid primary key default gen_random_uuid(),
+  chave text not null unique,
+  matriz text not null,
+  codigo text not null,
+  disciplina text,
+  componente text,
+  ano text,
+  banda text,
+  descricao text,
+  fonte text,
+  pagina integer,
+  duvidoso boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- Uma linha por caderno que foi para a impressora: é o que permite a qualquer
 -- aparelho ler a folha e saber a ordem das questões e a chave daquele aluno.
 -- turma_id e aluno_id sao uuid soltos de proposito: esta tabela e o diario do que
@@ -334,6 +354,10 @@ create index if not exists prova_versoes_prova_idx on public.prova_versoes (prov
 create index if not exists prova_versoes_lote_idx on public.prova_versoes (prova_id, lote_id);
 create unique index if not exists prova_versoes_uidx on public.prova_versoes (prova_id, codigo, coalesce(aluno_numero, -1));
 
+-- O seletor do caderno pede a lista por disciplina e ano; o codigo vem junto para a busca
+-- por texto andar no mesmo index.
+create index if not exists descritores_filtros_idx on public.descritores (disciplina, ano, codigo);
+
 -- upsertProfessor manda on_conflict=email, que so funciona com um index unique sobre a
 -- coluna. O "unique" da create table abaixo cobre o banco novo; isto cobre o antigo.
 do $$
@@ -360,6 +384,7 @@ alter table public.provas enable row level security;
 alter table public.correcoes enable row level security;
 alter table public.professores enable row level security;
 alter table public.prova_versoes enable row level security;
+alter table public.descritores enable row level security;
 
 drop policy if exists "turmas_select_anon" on public.turmas;
 drop policy if exists "turmas_insert_anon" on public.turmas;
@@ -434,3 +459,9 @@ create policy "prova_versoes_delete_anon" on public.prova_versoes for delete to 
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to anon, authenticated;
+
+-- So leitura: o catalogo vem dos PDFs oficiais e entra pelo seed, rodado no SQL Editor como
+-- superuser (que passa por cima do RLS). Sem policy de escrita, o app nao inventa descritor.
+drop policy if exists "descritores_select_anon" on public.descritores;
+create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);
+grant select on public.descritores to anon, authenticated;
