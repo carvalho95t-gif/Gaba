@@ -38,7 +38,7 @@ function instalarFake(cfg) {
   var estado = {
     antes: antes, fetchOriginal: window.fetch, reqs: [], seq: 0,
     mb: { turmas: [], alunos: [], provas: [], correcoes: [], escolas: [], professores: [] },
-    auth: { usuarios: [], pedeConfirmacao: false, seq: 0 }
+    auth: { usuarios: [], pedeConfirmacao: false, seq: 0, tokens: [] }
   };
   window.__gaba = estado;
   var mb = estado.mb;
@@ -138,8 +138,11 @@ function instalarFake(cfg) {
   }
   function sessaoPara(u) {
     auth.seq += 1;
+    var token = "fake-token-" + auth.seq;
+    /* o RLS falso decide pelo portador deste token: so vale o que o proprio fake emitiu */
+    auth.tokens.push(token);
     return {
-      key: "fake-" + auth.seq, access_token: "fake-token-" + auth.seq,
+      key: "fake-" + auth.seq, access_token: token,
       token_type: "bearer", expires_in: 36000, refresh_token: "fake-refresh-" + auth.seq,
       user: usuarioJson(u)
     };
@@ -189,6 +192,20 @@ function instalarFake(cfg) {
           message: "JSON object requested, multiple (or no) rows returned" });
       }
       return res(status || 200, aceitaObjeto ? arr[0] : arr);
+    }
+
+    /* o RLS de supabase/schema.sql: as tabelas com dado de aluno so atendem quem
+       entrou. leitura sem sessao devolve lista vazia (e o que o PostgREST faz de
+       verdade) e escrita sem sessao volta 42501. descritores fica de fora porque no
+       banco real continua aberto ao anon. */
+    var SO_LOGADO = ["turmas", "escolas", "alunos", "provas", "correcoes", "professores", "prova_versoes"];
+    function dentro(hd) {
+      var portador = String(hd.authorization || "").replace(/^Bearer\s+/i, "");
+      return auth.tokens.indexOf(portador) >= 0;
+    }
+    if (SO_LOGADO.indexOf(tabela) >= 0 && !dentro(hd)) {
+      if (metodo === "GET") return entrega([], 200);
+      return res(403, { code: "42501", message: 'new row violates row-level security policy for table "' + tabela + '"' });
     }
 
     if (metodo === "GET") {
@@ -1187,9 +1204,14 @@ async function dirigirLogin(marcos) {
       nome: texto("logado-nome"),
       email: texto("logado-email"),
       status: texto("app-status"),
+      badge: texto("status-conexao"),
       tokens: Object.keys(localStorage).filter(function (k) { return /^sb-.*-auth-token$/.test(k); }).length
     };
   }
+
+  /* a conta de setup ainda esta dentro: sair primeiro, para a historia comecar do zero */
+  document.getElementById("btn-sair").click();
+  await espera(function () { return window.GabaApp.estado.professor ? null : true; }, 9000);
 
   r.telaInicial = tela();
 
@@ -1330,7 +1352,7 @@ var LISTA = {
   try {
     c = hud.cliente(await hud.conectar("/index.html", chrome.porta));
     await c.espera("typeof GabaDB !== 'undefined' && typeof GabaApp !== 'undefined' && " +
-      "/credenciais|Nenhuma/.test(document.getElementById('lista-turmas').textContent)", 60000);
+      "/Sem conexão com o banco|Nenhuma/.test(document.getElementById('lista-turmas').textContent)", 60000);
 
     console.log("\n== sem credenciais ==");
     var inicio = await c.naPagina(vigiarErros, []);
@@ -1339,15 +1361,75 @@ var LISTA = {
     check("todos os modulos carregaram", inicio.modulosFaltando.length === 0, inicio.modulosFaltando);
     check("o selo diz que é só neste aparelho",
       inicio.badge === "Só neste aparelho" && /badge-off/.test(inicio.classe), inicio);
-    check("a lista de turmas explica o motivo", /Sem credenciais/.test(inicio.turmasVazias), inicio.turmasVazias);
+    check("a lista de turmas explica o motivo", /Sem conexão com o banco/.test(inicio.turmasVazias), inicio.turmasVazias);
+
+    console.log("\n== a conexão que vem dentro do pacote ==");
+    var pacote = await c.naPagina(function () {
+      var guardado = {
+        credencial: window.GabaCredencial,
+        url: localStorage.getItem("gaba_supabase_url"),
+        key: localStorage.getItem("gaba_supabase_key"),
+        anon: localStorage.getItem("gaba_supabase_anon_key"),
+        off: localStorage.getItem("gaba_supabase_desligada")
+      };
+      window.GabaCredencial = { url: "https://pacote.supabase.co", key: "chave-do-pacote" };
+      var r = { comecou: GabaDB.readConfig() };
+      /* o aparelho digitou nada: a dupla do pacote conecta sozinho, sem tela de credencial */
+      r.limpa = GabaDB.usarCredencialDoPacote() === undefined && GabaDB.readConfig();
+      r.configurado = GabaDB.isConfigured();
+      /* digitou as duas caixas vazias: este aparelho para de subir, mas o pacote existe */
+      GabaDB.saveConfig("", "");
+      r.desligado = GabaDB.readConfig();
+      r.saiDoPacote = GabaDB.temCredencialDoPacote();
+      GabaDB.usarCredencialDoPacote();
+      r.religado = GabaDB.readConfig();
+      /* e o que o professor digita vale mais que o pacote */
+      GabaDB.saveConfig("https://digitado.supabase.co", "chave-digitada");
+      r.digitada = GabaDB.readConfig();
+      ["gaba_supabase_url", "gaba_supabase_key", "gaba_supabase_anon_key", "gaba_supabase_desligada"]
+        .forEach(function (k) { localStorage.removeItem(k); });
+      window.GabaCredencial = guardado.credencial;
+      return r;
+    }, []);
+    check("sem nada digitado o aparelho abre conectado pela dupla do pacote",
+      pacote.limpa.url === "https://pacote.supabase.co" && pacote.limpa.key === "chave-do-pacote" &&
+      pacote.limpa.doPacote === true && pacote.configurado === true, pacote);
+    check("caixas vazias desligam a subida só neste aparelho, sem apagar a do pacote",
+      pacote.desligado.url === "" && pacote.desligado.doPacote === false && pacote.saiDoPacote === true,
+      pacote.desligado);
+    check("o botao do pacote religa o aparelho",
+      pacote.religado.url === "https://pacote.supabase.co" && pacote.religado.doPacote === true, pacote.religado);
+    check("o que o professor digita tem prioridade sobre a dupla do pacote",
+      pacote.digitada.url === "https://digitado.supabase.co" && pacote.digitada.doPacote === false,
+      pacote.digitada);
 
     await c.naPagina(instalarFake, [{ url: "https://fake.local.supabase.co", key: "chave-falsa-para-teste" }]);
     await c.naPagina(function () { return GabaApp.carregarTudo().then(function () { return "carregado"; }); }, []);
+    var semLogin = await c.naPagina(function () {
+      return { badge: document.getElementById("status-conexao").textContent,
+        classe: document.getElementById("status-conexao").className,
+        turmas: document.getElementById("lista-turmas").textContent.trim().slice(0, 80) };
+    }, []);
+    check("com a conexão do pacote mas sem sessão o selo pede entrada",
+      semLogin.badge === "Precisa entrar" && /badge-off/.test(semLogin.classe) &&
+      /Entre com o seu e-mail/.test(semLogin.turmas), semLogin);
+
+    /* o resto da tela fala com o banco, e o banco falso agora so atende logado:
+       a conta de setup entra antes de qualquer cadastro */
+    await c.naPagina(function (m) {
+      window.__gaba.auth.usuarios.push({
+        id: "aaaaaaaa-bbbb-4ccc-8ddd-00000000000f", email: m.email, senha: m.senha,
+        nome: m.nome, criado: new Date().toISOString(), confirmado: true
+      });
+      return GabaDB.entrar(m.email, m.senha).then(function () {
+        return GabaApp.carregarTudo().then(function () { return "dentro"; });
+      });
+    }, [{ email: "setup@example.test", senha: "gaba-setup-1", nome: "Setup (teste)" }]);
     var conectado = await c.naPagina(function () {
       return { badge: document.getElementById("status-conexao").textContent,
         classe: document.getElementById("status-conexao").className };
     }, []);
-    check("com credenciais o selo vira Conectado",
+    check("com credenciais e login o selo vira Conectado",
       conectado.badge === "Supabase Conectado" && /badge-on/.test(conectado.classe), conectado);
 
     console.log("\n== turmas e alunos ==");
@@ -1657,6 +1739,11 @@ var LISTA = {
     check("sair tira o professor mas deixa a conexao do banco",
       lg.saiu && lg.saiu.logado === false && lg.saiu.loginVisivel === true &&
       lg.saiu.guardadoVisivel === true && lg.saiu.conexaoAberta === false, lg.saiu);
+    check("sem login o selo pede entrada, nao diz que esta conectado",
+      lg.telaInicial.badge === "Precisa entrar" && lg.saiu && lg.saiu.badge === "Precisa entrar",
+      [lg.telaInicial.badge, lg.saiu && lg.saiu.badge]);
+    check("entrar devolve o selo de conectado",
+      lg.depoisDeEntrar && lg.depoisDeEntrar.badge === "Supabase Conectado", lg.depoisDeEntrar);
 
     console.log("\n== nada quebrou nem ficou para trás ==");
     var e = await c.naPagina(colherErros, []);

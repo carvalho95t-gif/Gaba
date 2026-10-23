@@ -42,6 +42,9 @@
     if (/invalid input syntax for type uuid/i.test(m)) return "Há um id que ainda só existe neste aparelho.";
     if (/Failed to fetch|NetworkError|fetch/i.test(m)) return "Sem rede: o registro ficou guardado neste aparelho.";
     if (/Invalid login credentials/i.test(m)) return "E-mail ou senha não batem. Ainda não tem conta? Use \"Criar conta de professor\".";
+    if (/row-level security|permission denied for table|42501|401 unauthorized/i.test(m)) {
+      return "O banco só atende quem entrou. Faça o login na aba Ajustes; o que você fizer até lá fica neste aparelho.";
+    }
     if (/Email not confirmed|confirm(?:ation)? (?:link|e-?mail)|verify.*e-?mail/i.test(m)) {
       return "Falta confirmar o e-mail: abra a mensagem que o Supabase enviou, ou desligue \"Confirm email\" no projeto.";
     }
@@ -49,20 +52,41 @@
     return m || "Erro desconhecido.";
   }
 
-  function dbOk() {
+  function temConexao() {
     return Boolean(window.GabaDB && GabaDB.isConfigured());
+  }
+
+  /* o banco agora so atende quem entrou: a anon key esta no pacote publico, entao a
+     trava e a sessao do professor. sem ela o app segue trabalhando no aparelho. */
+  function dbOk() {
+    return temConexao() && Boolean(app.professor);
+  }
+
+  function faltaParaOBanco() {
+    return temConexao()
+      ? "Entre com o seu e-mail e a sua senha na aba Ajustes: sem login o banco não atende."
+      : "Sem conexão com o banco. Configure em Ajustes > Banco de dados.";
   }
 
   function badge() {
     var el = $("status-conexao");
     if (!el) return;
-    el.textContent = dbOk() ? "Supabase Conectado" : "Só neste aparelho";
-    el.className = "badge " + (dbOk() ? "badge-on" : "badge-off");
+    if (dbOk()) {
+      el.textContent = "Supabase Conectado";
+      el.className = "badge badge-on";
+    } else if (temConexao()) {
+      el.textContent = "Precisa entrar";
+      el.className = "badge badge-off";
+    } else {
+      el.textContent = "Só neste aparelho";
+      el.className = "badge badge-off";
+    }
   }
 
   /* ------------------------------------------------------------------ dados */
 
   async function carregarTudo() {
+    await carregarProfessor();
     badge();
     if (window.GabaCaderno && GabaCaderno.carregarProvasLocais) {
       try {
@@ -96,7 +120,6 @@
       app.correcoes = [];
     }
     await carregarEscolas();
-    await carregarProfessor();
     app.momento = Date.now();
     desenharTudo();
     desenharAjustes();
@@ -117,11 +140,23 @@
 
   async function carregarProfessor() {
     app.professor = null;
-    if (!dbOk() || !GabaDB.usuario) return;
+    if (!temConexao() || !GabaDB.usuario) return;
     try {
       app.professor = await GabaDB.usuario();
     } catch (err) {
       app.professor = null;
+    }
+  }
+
+  /* o que foi lido sem login esta guardado no aparelho: no instante em que o professor
+     entra, a fila inteira sobe para o banco */
+  async function descerFila() {
+    if (!window.GabaSync || !GabaSync.flush) return null;
+    try {
+      var r = await GabaSync.flush();
+      return { synced: (r && r.synced) || 0, restantes: await GabaSync.countPending() };
+    } catch (err) {
+      return null;
     }
   }
 
@@ -197,8 +232,12 @@
         if (!window.GabaSync) return;
         var r = await GabaSync.flush();
         var restantes = await GabaSync.countPending();
-        aviso((r.synced ? r.synced + " subida(s) ao banco. " : "") +
-          (restantes ? restantes + " leitura(s) ainda só neste aparelho." : "Nada parado no aparelho."), restantes ? "erro" : "ok");
+        if (r && r.reason === "unauthenticated") {
+          aviso("Sem login o banco não atende: " + restantes + " leitura(s) presas neste aparelho. Entre na aba Ajustes.", "erro");
+        } else {
+          aviso((r.synced ? r.synced + " subida(s) ao banco. " : "") +
+            (restantes ? restantes + " leitura(s) ainda só neste aparelho." : "Nada parado no aparelho."), restantes ? "erro" : "ok");
+        }
       } else {
         return;
       }
@@ -378,7 +417,7 @@
     }
     var turmaId = $("imp-turma") ? $("imp-turma").value : "";
     if (!dbOk()) {
-      impStatus("Sem credenciais na aba Ajustes: a lista de alunos só pode ser guardada no banco do professor.", "erro");
+      impStatus(faltaParaOBanco() + " A lista de alunos só pode ser guardada no banco do professor.", "erro");
       return;
     }
     if (!turmaId) {
@@ -623,7 +662,7 @@
     setTexto("dash-correcoes-count", lidas);
     setTexto("dash-nota", (filtrando ? "Mostrando a escola \"" + filtrando + "\". " : "") + (dbOk()
       ? (soAparelho ? soAparelho + " folha(s) corrigida(s) ainda só neste aparelho." : "Tudo que foi lido está no banco.")
-      : "Sem credenciais em Ajustes: turmas, provas e notas ficam só neste aparelho."));
+      : faltaParaOBanco() + " Turmas, provas e notas ficam só neste aparelho."));
     desenharPilhas(visiveis);
   }
 
@@ -652,7 +691,7 @@
     if (!visiveis.length) {
       box.innerHTML = "<p class=\"text-muted\">" + (dbOk()
         ? "Nenhuma turma no banco. Crie a primeira acima."
-        : "Sem credenciais: as turmas ficam no banco assim que você configurar o Supabase na aba Ajustes.") + "</p>";
+        : esc(faltaParaOBanco()) + " As turmas entram no banco depois disso.") + "</p>";
       return;
     }
     var E = window.GabaEscolas;
@@ -1143,7 +1182,7 @@
     if (formProva) formProva.addEventListener("submit", async function (ev) {
       ev.preventDefault();
       if (!dbOk()) {
-        aviso("Sem credenciais: importe o .docx na aba Cadernos para imprimir agora, ou configure o Supabase.", "erro");
+        aviso(faltaParaOBanco() + " Ou importe o .docx na aba Cadernos para imprimir agora.", "erro");
         return;
       }
       try {
@@ -1180,12 +1219,23 @@
       if (window.GabaSync && !navigator.onLine) aviso("Sem rede agora, mas as credenciais ficam guardadas aqui.", "erro");
       if (window.GabaDB) GabaDB.saveConfig(url, key);
       ajustes.credencialAberta = false;
-      badge();
       await carregarTudo();
       montarConfig();
-      aviso(dbOk()
-        ? "Conexão guardada neste aparelho: não precisa digitar de novo. Agora é só o login."
-        : "Credenciais apagadas: o app voltou a trabalhar só no aparelho.", "ok");
+      aviso(temConexao()
+        ? (url || key
+          ? "Este aparelho passa a usar o banco de " + url + ", e não a conexão do app."
+          : "O aparelho volta a usar a conexão que vem dentro do app.")
+        : "Nada sobe deste aparelho: a conexão está desligada aqui.", "ok");
+    });
+
+    var usarEmbutida = $("btn-usar-embutida");
+    if (usarEmbutida) usarEmbutida.addEventListener("click", async function () {
+      GabaDB.usarCredencialDoPacote();
+      await carregarTudo();
+      montarConfig();
+      aviso(temConexao()
+        ? "Conexão do app ativada neste aparelho. É só entrar com e-mail e senha."
+        : "Ainda sem conexão: preencha js/credencial.js com a URL e a anon key do projeto.", "ok");
     });
 
     var trocarCredencial = $("btn-trocar-credencial");
@@ -1204,8 +1254,10 @@
         $("form-login").reset();
         await carregarProfessor();
         desenharAjustes();
+        var fila = await descerFila();
         await carregarTudo();
-        aviso("Dentro. O Gaba agora salva como " + quemE() + ".", "ok");
+        aviso("Dentro. O Gaba agora salva como " + quemE() + "." +
+          (fila && fila.synced ? " " + fila.synced + " leitura(s) presas no aparelho subiram para o banco." : ""), "ok");
       } catch (err) {
         aviso(mensagemErro(err), "erro");
       }
@@ -1233,6 +1285,7 @@
         ajustes.contaAberta = false;
         await carregarProfessor();
         desenharAjustes();
+        await descerFila();
         await carregarTudo();
         aviso("Conta criada e você já está dentro como " + quemE() + ".", "ok");
       } catch (err) {
@@ -1247,7 +1300,8 @@
         app.professor = null;
         badge();
         desenharAjustes();
-        aviso("Você saiu. A conexão com o banco continua guardada neste aparelho.", "ok");
+        await carregarTudo();
+        aviso("Você saiu. O banco para de atender até entrar de novo; as leituras continuam neste aparelho.", "ok");
       } catch (err) {
         aviso(mensagemErro(err), "erro");
       }
@@ -1271,8 +1325,8 @@
     desenharAjustes();
   }
 
-  /* a conexao com o banco se faz uma vez so no aparelho: depois dela os campos somem
-     e o que o professor ve todo dia e o login dele. Entrar e opcional. */
+  /* a conexao ja vem dentro do pacote (js/credencial.js): os campos de digitar somem e
+     o que o professor ve todo dia e o login dele, que agora e o que abre o banco. */
   function desenharAjustes() {
     var cfg = window.GabaDB ? GabaDB.readConfig() : { url: "", key: "" };
     var cheio = Boolean(cfg.url && cfg.key);
@@ -1281,14 +1335,26 @@
     if (form) form.hidden = cheio && !ajustes.credencialAberta;
     var urlSalva = $("cfg-url-salva");
     if (urlSalva) urlSalva.textContent = cfg.url || "";
+    var como = $("cfg-como");
+    if (como) como.textContent = cfg.doPacote ? "Conexão embutida no app" : "Conexão guardada neste aparelho";
     var guarda = $("cfg-salva");
     if (guarda) guarda.hidden = !cheio;
     var trocar = $("btn-trocar-credencial");
     if (trocar) trocar.hidden = !cheio;
+    var usar = $("btn-usar-embutida");
+    if (usar) usar.hidden = !(window.GabaDB && GabaDB.temCredencialDoPacote() && !cheio);
+    var dicaCfg = $("cfg-aviso");
+    if (dicaCfg && !cheio && window.GabaDB && GabaDB.temCredencialDoPacote) {
+      dicaCfg.textContent = GabaDB.temCredencialDoPacote()
+        ? "A conexão embutida está desligada neste aparelho. Use \"Usar a conexão que vem no app\" para religar."
+        : "Nenhum banco ainda: preencha js/credencial.js com a Project URL e a anon key, ou digite aqui só para este aparelho.";
+    }
     var logado = $("professor-logado");
     if (logado) logado.hidden = !eu;
     var formLogin = $("form-login");
     if (formLogin) formLogin.hidden = Boolean(eu);
+    var pedirLogin = $("login-obrigatorio");
+    if (pedirLogin) pedirLogin.hidden = Boolean(eu) || !cheio;
     var abrirConta = $("btn-nova-conta");
     if (abrirConta) abrirConta.hidden = Boolean(eu) || ajustes.contaAberta;
     var formConta = $("form-conta");

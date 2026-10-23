@@ -20,6 +20,7 @@ const PRECACHE = [
   "./js/uiScanner.js",
   "./js/omrWorker.js",
   "./js/supabaseClient.js",
+  "./js/credencial.js",
   "./js/offlineSync.js",
   "./js/escolas.js",
   "./js/descritoresMatriz.js",

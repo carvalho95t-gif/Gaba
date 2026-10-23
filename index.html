@@ -336,7 +336,7 @@
                     <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password" required>
                     <button type="submit" class="btn-primary">Entrar</button>
                 </form>
-                <p class="text-muted" style="margin-top:10px;font-size:.85rem;">Entrar &eacute; opcional: sem login o Gaba continua corrigindo e salvando como sempre. Com login, o mesmo professor aparece em qualquer aparelho dele.</p>
+                <p id="login-obrigatorio" class="text-muted" style="margin-top:10px;font-size:.85rem;">Entrar &eacute; o que abre o banco: sem login o Gaba continua corrigindo e guardando tudo neste aparelho, e nada sobe para o Supabase.</p>
                 <button type="button" id="btn-nova-conta" class="btn-ghost" style="margin-top:12px;">Criar conta de professor</button>
                 <form id="form-conta" hidden>
                     <input type="text" id="conta-nome" placeholder="Seu nome (Ex: Prof. Ana)" required>
@@ -348,16 +348,17 @@
 
             <p class="passo">Banco de dados</p>
             <div class="form-container">
-                <p id="cfg-salva" hidden>Conex&atilde;o guardada neste aparelho: <code id="cfg-url-salva"></code></p>
+                <p id="cfg-salva" hidden><span id="cfg-como">Conex&atilde;o guardada neste aparelho</span>: <code id="cfg-url-salva"></code></p>
                 <button type="button" id="btn-trocar-credencial" class="btn-ghost" hidden>Trocar a conex&atilde;o</button>
+                <button type="button" id="btn-usar-embutida" class="btn-ghost" hidden>Usar a conex&atilde;o que vem no app</button>
                 <form id="form-config" hidden>
                     <input type="url" id="cfg-url" placeholder="Project URL (https://xyz.supabase.co)" required>
                     <input type="password" id="cfg-key" placeholder="Chave Pública (anon / public key)" required>
                     <button type="submit" class="btn-primary">Salvar Credenciais</button>
                 </form>
-                <p class="text-muted" style="margin-top: 12px; font-size: 0.84rem;">A chave pública (<code>anon</code>) é a que vai no app. A <code>service_role</code> fica no servidor — se ela entrar aqui, o banco inteiro passa a poder ser lido de qualquer navegador.</p>
+                <p id="cfg-aviso" class="text-muted" style="margin-top: 12px; font-size: 0.84rem;">A <code>anon key</code> &eacute; p&uacute;blica por natureza e vai dentro do app: quem protege o banco &eacute; o login, porque as pol&iacute;ticas s&oacute; atendem quem est&aacute; dentro. A <code>service_role</code> nunca entra aqui.</p>
             </div>
-            <p class="text-muted" style="font-size: 0.84rem;">O endere&ccedil;o e a chave se digitam uma vez s&oacute;. Depois disso quem abre o app &eacute; o login do professor.</p>
+            <p class="text-muted" style="font-size: 0.84rem;">O endere&ccedil;o e a chave v&ecirc;m no pr&oacute;prio pacote (js/credencial.js), ent&atilde;o nenhum aparelho precisa digitar nada. Digite aqui apenas se este celular deva apontar para outro banco.</p>
         </section>
 
         <!-- SOMENTE O QUE GABA FOLHA DESENHA ENTRA AQUI NA HORA DE IMPRIMIR -->
@@ -374,6 +375,7 @@
     <script src="js/listaAlunos.js"></script>
     <script src="js/folha.js"></script>
     <script src="js/analise.js"></script>
+    <script src="js/credencial.js"></script>
     <script src="js/supabaseClient.js"></script>
     <script src="js/offlineSync.js"></script>
     <script src="js/escolas.js"></script>

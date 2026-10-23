@@ -333,7 +333,8 @@
       var fila = $("scan-fila");
       return GabaSync.countPending().then(function (n) {
         if (fila) fila.textContent = String(n);
-        if (f && f.failed) status("Salvo no aparelho; " + f.failed + " nao subiu para o banco.", "erro");
+        if (f && f.reason === "unauthenticated") status("Salvo no aparelho: entre na aba Ajustes para isso subir para o banco.", "erro");
+        else if (f && f.failed) status("Salvo no aparelho; " + f.failed + " nao subiu para o banco.", "erro");
       });
     }).catch(function (err) {
       status("Nao conseguiu salvar: " + (err && err.message ? err.message : err), "erro");

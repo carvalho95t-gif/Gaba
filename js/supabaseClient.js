@@ -6,15 +6,30 @@
     url: "gaba_supabase_url",
     key: "gaba_supabase_anon_key",
     keyAlt: "gaba_supabase_key",
+    desligada: "gaba_supabase_desligada",
     professorId: "gaba_professor_id",
     professorNome: "gaba_professor_nome",
     professorEmail: "gaba_professor_email"
   };
 
+  /* a dupla do pacote publico; vazia enquanto ninguem preencher js/credencial.js */
+  function embutida() {
+    var p = global.GabaCredencial || {};
+    return { url: String(p.url || "").trim(), key: String(p.key || "").trim() };
+  }
+
   function readConfig() {
+    var digitadaUrl = (localStorage.getItem(STORAGE.url) || "").trim();
+    var digitadaKey = (localStorage.getItem(STORAGE.key) || localStorage.getItem(STORAGE.keyAlt) || "").trim();
+    var doPacote = localStorage.getItem(STORAGE.desligada) === "1" ? { url: "", key: "" } : embutida();
+    var url = digitadaUrl || doPacote.url;
+    var key = digitadaKey || doPacote.key;
     return {
-      url: (localStorage.getItem(STORAGE.url) || "").trim(),
-      key: (localStorage.getItem(STORAGE.key) || localStorage.getItem(STORAGE.keyAlt) || "").trim(),
+      url: url,
+      key: key,
+      /* o aparelho nao digitou nada e o que conecta vem do pacote: a tela de Ajustes
+         diz "embutida" em vez de "guardada neste aparelho" */
+      doPacote: Boolean(url && key && !digitadaUrl && !digitadaKey),
       professorId: localStorage.getItem(STORAGE.professorId) || "",
       professorNome: localStorage.getItem(STORAGE.professorNome) || "",
       professorEmail: localStorage.getItem(STORAGE.professorEmail) || ""
@@ -22,9 +37,15 @@
   }
 
   function saveConfig(url, key) {
-    localStorage.setItem(STORAGE.url, url || "");
-    localStorage.setItem(STORAGE.key, key || "");
-    localStorage.setItem(STORAGE.keyAlt, key || "");
+    var u = String(url || "").trim();
+    var k = String(key || "").trim();
+    localStorage.setItem(STORAGE.url, u);
+    localStorage.setItem(STORAGE.key, k);
+    localStorage.setItem(STORAGE.keyAlt, k);
+    /* com credencial dentro do pacote, caixas vazias nao querem dizer "sem banco" e sim
+       "este aparelho nao sobe nada": sem esta marca o app se reconectaria sozinho */
+    if (!u && !k) localStorage.setItem(STORAGE.desligada, "1");
+    else localStorage.removeItem(STORAGE.desligada);
     global.GabaDB.client = null;
   }
 
@@ -555,6 +576,18 @@
     client: null,
     readConfig: readConfig,
     saveConfig: saveConfig,
+    /* apaga a marca de "este aparelho nao sobe nada" e as credenciais digitadas:
+       o aparelho volta a se conectar com a dupla que vai dentro do pacote */
+    usarCredencialDoPacote: function () {
+      [STORAGE.desligada, STORAGE.url, STORAGE.key, STORAGE.keyAlt].forEach(function (k) {
+        localStorage.removeItem(k);
+      });
+      global.GabaDB.client = null;
+    },
+    temCredencialDoPacote: function () {
+      var p = embutida();
+      return Boolean(p.url && p.key);
+    },
     setProfessor: setProfessor,
     getClient: getClient,
     isConfigured: isConfigured,

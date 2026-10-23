@@ -166,6 +166,10 @@
     if (!global.GabaDB || !GabaDB.isConfigured() || !GabaDB.getClient()) {
       return { synced: 0, failed: 0, reason: "unconfigured" };
     }
+    /* o banco hoje so atende quem entrou: sem sessao a fila espera no aparelho, nada se perde */
+    if (GabaDB.usuario && !(await GabaDB.usuario())) {
+      return { synced: 0, failed: 0, reason: "unauthenticated" };
+    }
     var pending = await listPending();
     var synced = 0;
     var failed = 0;

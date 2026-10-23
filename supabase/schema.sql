@@ -376,6 +376,11 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- RLS
 -- ---------------------------------------------------------------------------
+-- A anon key vai dentro do pacote publico do GitHub Pages (js/credencial.js), entao ela
+-- nao pode ser a trava: sem login ninguem le nem escreve turma, aluno, prova, versao,
+-- correcao, escola ou professor. descritores e o unico aberto ao anon porque e o catalogo
+-- dos PDFs oficiais e nao tem dado de pessoa. O app fala com o banco depois que o
+-- professor entra com e-mail e senha.
 
 alter table public.turmas enable row level security;
 alter table public.escolas enable row level security;
@@ -387,81 +392,109 @@ alter table public.prova_versoes enable row level security;
 alter table public.descritores enable row level security;
 
 drop policy if exists "turmas_select_anon" on public.turmas;
+drop policy if exists "turmas_select_logado" on public.turmas;
 drop policy if exists "turmas_insert_anon" on public.turmas;
+drop policy if exists "turmas_insert_logado" on public.turmas;
 drop policy if exists "turmas_update_anon" on public.turmas;
+drop policy if exists "turmas_update_logado" on public.turmas;
 drop policy if exists "turmas_delete_anon" on public.turmas;
+drop policy if exists "turmas_delete_logado" on public.turmas;
 drop policy if exists turmas_all on public.turmas;
 
-create policy "turmas_select_anon" on public.turmas for select to anon, authenticated using (true);
-create policy "turmas_insert_anon" on public.turmas for insert to anon, authenticated with check (true);
-create policy "turmas_update_anon" on public.turmas for update to anon, authenticated using (true) with check (true);
-create policy "turmas_delete_anon" on public.turmas for delete to anon, authenticated using (true);
+create policy "turmas_select_logado" on public.turmas for select to authenticated using (true);
+create policy "turmas_insert_logado" on public.turmas for insert to authenticated with check (true);
+create policy "turmas_update_logado" on public.turmas for update to authenticated using (true) with check (true);
+create policy "turmas_delete_logado" on public.turmas for delete to authenticated using (true);
 
 drop policy if exists "escolas_select_anon" on public.escolas;
+drop policy if exists "escolas_select_logado" on public.escolas;
 drop policy if exists "escolas_insert_anon" on public.escolas;
+drop policy if exists "escolas_insert_logado" on public.escolas;
 drop policy if exists "escolas_update_anon" on public.escolas;
+drop policy if exists "escolas_update_logado" on public.escolas;
 drop policy if exists "escolas_delete_anon" on public.escolas;
+drop policy if exists "escolas_delete_logado" on public.escolas;
 
-create policy "escolas_select_anon" on public.escolas for select to anon, authenticated using (true);
-create policy "escolas_insert_anon" on public.escolas for insert to anon, authenticated with check (true);
-create policy "escolas_update_anon" on public.escolas for update to anon, authenticated using (true) with check (true);
-create policy "escolas_delete_anon" on public.escolas for delete to anon, authenticated using (true);
+create policy "escolas_select_logado" on public.escolas for select to authenticated using (true);
+create policy "escolas_insert_logado" on public.escolas for insert to authenticated with check (true);
+create policy "escolas_update_logado" on public.escolas for update to authenticated using (true) with check (true);
+create policy "escolas_delete_logado" on public.escolas for delete to authenticated using (true);
 
 drop policy if exists "alunos_select_anon" on public.alunos;
+drop policy if exists "alunos_select_logado" on public.alunos;
 drop policy if exists "alunos_insert_anon" on public.alunos;
+drop policy if exists "alunos_insert_logado" on public.alunos;
 drop policy if exists "alunos_update_anon" on public.alunos;
+drop policy if exists "alunos_update_logado" on public.alunos;
 drop policy if exists "alunos_delete_anon" on public.alunos;
+drop policy if exists "alunos_delete_logado" on public.alunos;
 drop policy if exists alunos_all on public.alunos;
 
-create policy "alunos_select_anon" on public.alunos for select to anon, authenticated using (true);
-create policy "alunos_insert_anon" on public.alunos for insert to anon, authenticated with check (true);
-create policy "alunos_update_anon" on public.alunos for update to anon, authenticated using (true) with check (true);
-create policy "alunos_delete_anon" on public.alunos for delete to anon, authenticated using (true);
+create policy "alunos_select_logado" on public.alunos for select to authenticated using (true);
+create policy "alunos_insert_logado" on public.alunos for insert to authenticated with check (true);
+create policy "alunos_update_logado" on public.alunos for update to authenticated using (true) with check (true);
+create policy "alunos_delete_logado" on public.alunos for delete to authenticated using (true);
 
 drop policy if exists "provas_select_anon" on public.provas;
+drop policy if exists "provas_select_logado" on public.provas;
 drop policy if exists "provas_insert_anon" on public.provas;
+drop policy if exists "provas_insert_logado" on public.provas;
 drop policy if exists "provas_update_anon" on public.provas;
+drop policy if exists "provas_update_logado" on public.provas;
 drop policy if exists "provas_delete_anon" on public.provas;
+drop policy if exists "provas_delete_logado" on public.provas;
 drop policy if exists provas_all on public.provas;
 
-create policy "provas_select_anon" on public.provas for select to anon, authenticated using (true);
-create policy "provas_insert_anon" on public.provas for insert to anon, authenticated with check (true);
-create policy "provas_update_anon" on public.provas for update to anon, authenticated using (true) with check (true);
-create policy "provas_delete_anon" on public.provas for delete to anon, authenticated using (true);
+create policy "provas_select_logado" on public.provas for select to authenticated using (true);
+create policy "provas_insert_logado" on public.provas for insert to authenticated with check (true);
+create policy "provas_update_logado" on public.provas for update to authenticated using (true) with check (true);
+create policy "provas_delete_logado" on public.provas for delete to authenticated using (true);
 
 drop policy if exists "correcoes_select_anon" on public.correcoes;
+drop policy if exists "correcoes_select_logado" on public.correcoes;
 drop policy if exists "correcoes_insert_anon" on public.correcoes;
+drop policy if exists "correcoes_insert_logado" on public.correcoes;
 drop policy if exists "correcoes_update_anon" on public.correcoes;
+drop policy if exists "correcoes_update_logado" on public.correcoes;
 drop policy if exists "correcoes_delete_anon" on public.correcoes;
+drop policy if exists "correcoes_delete_logado" on public.correcoes;
 
-create policy "correcoes_select_anon" on public.correcoes for select to anon, authenticated using (true);
-create policy "correcoes_insert_anon" on public.correcoes for insert to anon, authenticated with check (true);
-create policy "correcoes_update_anon" on public.correcoes for update to anon, authenticated using (true) with check (true);
-create policy "correcoes_delete_anon" on public.correcoes for delete to anon, authenticated using (true);
+create policy "correcoes_select_logado" on public.correcoes for select to authenticated using (true);
+create policy "correcoes_insert_logado" on public.correcoes for insert to authenticated with check (true);
+create policy "correcoes_update_logado" on public.correcoes for update to authenticated using (true) with check (true);
+create policy "correcoes_delete_logado" on public.correcoes for delete to authenticated using (true);
 
 drop policy if exists "professores_select_anon" on public.professores;
+drop policy if exists "professores_select_logado" on public.professores;
 drop policy if exists "professores_insert_anon" on public.professores;
+drop policy if exists "professores_insert_logado" on public.professores;
 drop policy if exists "professores_update_anon" on public.professores;
+drop policy if exists "professores_update_logado" on public.professores;
 
-create policy "professores_select_anon" on public.professores for select to anon, authenticated using (true);
-create policy "professores_insert_anon" on public.professores for insert to anon, authenticated with check (true);
-create policy "professores_update_anon" on public.professores for update to anon, authenticated using (true) with check (true);
+create policy "professores_select_logado" on public.professores for select to authenticated using (true);
+create policy "professores_insert_logado" on public.professores for insert to authenticated with check (true);
+create policy "professores_update_logado" on public.professores for update to authenticated using (true) with check (true);
 
 drop policy if exists "prova_versoes_select_anon" on public.prova_versoes;
+drop policy if exists "prova_versoes_select_logado" on public.prova_versoes;
 drop policy if exists "prova_versoes_insert_anon" on public.prova_versoes;
+drop policy if exists "prova_versoes_insert_logado" on public.prova_versoes;
 drop policy if exists "prova_versoes_update_anon" on public.prova_versoes;
+drop policy if exists "prova_versoes_update_logado" on public.prova_versoes;
 drop policy if exists "prova_versoes_delete_anon" on public.prova_versoes;
+drop policy if exists "prova_versoes_delete_logado" on public.prova_versoes;
 
-create policy "prova_versoes_select_anon" on public.prova_versoes for select to anon, authenticated using (true);
-create policy "prova_versoes_insert_anon" on public.prova_versoes for insert to anon, authenticated with check (true);
-create policy "prova_versoes_update_anon" on public.prova_versoes for update to anon, authenticated using (true) with check (true);
-create policy "prova_versoes_delete_anon" on public.prova_versoes for delete to anon, authenticated using (true);
-
-grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to anon, authenticated;
+create policy "prova_versoes_select_logado" on public.prova_versoes for select to authenticated using (true);
+create policy "prova_versoes_insert_logado" on public.prova_versoes for insert to authenticated with check (true);
+create policy "prova_versoes_update_logado" on public.prova_versoes for update to authenticated using (true) with check (true);
+create policy "prova_versoes_delete_logado" on public.prova_versoes for delete to authenticated using (true);
 
 -- So leitura: o catalogo vem dos PDFs oficiais e entra pelo seed, rodado no SQL Editor como
 -- superuser (que passa por cima do RLS). Sem policy de escrita, o app nao inventa descritor.
 drop policy if exists "descritores_select_anon" on public.descritores;
+
 create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to authenticated;
 grant select on public.descritores to anon, authenticated;
