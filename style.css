@@ -364,6 +364,37 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-linha-nota {
     width: 15mm;
 }
+/* a caixa de Nota do modelo: um quadro no fim da linha da assinatura, com a palavra em cima e
+   a regua de preenchimento la embaixo — nao "Nota: ___" solto no texto. assinatura e nota sao dois
+   <p> lado a lado de proposito: juntos numa linha so, o conferidor do PDF procura no papel um
+   texto que la sai como dois blocos separados e denuncia perda que nao houve */
+.folha-a4 .folha-assina-linha {
+    display: flex;
+    align-items: flex-end;
+    gap: 3mm;
+}
+.folha-a4 .folha-assina-linha .folha-assina { flex: 1 1 auto; min-width: 0; }
+.folha-a4 .folha-nota {
+    position: relative;
+    flex: 0 0 26mm;
+    height: 9mm;
+    border: 0.3mm solid #14181f;
+    text-align: center;
+}
+.folha-a4 .folha-nota em {
+    display: block;
+    font-style: normal;
+    font-weight: 700;
+    font-size: calc(8.4pt * var(--cab, 1));
+    padding-top: 0.6mm;
+}
+.folha-a4 .folha-nota .folha-linha-nota {
+    position: absolute;
+    left: 2mm;
+    right: 2mm;
+    bottom: 1.4mm;
+    width: auto;
+}
 .folha-a4 .folha-tipo {
     font-size: calc(8pt * var(--cab, 1));
     color: #333;
@@ -554,17 +585,20 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     font-weight: 600;
     font-style: italic;
 }
+/* cada alternativa e um <ol> proprio — e o tomo que o empacotador corta. o respiro mora no proprio
+   ol, de baixo para cima: uma regra de irmao (.folha-alt + .folha-alt) nao existe dentro da sonda
+   de medicao, que ve um ol sozinho, e a coluna estoura no papel por 1,2 mm x cada alternativa. */
 .folha-a4 .folha-alt {
-    margin: 0.6mm 0 0 4mm;
+    margin: 0 0 1.2mm 4mm;
     padding: 0;
     list-style: none;
 }
 .folha-a4 .folha-alt li {
-    margin: 0 0 1mm;
+    margin: 0;
     padding-left: 5.5mm;
     text-indent: -5.5mm;
-    line-height: 1.38;
-    text-align: left;
+    line-height: 1.4;
+    text-align: justify;
 }
 .folha-a4 .folha-letra {
     display: inline-block;
@@ -594,10 +628,41 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-cartao-titulo {
     position: absolute;
     margin: 0;
-    font-size: 8pt;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
+    font-size: 8.6pt;
+    font-weight: 400;
+    text-align: center;
+    /* a frase do modelo vem em serifa, como o resto da folha de gabarito dele */
+    font-family: Georgia, "Times New Roman", "Helvetica Neue", Arial, sans-serif;
+}
+/* moldura do cartao no estilo do modelo: dois filetes e a faixa "Prova:" colada no fundo.
+   e so tinta: fica por fora da grade, que continua nos mm do GabaLayout. */
+.folha-a4 .folha-cartao-moldura {
+    position: absolute;
+    border: 0.3mm solid #14181f;
+    padding: 0.5mm;
+    pointer-events: none;
+}
+.folha-a4 .folha-cartao-moldura::after {
+    content: "";
+    position: absolute;
+    left: 0.9mm;
+    right: 0.9mm;
+    top: 0.9mm;
+    bottom: 0.9mm;
+    border: 0.2mm solid #14181f;
+    pointer-events: none;
+}
+.folha-a4 .folha-cartao-prova {
+    position: absolute;
+    left: 2.5mm;
+    right: 2.5mm;
+    bottom: 1.2mm;
+    margin: 0;
+    text-align: center;
+    font-size: 8.4pt;
+    font-family: Georgia, "Times New Roman", "Helvetica Neue", Arial, sans-serif;
+    border-top: 0.2mm solid #14181f;
+    padding-top: 0.8mm;
 }
 .folha-a4 .folha-q {
     position: absolute;

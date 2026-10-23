@@ -99,7 +99,7 @@
     }).join("");
   }
 
-  function cartaoHtml(layout) {
+  function cartaoHtml(layout, versao) {
     var g = layout.grid;
     var largura = (g.cols - 1) * g.colGapMm + g.colContentMm;
     var altura = (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm;
@@ -117,10 +117,28 @@
       }
       linhas += "</div>";
     }
+    /* acima da primeira bolha so sobra um fiapo: 6 mm de silencio em volta do QR, e a grade comeca
+       nos 70 mm. por isso a instrucao do cartao e uma linha centrada sobre a moldura, nao uma faixa
+       dentro dela. a moldura e so tinta — as bolhas continuam nos mesmos mm de sempre. */
+    var topoMoldura = Math.max(layout.qr.yMm + layout.qr.hMm + layout.qrFolgaRecorteMm + 0.5, g.yMm - 8.5);
     var tituloTopo = Math.max(layout.qr.yMm + layout.qr.hMm + 1, g.yMm - 7);
+    var fundoMoldura = g.yMm + g.questionsPerCol * g.rowGapMm + 1;
+    var larguraMoldura = largura + 10;
+    var codigo = versao && versao.codigo ? "Prova: " + versao.codigo : "";
+    /* a faixa do pe so entra se sobrar 4,5 mm limpos abaixo das letras da ultima linha; sem isso
+       ela assentaria em cima do "A B C D E" miudo, que ja cola no fundo da grade */
+    var folgaPe = fundoMoldura - (g.yMm + (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm + 3.4);
+    var pe = '<p class="folha-cartao-prova">' + esc(codigo) + "</p>";
+    var instrucao = "Marque o gabarito preenchendo completamente a regi&#227;o de cada alternativa." +
+      (codigo && folgaPe < 4.5 ? " &#183; " + esc(codigo) : "");
+    var moldura = '<div class="folha-cartao-moldura" style="left:' + (g.xMm - 5) + "mm;top:" +
+      Math.round(topoMoldura * 10) / 10 + "mm;width:" + larguraMoldura + "mm;height:" +
+      Math.round((fundoMoldura - topoMoldura) * 10) / 10 + 'mm">' +
+      (codigo && folgaPe >= 4.5 ? pe : "") + "</div>";
     return '<section class="folha-cartao" style="width:' + largura + "mm;height:" + (altura + g.rowGapMm * 2) + 'mm">' +
-      '<p class="folha-cartao-titulo" style="left:' + g.xMm + "mm;top:" + tituloTopo + 'mm">Cart&#227;o de respostas</p>' +
-      '<div class="folha-cartao-area">' + linhas + "</div></section>";
+      '<p class="folha-cartao-titulo" style="left:' + (g.xMm - 5) + "mm;top:" + tituloTopo +
+      "mm;width:" + larguraMoldura + 'mm">' + instrucao + "</p>" +
+      moldura + '<div class="folha-cartao-area">' + linhas + "</div></section>";
   }
 
   function estiloDe(cfg) {
@@ -185,7 +203,9 @@
     p.push(cabeca);
     if (q.comando) p.push('<p class="folha-comando">' + esc(strip(q.comando)) + "</p>");
     (q.alternativas || []).forEach(function (a) {
-      p.push('<ol class="folha-alt"><li><span class="folha-letra">' + esc(a.letra) + ")</span> " +
+      /* sem espaco depois da letra: o espaco em branco e o unico ponto de ajuste do texto
+         justificado, e ele empurraria a alternativa para a direita linha a linha */
+      p.push('<ol class="folha-alt"><li><span class="folha-letra">' + esc(a.letra) + ")</span>" +
         esc(strip(a.texto)) + "</li></ol>");
     });
     return p;
@@ -265,8 +285,9 @@
     l.push('<p class="folha-aluno">Aluno(a): <strong>' + esc(aluno.nome || "") + "</strong>" +
       (aluno.numero != null && aluno.numero !== "" ? "  ·  nº " + esc(aluno.numero) : "") +
       (aluno.matricula ? "  ·  matrícula " + esc(aluno.matricula) : "") + "</p>");
-    l.push('<p class="folha-assina">Assinatura do(a) estudante: <span class="folha-linha"></span>' +
-      '  Nota: <span class="folha-linha folha-linha-nota"></span></p>');
+    l.push('<div class="folha-assina-linha">' +
+      '<p class="folha-assina">Assinatura do(a) estudante: <span class="folha-linha"></span></p>' +
+      '<p class="folha-nota"><em>Nota</em><span class="folha-linha folha-linha-nota"></span></p></div>');
     l.push('<p class="folha-tipo">Caderno <strong>' + esc(versao.rotulo || "UNICO") + "</strong>" +
       "  ·  código " + esc(versao.codigo || "") + "  ·  " +
       (versao.embaralhouQuestoes ? "questões embaralhadas" : "ordem original") +
@@ -449,7 +470,7 @@
       fiduciaisHtml(ctx.layout) +
       '<img class="folha-qr" src="' + ctx.qr + '" alt="QR ' + esc(ctx.payload) + '">' +
       cabecalhoHtml(ctx.cfg, prova, aluno, ctx.turmaNome, ctx.versao) +
-      cartaoHtml(ctx.layout) +
+      cartaoHtml(ctx.layout, ctx.versao) +
       (ctx.instrucoesDaCapa || "") +
       (resultadoCabe(ctx.layout) ? resultadoCapaHtml(ctx.versao) : "") +
       rodapeHtml(aluno, ctx.versao, ctx) +
