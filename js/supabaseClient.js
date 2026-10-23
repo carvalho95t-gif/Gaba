@@ -76,6 +76,81 @@
     return data;
   }
 
+  /* ---------------------------------------------------------- login do professor
+     A conexao com o banco se faz uma vez so no aparelho. O que o professor digita
+     todo dia é e-mail e senha: o token fica no armazenamento do proprio supabase-js,
+     entao abrir o app de novo ja vem com a sessao montada, sem perguntar de novo. */
+
+  function authDisponivel() {
+    var client = getClient();
+    return client ? client.auth : null;
+  }
+
+  async function usuario() {
+    var a = authDisponivel();
+    if (!a) return null;
+    try {
+      var { data } = await a.getSession();
+      var u = data && data.session && data.session.user;
+      if (!u || !u.id) return null;
+      return { id: u.id, email: u.email || "", nome: (u.user_metadata || {}).nome || "" };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /* a linha de professores e o que da nome ao login; falar aqui nao desfaz o login,
+     porque quem segura o aparelho a partir de agora e a sessao do auth */
+  async function vincularProfessor(user) {
+    var email = String(user.email || "").trim().toLowerCase();
+    if (!email) return null;
+    var nome = (user.user_metadata || {}).nome || readConfig().professorNome || email.split("@")[0];
+    try {
+      return await upsertProfessor(nome, email);
+    } catch (err) {
+      setProfessor(readConfig().professorId, nome, email);
+      return null;
+    }
+  }
+
+  async function entrar(email, senha) {
+    var a = authDisponivel();
+    if (!a) throw new Error("Supabase não configurado.");
+    var e = String(email || "").trim().toLowerCase();
+    if (!e || !senha) throw new Error("Escreva o e-mail e a senha.");
+    var { data, error } = await a.signInWithPassword({ email: e, password: String(senha) });
+    if (error) throw error;
+    await vincularProfessor(data.user);
+    return data.user;
+  }
+
+  async function criarConta(nome, email, senha) {
+    var a = authDisponivel();
+    if (!a) throw new Error("Supabase não configurado.");
+    var e = String(email || "").trim().toLowerCase();
+    var s = String(senha || "");
+    if (!String(nome || "").trim()) throw new Error("Diga o seu nome.");
+    if (!e) throw new Error("Escreva o seu e-mail.");
+    if (s.length < 6) throw new Error("A senha precisa de pelo menos 6 caracteres.");
+    var { data, error } = await a.signUp({
+      email: e, password: s, options: { data: { nome: String(nome).trim() } }
+    });
+    if (error) throw error;
+    /* sem sessao é o projeto pedindo a confirmação do e-mail: a conta existe, ainda nao abre */
+    if (!data.session) return { user: data.user, confirmado: false };
+    await vincularProfessor(data.user);
+    return { user: data.user, confirmado: true };
+  }
+
+  async function sair() {
+    var a = authDisponivel();
+    if (a) {
+      var { error } = await a.signOut();
+      if (error) throw error;
+    }
+    setProfessor("", "", "");
+  }
+
   async function fetchCorrecoes() {
     var client = getClient();
     if (!client) return [];
@@ -308,6 +383,28 @@
     if (error) throw error;
   }
 
+  async function listEscolas() {
+    var client = getClient();
+    if (!client) return [];
+    var { data, error } = await client.from("escolas").select("*").order("nome");
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function salvarEscola(dados) {
+    var client = getClient();
+    if (!client) throw new Error("Supabase não configurado.");
+    var nome = String(dados.nome || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!nome) throw new Error("Dê um nome para a escola.");
+    return um(client, "escolas", { nome: nome }, eUuid(dados.id) ? dados.id : null);
+  }
+
+  function excluirEscola(id) {
+    var client = getClient();
+    if (!client) return Promise.reject(new Error("Supabase não configurado."));
+    return excluir(client, "escolas", id);
+  }
+
   async function salvarTurma(dados) {
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
@@ -463,6 +560,13 @@
     isConfigured: isConfigured,
     eUuid: eUuid,
     upsertProfessor: upsertProfessor,
+    usuario: usuario,
+    entrar: entrar,
+    criarConta: criarConta,
+    sair: sair,
+    listEscolas: listEscolas,
+    salvarEscola: salvarEscola,
+    excluirEscola: excluirEscola,
     fetchCorrecoes: fetchCorrecoes,
     insertCorrecao: insertCorrecao,
     upsertProvaVersoes: upsertProvaVersoes,

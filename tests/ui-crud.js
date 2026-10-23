@@ -31,10 +31,15 @@ function vigiarErros() {
 }
 
 function instalarFake(cfg) {
-  var CHAVES = ["gaba_supabase_url", "gaba_supabase_key", "gaba_supabase_anon_key"];
+  var CHAVES = ["gaba_supabase_url", "gaba_supabase_key", "gaba_supabase_anon_key",
+    "gaba_escolas_registro", "gaba_professor_id", "gaba_professor_nome", "gaba_professor_email"];
   var antes = {};
   CHAVES.forEach(function (k) { antes[k] = localStorage.getItem(k); });
-  var estado = { antes: antes, fetchOriginal: window.fetch, mb: { turmas: [], alunos: [], provas: [], correcoes: [] }, reqs: [], seq: 0 };
+  var estado = {
+    antes: antes, fetchOriginal: window.fetch, reqs: [], seq: 0,
+    mb: { turmas: [], alunos: [], provas: [], correcoes: [], escolas: [], professores: [] },
+    auth: { usuarios: [], pedeConfirmacao: false, seq: 0 }
+  };
   window.__gaba = estado;
   var mb = estado.mb;
 
@@ -115,6 +120,57 @@ function instalarFake(cfg) {
     })[0] || null;
   }
 
+  /* ------------------------------------------------------------ auth falso
+     O GoTrueClient de verdade bate nesta porta: /auth/v1/token, /signup e /logout.
+     Nao sai pedido daqui e a sessao fica no localStorage do proprio supabase-js. */
+  var auth = estado.auth;
+  function achaUsuario(email) {
+    var e = String(email || "").trim().toLowerCase();
+    return auth.usuarios.filter(function (u) { return u.email === e; })[0] || null;
+  }
+  function usuarioJson(u) {
+    return {
+      id: u.id, aud: "authenticated", role: "authenticated", email: u.email,
+      phone: null, user_metadata: { nome: u.nome }, app_metadata: { provider: "email" },
+      created_at: u.criado, confirmed_at: u.confirmado ? u.criado : null,
+      email_confirmed_at: u.confirmado ? u.criado : null, last_sign_in_at: u.criado
+    };
+  }
+  function sessaoPara(u) {
+    auth.seq += 1;
+    return {
+      key: "fake-" + auth.seq, access_token: "fake-token-" + auth.seq,
+      token_type: "bearer", expires_in: 36000, refresh_token: "fake-refresh-" + auth.seq,
+      user: usuarioJson(u)
+    };
+  }
+  function erroAuth(msg) {
+    return res(400, { code: 400, error_code: "invalid_credentials", error: "invalid_credentials",
+      error_description: msg, msg: msg, message: msg });
+  }
+  function autenticar(u, metodo, corpo) {
+    var dados = corpo ? JSON.parse(corpo) : {};
+    if (metodo === "POST" && /\/token$/.test(u.pathname)) {
+      var dono = achaUsuario(dados.email);
+      if (!dono || dono.senha !== dados.password) return erroAuth("Invalid login credentials");
+      if (!dono.confirmado) return erroAuth("Email not confirmed");
+      return res(200, sessaoPara(dono));
+    }
+    if (metodo === "POST" && /\/signup$/.test(u.pathname)) {
+      if (achaUsuario(dados.email)) return erroAuth("User already registered");
+      var novo = {
+        id: novoId(), email: String(dados.email || "").trim().toLowerCase(),
+        senha: String(dados.password || ""), nome: (dados.data || {}).nome || "",
+        criado: new Date().toISOString(), confirmado: !auth.pedeConfirmacao
+      };
+      auth.usuarios.push(novo);
+      if (!novo.confirmado) return res(200, { user: usuarioJson(novo) });
+      return res(200, sessaoPara(novo));
+    }
+    if (metodo === "POST" && /\/logout$/.test(u.pathname)) return res(204, null);
+    return res(404, { message: "auth falso nao conhece " + u.pathname });
+  }
+
   function tratar(u, metodo, corpo, hd) {
     var tabela = decodeURIComponent(u.pathname.split("/").pop());
     if (!mb[tabela]) return res(404, { code: "42P01", message: 'relation "' + tabela + '" does not exist' });
@@ -189,6 +245,9 @@ function instalarFake(cfg) {
     var metodo = String(o.method || "GET").toUpperCase();
     estado.reqs.push({ url: u.href, metodo: metodo, body: o.body ? String(o.body) : null });
     var corpo = o.body ? JSON.parse(String(o.body)) : null;
+    if (u.pathname.indexOf("/auth/v1/") === 0) {
+      return Promise.resolve(autenticar(u, metodo, o.body ? String(o.body) : ""));
+    }
     return Promise.resolve(tratar(u, metodo, corpo, cabecalhos(o)));
   };
 
@@ -951,6 +1010,9 @@ function restaurar() {
   var r = {};
   window.fetch = g.fetchOriginal;
   localStorage.removeItem("gaba_escola_filtro");
+  Object.keys(localStorage).filter(function (k) {
+    return /^sb-.*-auth-token$/.test(k);
+  }).forEach(function (k) { localStorage.removeItem(k); });
   Object.keys(g.antes).forEach(function (k) {
     if (g.antes[k] === null) localStorage.removeItem(k);
     else localStorage.setItem(k, g.antes[k]);
@@ -961,6 +1023,10 @@ function restaurar() {
   r.key = localStorage.getItem("gaba_supabase_key");
   r.anon = localStorage.getItem("gaba_supabase_anon_key");
   r.escolaFiltro = localStorage.getItem("gaba_escola_filtro");
+  r.escolasRegistro = localStorage.getItem("gaba_escolas_registro");
+  r.tokenParado = Object.keys(localStorage).filter(function (k) {
+    return /^sb-.*-auth-token$/.test(k);
+  }).length;
   r.stubRestante = window.fetch.toString().indexOf("__gaba") >= 0;
   r.podas = Object.keys(g.mb).map(function (k) { return k + "=" + g.mb[k].length; });
   r.reqs = g.reqs.length;
@@ -983,6 +1049,202 @@ function mesmoTexto(a, b) {
 
 var ESCOLA_SERRA = "EEFM DA SERRA (teste)";
 var ESCOLA_ANHANGUERA = "EM ANHANGUERA (teste)";
+
+/* o degrau novo: a escola nasce do formulario propria, antes de qualquer turma dela */
+async function dirigirEscada(marcos) {
+  var r = {};
+  var NOVA = marcos.escolaNova;
+  var TURMA = marcos.turmaNova;
+  var Fantasma = marcos.escolaFantasma;
+
+  function cards() {
+    return [].slice.call(document.querySelectorAll("#lista-escolas-cad .item-lista")).map(function (d) {
+      return {
+        nome: (d.querySelector(".item-cab strong") || {}).textContent || "",
+        span: [].slice.call(d.querySelectorAll(".item-cab > span:not(.item-acoes)"))
+          .map(function (s) { return s.textContent.replace(/\s+/g, " ").trim(); }),
+        acoes: [].slice.call(d.querySelectorAll("[data-acao]")).map(function (b) { return b.dataset.acao; })
+      };
+    });
+  }
+  function cardOf(nome) {
+    return cards().filter(function (c) { return GabaEscolas.chave(c.nome) === GabaEscolas.chave(nome); })[0] || null;
+  }
+  function topo() {
+    var sel = document.getElementById("filtro-escola");
+    return {
+      valor: sel.value, escondido: document.getElementById("escola-filtro-box").hidden,
+      opcoes: [].slice.call(sel.options).map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); }),
+      datalist: [].slice.call(document.querySelectorAll("#lista-escolas option")).map(function (o) { return o.value; })
+    };
+  }
+  function noBanco(nome) {
+    return window.__gaba.mb.escolas.filter(function (e) {
+      return GabaEscolas.chave(e.nome) === GabaEscolas.chave(nome);
+    });
+  }
+
+  r.antescard = cards().length;
+  r.antesTope = topo();
+
+  /* 1. criar a escola: a grafia chega aparada e ela entra em todo lugar sem ter turma */
+  preenche("escola-nome", "  " + NOVA.replace(/ /g, "   ") + "  ");
+  envia("form-escola");
+  r.criada = await espera(function () { return cardOf(NOVA); }, 8000).catch(function () { return null; });
+  r.noBanco = noBanco(NOVA).length;
+  r.topoDepois = await espera(function () {
+    var t = topo();
+    return t.datalist.some(function (n) { return GabaEscolas.chave(n) === GabaEscolas.chave(NOVA); }) ? t : null;
+  }, 8000).catch(topo);
+  r.filtroJa = topo().valor;
+  r.escolaPreenchida = document.getElementById("turma-escola").value;
+  r.registro = localStorage.getItem("gaba_escolas_registro");
+
+  /* 2. o mesmo nome de novo nao vira uma segunda escola */
+  preenche("escola-nome", NOVA.toUpperCase());
+  envia("form-escola");
+  r.repetida = await espera(function () {
+    return /já está no cadastro/.test(texto("app-status")) ? texto("app-status") : null;
+  }, 8000).catch(function () { return texto("app-status"); });
+  r.linhasDaEscola = noBanco(NOVA).length;
+  r.cartoesDaEscola = cards().filter(function (c) {
+    return GabaEscolas.chave(c.nome) === GabaEscolas.chave(NOVA);
+  }).length;
+
+  /* 3. a turma criada logo embaixo herda a escola que esta na tela */
+  preenche("turma-nome", TURMA);
+  preenche("turma-ano", "5º ano");
+  envia("form-turma");
+  r.turma = await espera(function () {
+    var t = window.__gaba.mb.turmas.filter(function (x) { return x.nome === TURMA; })[0];
+    return t && GabaEscolas.chave(t.escola) === GabaEscolas.chave(NOVA) ? t : null;
+  }, 8000).catch(function () { return null; });
+  r.cardComTurma = await espera(function () {
+    var c = cardOf(NOVA);
+    return c && /1 turma\(s\)/.test(c.span.join(" ")) ? c : null;
+  }, 8000).catch(function () { return cardOf(NOVA); });
+
+  /* 4. "adicionar turma" em outra escola muda o filtro e escreve a escola no formulario */
+  var serra = cardOf(marcos.serra);
+  r.serraAchada = Boolean(serra);
+  r.serraAcoes = serra ? serra.acoes : null;
+  if (serra) {
+    botaoDe("#lista-escolas-cad", "turma-aqui", serra.nome).click();
+    r.mudouPara = await espera(function () {
+      return GabaEscolas.chave(topo().valor) === GabaEscolas.chave(serra.nome) ? topo() : null;
+    }, 8000).catch(topo);
+    r.campoEscola = document.getElementById("turma-escola").value;
+    r.soSerra = [].slice.call(document.querySelectorAll("#lista-turmas .item-cab strong"))
+      .map(function (s) { return s.textContent; });
+  }
+
+  /* 5. ver so esta / ver todas alternam o filtro pelo proprio cartao */
+  if (r.serraAchada) {
+    botaoDe("#lista-escolas-cad", "escola-filtrar", cardOf(marcos.serra).nome).click();
+    r.verTodas = await espera(function () {
+      return topo().valor === "" && document.getElementById("escola-filtro-box").hidden ? topo() : null;
+    }, 8000).catch(topo);
+  }
+
+  /* 6. escola criada por engado: sair do cadastro tira do banco e do aparelho juntos */
+  preenche("escola-nome", Fantasma);
+  envia("form-escola");
+  var fantasma = await espera(function () {
+    return noBanco(Fantasma).length && cardOf(Fantasma) ? cardOf(Fantasma) : null;
+  }, 8000).catch(function () { return null; });
+  r.fantasmaCriado = Boolean(fantasma);
+  r.fantasmaFiltrando = topo().valor;
+  window.confirm = function () { return true; };
+  botaoDe("#lista-escolas-cad", "apagar-escola", Fantasma).click();
+  r.fantasmaDepois = await espera(function () {
+    return !cardOf(Fantasma) && !noBanco(Fantasma).length ? { cards: cards().length, filtro: topo().valor } : null;
+  }, 8000).catch(function () { return { sobrou: noBanco(Fantasma).length, carta: Boolean(cardOf(Fantasma)) }; });
+
+  /* o que o banco tem, o aparelho herda: a escola criada continua no cadastro */
+  r.cadastroFinal = cards();
+  r.registroFinal = localStorage.getItem("gaba_escolas_registro");
+  GabaEscolas.setFiltro("");
+  return r;
+}
+
+/* o login do professor: a conexao nao e pedida de novo e a sessao acorda com o app */
+async function dirigirLogin(marcos) {
+  var r = {};
+  var NOME = marcos.nome;
+  var EMAIL = marcos.email;
+  var SENHA = marcos.senha;
+
+  function tela() {
+    return {
+      conexaoAberta: !document.getElementById("form-config").hidden,
+      guardadoVisivel: !document.getElementById("cfg-salva").hidden,
+      guardadoTexto: texto("cfg-salva"),
+      trocarVisivel: !document.getElementById("btn-trocar-credencial").hidden,
+      loginVisivel: !document.getElementById("form-login").hidden,
+      contaVisivel: !document.getElementById("form-conta").hidden,
+      criarVisivel: !document.getElementById("btn-nova-conta").hidden,
+      logado: !document.getElementById("professor-logado").hidden,
+      nome: texto("logado-nome"),
+      email: texto("logado-email"),
+      status: texto("app-status"),
+      tokens: Object.keys(localStorage).filter(function (k) { return /^sb-.*-auth-token$/.test(k); }).length
+    };
+  }
+
+  r.telaInicial = tela();
+
+  /* 1. senha errada: o aviso e em portugues de professor, nao de programador */
+  preenche("login-email", EMAIL);
+  preenche("login-senha", "senha-errada-9");
+  envia("form-login");
+  r.negado = await espera(function () {
+    return /E-mail ou senha não batem/.test(texto("app-status")) ? texto("app-status") : null;
+  }, 9000).catch(function () { return texto("app-status"); });
+  r.negadoLogado = tela().logado;
+
+  /* 2. criar a conta pelo botao da aba e entrar nela */
+  document.getElementById("btn-nova-conta").click();
+  r.contaAberta = tela().contaVisivel;
+  preenche("conta-nome", NOME);
+  preenche("conta-email", EMAIL);
+  preenche("conta-senha", SENHA);
+  envia("form-conta");
+  r.criada = await espera(function () { return tela().logado ? tela() : null; }, 12000).catch(tela);
+  r.professorNoBanco = window.__gaba.mb.professores.map(function (p) { return p.nome + " <" + p.email + ">"; });
+  r.guardadoNoAparelho = {
+    id: localStorage.getItem("gaba_professor_id"),
+    nome: localStorage.getItem("gaba_professor_nome"),
+    email: localStorage.getItem("gaba_professor_email")
+  };
+  r.depoisDeEntrar = tela();
+
+  /* 3. a sessao sobrevive a um aparelho que acorda do zero: cliente recriado, so o storage fica */
+  GabaDB.client = null;
+  var deVolta = await GabaDB.usuario();
+  r.acordouLogado = deVolta ? { email: deVolta.email, nome: deVolta.nome } : null;
+  r.tokensNoStorage = Object.keys(localStorage).filter(function (k) {
+    return /^sb-.*-auth-token$/.test(k);
+  }).length;
+
+  /* 4. trocar a conexao e o unico momento em que se digita url e chave de novo */
+  document.getElementById("btn-trocar-credencial").click();
+  r.conexaoAbertaAoPedir = tela().conexaoAberta;
+  document.getElementById("cfg-url").value = marcos.url;
+  document.getElementById("cfg-key").value = marcos.key;
+  envia("form-config");
+  r.conexaoFecha = await espera(function () {
+    return document.getElementById("form-config").hidden === true &&
+      !document.getElementById("cfg-salva").hidden ? tela() : null;
+  }, 9000).catch(tela);
+
+  /* 5. sair: some o professor, continua sobrando a conexao do banco */
+  document.getElementById("btn-sair").click();
+  r.saiu = await espera(function () {
+    var t = tela();
+    return !t.logado && t.loginVisivel && t.guardadoVisivel ? t : null;
+  }, 9000).catch(tela);
+  return r;
+}
 
 function conferirEscolas(es) {
   if (es.parouAqui) return;
@@ -1316,6 +1578,85 @@ var LISTA = {
     var es = await c.naPagina(dirigirEscolas, [ESC]);
     check("as turmas novas de escola chegaram ao banco", !es.parouAqui, [es.parouAqui, es.turmasNoBanco]);
     conferirEscolas(es);
+
+    console.log("\n== a escola nasce antes da turma ==");
+    var ESCADA = { escolaNova: "EEEM DO CAMPO (teste)", turmaNova: "Turma do Campo (teste)",
+      escolaFantasma: "EEEM FANTASMA (teste)", serra: ESCOLA_SERRA };
+    var esc = await c.naPagina(dirigirEscada, [ESCADA]);
+    var mesmaEscola = function (a, b) { return String(a).replace(/\s+/g, " ").trim().toUpperCase() ===
+      String(b).replace(/\s+/g, " ").trim().toUpperCase(); };
+    check("a escola criada aparece no cadastro mesmo sem turma nenhuma",
+      esc.criada && mesmaEscola(esc.criada.nome, ESCADA.escolaNova) &&
+      /ainda sem turma/.test(esc.criada.span.join(" ")) &&
+      esc.criada.acoes.indexOf("apagar-escola") >= 0, esc.criada);
+    check("criar a escola grava a linha no banco", esc.noBanco === 1, esc.noBanco);
+    check("a escola sem turma entra no seletor do topo e no autocompletar",
+      esc.topoDepois && esc.topoDepois.datalist.some(function (n) { return mesmaEscola(n, ESCADA.escolaNova); }) &&
+      esc.topoDepois.opcoes.some(function (t) { return /DO CAMPO/.test(t) && /ainda sem turma/.test(t); }),
+      esc.topoDepois);
+    check("criar a escola ja liga o filtro nela",
+      esc.filtroJa && mesmaEscola(esc.filtroJa, ESCADA.escolaNova), esc.filtroJa);
+    check("o formulario de turma cai preenchido com a escola recem-criada",
+      mesmaEscola(esc.escolaPreenchida, ESCADA.escolaNova), esc.escolaPreenchida);
+    check("o nome chega aparado ao cadastro do aparelho",
+      esc.registro && esc.registro.indexOf(ESCADA.escolaNova) >= 0, esc.registro);
+    check("digitar o mesmo nome de outra caixa nao cria uma segunda escola",
+      esc.cartoesDaEscola === 1 && esc.linhasDaEscola === 1 && /já está no cadastro/.test(esc.repetida || ""),
+      [esc.cartoesDaEscola, esc.linhasDaEscola, esc.repetida]);
+    check("a turma do degrau seguinte herda a escola que esta na tela",
+      esc.turma && mesmaEscola(esc.turma.escola, ESCADA.escolaNova), [esc.turma, esc.turma && esc.turma.escola]);
+    check("a escola sai de 'ainda sem turma' para uma turma na mesma tela",
+      esc.cardComTurma && /1 turma\(s\)/.test(esc.cardComTurma.span.join(" ")), esc.cardComTurma);
+    check("'adicionar turma' em outra escola muda o filtro e o campo de escola",
+      esc.serraAchada && esc.mudouPara && mesmaEscola(esc.campoEscola, ESCOLA_SERRA) &&
+      !esc.mudouPara.escondido, [esc.campoEscola, esc.mudouPara]);
+    check("a escola que so existe por causa de uma turma nao oferece 'tirar do cadastro'",
+      esc.serraAchada && esc.serraAcoes.indexOf("turma-aqui") >= 0 &&
+      esc.serraAcoes.indexOf("apagar-escola") < 0, esc.serraAcoes);
+    check("o botao do cartao devolve a tela para todas as escolas",
+      esc.verTodas && esc.verTodas.valor === "", esc.verTodas);
+    check("tirar do cadastro apaga a linha do banco e o nome do aparelho",
+      esc.fantasmaCriado && esc.fantasmaDepois && esc.fantasmaDepois.cards !== undefined &&
+      esc.fantasmaDepois.filtro === "", [esc.fantasmaCriado, esc.fantasmaDepois]);
+    check("a escola que ficou no banco volta para o cadastro do aparelho",
+      esc.registroFinal && esc.registroFinal.indexOf(ESCADA.escolaNova) >= 0 &&
+      !/FANTASMA/.test(esc.registroFinal), esc.registroFinal);
+
+    console.log("\n== o professor entra com e-mail e senha ==");
+    var LG = { nome: "Profa. Ana (teste)", email: "ana.teste@example.test", senha: "gaba-teste-1",
+      url: "https://fake.local.supabase.co", key: "chave-falsa-para-teste" };
+    var lg = await c.naPagina(dirigirLogin, [LG]);
+    check("com a conexao guardada a aba nao pede url e chave de novo",
+      lg.telaInicial.conexaoAberta === false && lg.telaInicial.guardadoVisivel &&
+      lg.telaInicial.trocarVisivel && lg.telaInicial.loginVisivel, lg.telaInicial);
+    check("o endereco salvo aparece escrito na aba",
+      /fake\.local\.supabase\.co/.test(lg.telaInicial.guardadoTexto || ""), lg.telaInicial.guardadoTexto);
+    check("senha errada vira frase de professor, nao de programador",
+      /E-mail ou senha não batem/.test(lg.negado || "") && lg.negadoLogado === false,
+      [lg.negado, lg.negadoLogado]);
+    check("o botao abre o formulario de conta nova", lg.contaAberta === true, lg.contaAberta);
+    check("criar a conta ja deixa o professor dentro",
+      lg.criada && lg.criada.logado && /Ana \(teste\)/.test(lg.criada.nome || "") &&
+      lg.criada.email === LG.email, lg.criada);
+    check("a linha do professor chega ao banco pelo e-mail",
+      (lg.professorNoBanco || []).some(function (p) { return p.indexOf(LG.email) >= 0; }), lg.professorNoBanco);
+    check("o aparelho lembra quem esta dentro",
+      lg.guardadoNoAparelho.email === LG.email && /Ana/.test(lg.guardadoNoAparelho.nome || ""),
+      lg.guardadoNoAparelho);
+    check("o login do professor sumiu com o formulario de entrar",
+      lg.depoisDeEntrar && lg.depoisDeEntrar.loginVisivel === false &&
+      lg.depoisDeEntrar.criarVisivel === false, lg.depoisDeEntrar);
+    check("a sessao fica no aparelho e sobrevive a um cliente desmontado",
+      lg.tokensNoStorage >= 1 && lg.acordouLogado && lg.acordouLogado.email === LG.email,
+      [lg.tokensNoStorage, lg.acordouLogado]);
+    check("pedir para trocar a conexao reabre os dois campos",
+      lg.conexaoAbertaAoPedir === true, lg.conexaoAbertaAoPedir);
+    check("salvar a conexao fecha a caixa e mantem o professor dentro",
+      lg.conexaoFecha && lg.conexaoFecha.conexaoAberta === false && lg.conexaoFecha.logado === true,
+      lg.conexaoFecha);
+    check("sair tira o professor mas deixa a conexao do banco",
+      lg.saiu && lg.saiu.logado === false && lg.saiu.loginVisivel === true &&
+      lg.saiu.guardadoVisivel === true && lg.saiu.conexaoAberta === false, lg.saiu);
 
     console.log("\n== nada quebrou nem ficou para trás ==");
     var e = await c.naPagina(colherErros, []);

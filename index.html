@@ -75,9 +75,19 @@
             <div id="dash-pilhas" class="card-list"></div>
         </section>
 
-        <!-- ABA 2: TURMAS E ALUNOS -->
+        <!-- ABA 2: ESCOLAS, DEPOIS AS TURMAS DE CADA UMA -->
         <section id="tab-turmas" class="tab-content">
-            <h2>Gerenciamento de Turmas</h2>
+            <h2>Turmas</h2>
+            <p class="passo">1 &mdash; Crie a escola</p>
+            <div class="form-container">
+                <form id="form-escola">
+                    <input type="text" id="escola-nome" placeholder="Nome da escola (Ex: EEFM da Serra)" autocomplete="off" required>
+                    <button type="submit" class="btn-primary">Criar escola</button>
+                </form>
+                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola nasce aqui, antes de qualquer turma. Ela entra no seletor do topo e no cadastro da turma mesmo no dia em que ainda n&atilde;o tem aluno nenhum.</p>
+            </div>
+            <div id="lista-escolas-cad" class="card-list"></div>
+            <p class="passo">2 &mdash; Adicione as turmas da escola</p>
             <div class="form-container">
                 <form id="form-turma">
                     <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 1º Ano A)" required>
@@ -86,7 +96,7 @@
                     <datalist id="lista-escolas"></datalist>
                     <button type="submit" class="btn-primary">Salvar Turma</button>
                 </form>
-                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola é o que separa as turmas das unidades diferentes: escolha-a no seletor do topo para trabalhar em uma só por vez.</p>
+                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola &eacute; o que separa as turmas das unidades diferentes: escolha-a no seletor do topo para trabalhar em uma s&oacute; por vez.</p>
             </div>
             
             <h2 style="margin-top: 20px;">Cadastrar Aluno</h2>
@@ -311,18 +321,43 @@
             </div>
         </section>
 
-        <!-- ABA 6: CONFIGURAÇÕES -->
+        <!-- ABA 6: AJUSTES -->
         <section id="tab-config" class="tab-content">
-            <h2>Conexão com Banco de Dados</h2>
-            <p class="text-muted" style="margin-bottom: 15px; font-size: 0.9rem;">Insira os dados do seu projeto Supabase para ativar o aplicativo.</p>
+            <h2>Ajustes</h2>
+            <p class="passo">Professor</p>
             <div class="form-container">
-                <form id="form-config">
+                <div id="professor-logado" hidden>
+                    <p style="font-size:1rem;"><strong id="logado-nome">&nbsp;</strong></p>
+                    <p class="text-muted" id="logado-email">&nbsp;</p>
+                    <button type="button" id="btn-sair" class="btn-ghost">Sair</button>
+                </div>
+                <form id="form-login">
+                    <input type="email" id="login-email" placeholder="Seu e-mail" autocomplete="username" required>
+                    <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password" required>
+                    <button type="submit" class="btn-primary">Entrar</button>
+                </form>
+                <p class="text-muted" style="margin-top:10px;font-size:.85rem;">Entrar &eacute; opcional: sem login o Gaba continua corrigindo e salvando como sempre. Com login, o mesmo professor aparece em qualquer aparelho dele.</p>
+                <button type="button" id="btn-nova-conta" class="btn-ghost" style="margin-top:12px;">Criar conta de professor</button>
+                <form id="form-conta" hidden>
+                    <input type="text" id="conta-nome" placeholder="Seu nome (Ex: Prof. Ana)" required>
+                    <input type="email" id="conta-email" placeholder="Seu e-mail" required>
+                    <input type="password" id="conta-senha" placeholder="Senha nova (m&iacute;nimo 6 caracteres)" required>
+                    <button type="submit" class="btn-success">Criar conta e entrar</button>
+                </form>
+            </div>
+
+            <p class="passo">Banco de dados</p>
+            <div class="form-container">
+                <p id="cfg-salva" hidden>Conex&atilde;o guardada neste aparelho: <code id="cfg-url-salva"></code></p>
+                <button type="button" id="btn-trocar-credencial" class="btn-ghost" hidden>Trocar a conex&atilde;o</button>
+                <form id="form-config" hidden>
                     <input type="url" id="cfg-url" placeholder="Project URL (https://xyz.supabase.co)" required>
                     <input type="password" id="cfg-key" placeholder="Chave Pública (anon / public key)" required>
                     <button type="submit" class="btn-primary">Salvar Credenciais</button>
                 </form>
                 <p class="text-muted" style="margin-top: 12px; font-size: 0.84rem;">A chave pública (<code>anon</code>) é a que vai no app. A <code>service_role</code> fica no servidor — se ela entrar aqui, o banco inteiro passa a poder ser lido de qualquer navegador.</p>
             </div>
+            <p class="text-muted" style="font-size: 0.84rem;">O endere&ccedil;o e a chave se digitam uma vez s&oacute;. Depois disso quem abre o app &eacute; o login do professor.</p>
         </section>
 
         <!-- SOMENTE O QUE GABA FOLHA DESENHA ENTRA AQUI NA HORA DE IMPRIMIR -->

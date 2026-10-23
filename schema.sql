@@ -13,6 +13,7 @@
 -- batia com o que o app escreve.
 --
 -- Tabelas hoje usadas pelo app:
+--   escolas       — nome (o professor cadastra a unidade antes de ter turma nela)
 --   turmas        — nome, ano, escola, professor_id
 --   alunos        — turma_id, matricula, nome, numero, tipo, responsavel,
 --                   email_responsavel, telefone_responsavel

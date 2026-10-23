@@ -14,6 +14,15 @@ create table if not exists public.turmas (
   created_at timestamptz not null default now()
 );
 
+-- A escola que o professor cadastra antes das turmas. O nome continua morando na
+-- coluna turmas.escola (texto), então esta tabela e o cadastro: ela existe mesmo
+-- com zero turmas e e o que faz um aparelho novo herdar as unidades do projeto.
+create table if not exists public.escolas (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.alunos (
   id uuid primary key default gen_random_uuid(),
   turma_id uuid not null references public.turmas(id) on delete cascade,
@@ -72,6 +81,9 @@ alter table public.turmas add column if not exists ano text;
 alter table public.turmas add column if not exists escola text;
 alter table public.turmas add column if not exists created_at timestamptz not null default now();
 alter table public.turmas add column if not exists professor_id uuid;
+
+alter table public.escolas add column if not exists nome text;
+alter table public.escolas add column if not exists created_at timestamptz not null default now();
 
 alter table public.alunos add column if not exists turma_id uuid;
 alter table public.alunos add column if not exists nome text;
@@ -267,6 +279,12 @@ end $$;
 create index if not exists alunos_turma_id_idx on public.alunos (turma_id);
 create index if not exists alunos_numero_idx on public.alunos (numero);
 
+-- Index comum, nao unique: quem decide que "EEFM DA SERRA" e "eefm da serra" sao a mesma
+-- escola é o js/escolas.js, que compara sem caixa. Um unique aqui nao seria alvo de
+-- on_conflict do PostgREST (index funcional) e estouraria a migracao se o professor ja
+-- tivesse gravado duas grafias do mesmo nome.
+create index if not exists escolas_nome_idx on public.escolas (lower(nome));
+
 -- Numeros repetidos na mesma turma (dois alunos com a mesma matricula) impedem o
 -- index unique abaixo: quem repete recebe o proximo numero livre da propria turma.
 do $$
@@ -336,6 +354,7 @@ end $$;
 -- ---------------------------------------------------------------------------
 
 alter table public.turmas enable row level security;
+alter table public.escolas enable row level security;
 alter table public.alunos enable row level security;
 alter table public.provas enable row level security;
 alter table public.correcoes enable row level security;
@@ -352,6 +371,16 @@ create policy "turmas_select_anon" on public.turmas for select to anon, authenti
 create policy "turmas_insert_anon" on public.turmas for insert to anon, authenticated with check (true);
 create policy "turmas_update_anon" on public.turmas for update to anon, authenticated using (true) with check (true);
 create policy "turmas_delete_anon" on public.turmas for delete to anon, authenticated using (true);
+
+drop policy if exists "escolas_select_anon" on public.escolas;
+drop policy if exists "escolas_insert_anon" on public.escolas;
+drop policy if exists "escolas_update_anon" on public.escolas;
+drop policy if exists "escolas_delete_anon" on public.escolas;
+
+create policy "escolas_select_anon" on public.escolas for select to anon, authenticated using (true);
+create policy "escolas_insert_anon" on public.escolas for insert to anon, authenticated with check (true);
+create policy "escolas_update_anon" on public.escolas for update to anon, authenticated using (true) with check (true);
+create policy "escolas_delete_anon" on public.escolas for delete to anon, authenticated using (true);
 
 drop policy if exists "alunos_select_anon" on public.alunos;
 drop policy if exists "alunos_insert_anon" on public.alunos;
@@ -404,4 +433,4 @@ create policy "prova_versoes_update_anon" on public.prova_versoes for update to 
 create policy "prova_versoes_delete_anon" on public.prova_versoes for delete to anon, authenticated using (true);
 
 grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.turmas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to anon, authenticated;
+grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to anon, authenticated;

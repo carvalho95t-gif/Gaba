@@ -29,7 +29,8 @@ function check(nome, cond, detalhe) {
 
 (async function principal() {
   check("modulo expoe a API que o app usa",
-    ["SEM_ESCOLA", "normalizar", "chave", "filtro", "setFiltro", "escolas", "visiveis", "daTurma"]
+    ["SEM_ESCOLA", "normalizar", "chave", "filtro", "setFiltro", "listar", "tem", "adicionar", "remover",
+      "sincronizar", "noFiltro", "escolas", "visiveis", "daTurma"]
       .every(function (k) { return G && Object.prototype.hasOwnProperty.call(G, k); }),
     G && Object.keys(G));
 
@@ -113,6 +114,92 @@ function check(nome, cond, detalhe) {
     G.daTurma(TURMAS, "4") === "" && G.daTurma(TURMAS, "999") === "" &&
     G.daTurma(null, "3") === "" && G.daTurma(TURMAS, null) === "",
     [G.daTurma(TURMAS, "4"), G.daTurma(TURMAS, "999")]);
+
+  console.log("\n== a escola nasce antes da turma ==");
+  store = {};
+  global.localStorage = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+    setItem: function (k, v) { store[k] = String(v); },
+    removeItem: function (k) { delete store[k]; }
+  };
+  var criado = G.adicionar("  eeem   do campo (teste)  ");
+  check("criar a escola apara o nome e diz que foi este clique que criou",
+    criado.novo === true && criado.vazio === false && criado.nome === "eeem do campo (teste)", criado);
+  check("a escola existe no cadastro sem existir nenhuma turma",
+    G.listar().join("|") === "eeem do campo (teste)" && G.tem("EEEM DO CAMPO (TESTE)") === true &&
+    G.visiveis(TURMAS, "eeem do campo (teste)").length === 0, [G.listar(), G.tem("x")]);
+  check("digitar o mesmo nome em outra caixa nao duplica o cadastro",
+    G.adicionar("EEEM   DO CAMPO (teste)").novo === false && G.listar().length === 1, G.listar());
+  check("nome so com espaco nao vira escola",
+    G.adicionar("   ").vazio === true && G.adicionar(null).nome === "" && G.listar().length === 1, G.listar());
+  G.adicionar("EM Zebra");
+  G.adicionar("EM Ana");
+  check("o cadastro vem em ordem para a tela",
+    (function () {
+      var l = G.listar();
+      return l.length === 3 && l.indexOf("EM Ana") < l.indexOf("EM Zebra");
+    })(), G.listar());
+
+  console.log("\n== cadastro e turmas na mesma lista da tela ==");
+  var naTela = G.noFiltro(TURMAS);
+  check("a escola cadastrada sem turma aparece com o carimbo e zero turmas",
+    naTela.some(function (e) {
+      return e.nome === "eeem do campo (teste)" && e.cadastrada === true && e.turmas === 0;
+    }), naTela);
+  check("a escola que so vem de uma turma aparece sem o carimbo de cadastro",
+    naTela.some(function (e) {
+      return G.chave(e.nome) === G.chave("EEFM DA SERRA") && e.cadastrada === false && e.turmas === 2;
+    }), naTela);
+  check("a turma sem escola nao entra na lista de escolas",
+    !naTela.some(function (e) { return e.chave === G.chave(""); }), naTela);
+  G.adicionar("eefm da serra");
+  check("a escola ja cadastrada nao se repete em outra grafia",
+    G.noFiltro(TURMAS).filter(function (e) {
+      return e.chave === G.chave("EEFM DA SERRA");
+    }).length === 1, G.noFiltro(TURMAS));
+
+  console.log("\n== tirar a escola do cadastro ==");
+  check("tirar do cadastro nao apaga a escola da turma que ainda a usa",
+    G.remover("eefm da serra") === true && G.tem("EEFM DA SERRA") === false &&
+    G.noFiltro(TURMAS).some(function (e) {
+      return e.chave === G.chave("EEFM DA SERRA") && e.cadastrada === false && e.turmas === 2;
+    }), G.noFiltro(TURMAS));
+  check("remover o que nunca foi cadastrado devolve falso",
+    G.remover("EM Que Nao Existe") === false, "ok");
+  check("esvaziado o cadastro sobra so o que as turmas trazem",
+    (function () {
+      G.remover("eeem do campo (teste)");
+      G.remover("EM Zebra");
+      G.remover("EM Ana");
+      var t = G.noFiltro(TURMAS);
+      return G.listar().length === 0 && t.length === 2 &&
+        t.every(function (e) { return e.cadastrada === false; });
+    })(), [G.listar(), G.noFiltro(TURMAS)]);
+
+  console.log("\n== o que vem do banco ==");
+  var entrou = G.sincronizar([{ nome: "EM Wagon" }, { nome: "  em   wagon " }, "EM Vila", null, {}]);
+  check("as escolas do banco viram cadastro daqui, sem duplicar a grafia",
+    entrou.join("|") === "EM Wagon|EM Vila" && G.listar().length === 2, [entrou, G.listar()]);
+  check("ler o banco de novo nao acrescenta nada",
+    G.sincronizar(["EM Wagon", "em wagon"]).length === 0 && G.listar().length === 2, G.listar());
+  check("o nome da escola cabe no teto da coluna escola",
+    G.adicionar(new Array(220).join("A")).nome.length === 120, G.listar().length);
+
+  var semCadastro = global.localStorage;
+  delete global.localStorage;
+  var lancouCadastro = false;
+  try {
+    G.listar();
+    G.adicionar("EM Sem Storage");
+    G.sincronizar(["EM Do Banco"]);
+    G.remover("EM Wagon");
+  } catch (err) {
+    lancouCadastro = true;
+  }
+  check("aparelho sem localStorage nao trava o cadastro e devolve lista vazia",
+    lancouCadastro === false && G.listar().length === 0 && G.noFiltro(TURMAS).length === 2,
+    String(lancouCadastro));
+  global.localStorage = semCadastro;
 
   console.log("\n" + (falhas ? falhas + " FALHA(S)" : "tudo certo"));
   process.exit(falhas ? 1 : 0);

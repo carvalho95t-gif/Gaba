@@ -11,6 +11,8 @@
     locais: [],
     correcoes: [],
     leituras: [],
+    escolas: [],
+    professor: null,
     momento: 0
   };
 
@@ -39,6 +41,11 @@
     }
     if (/invalid input syntax for type uuid/i.test(m)) return "Há um id que ainda só existe neste aparelho.";
     if (/Failed to fetch|NetworkError|fetch/i.test(m)) return "Sem rede: o registro ficou guardado neste aparelho.";
+    if (/Invalid login credentials/i.test(m)) return "E-mail ou senha não batem. Ainda não tem conta? Use \"Criar conta de professor\".";
+    if (/Email not confirmed|confirm(?:ation)? (?:link|e-?mail)|verify.*e-?mail/i.test(m)) {
+      return "Falta confirmar o e-mail: abra a mensagem que o Supabase enviou, ou desligue \"Confirm email\" no projeto.";
+    }
+    if (/User already registered|already exists/i.test(m)) return "Já existe uma conta com esse e-mail: entre em vez de criar.";
     return m || "Erro desconhecido.";
   }
 
@@ -88,8 +95,34 @@
       app.provas = [];
       app.correcoes = [];
     }
+    await carregarEscolas();
+    await carregarProfessor();
     app.momento = Date.now();
     desenharTudo();
+    desenharAjustes();
+  }
+
+  /* o cadastro de escolas mora no aparelho; o banco e a copia para os outros aparelhos.
+     se a tabela ainda nao foi criada, o cadastro local continua valendo sozinho. */
+  async function carregarEscolas() {
+    app.escolas = [];
+    if (!dbOk() || !GabaDB.listEscolas) return;
+    try {
+      app.escolas = await GabaDB.listEscolas();
+      if (window.GabaEscolas) GabaEscolas.sincronizar(app.escolas);
+    } catch (err) {
+      app.escolas = [];
+    }
+  }
+
+  async function carregarProfessor() {
+    app.professor = null;
+    if (!dbOk() || !GabaDB.usuario) return;
+    try {
+      app.professor = await GabaDB.usuario();
+    } catch (err) {
+      app.professor = null;
+    }
   }
 
   function atualizarAba() {
@@ -101,13 +134,30 @@
   async function executar(nome, id, extra) {
     var alvo;
     try {
-      if (nome === "escola-turma") {
+      if (nome === "turma-aqui") {
+        aplicarEscola(id);
+        return;
+      } else if (nome === "escola-filtrar") {
+        var E = window.GabaEscolas;
+        if (!E) return;
+        E.setFiltro(E.chave(E.filtro()) === E.chave(id) ? "" : id);
+        desenharTudo();
+        return;
+      } else if (nome === "apagar-escola") {
+        var quantas = window.GabaEscolas ? app.turmas.filter(function (t) {
+          return GabaEscolas.chave(t.escola) === GabaEscolas.chave(id);
+        }).length : 0;
+        if (!confirm('Tirar "' + id + '" do cadastro?' + (quantas
+          ? "\nAs " + quantas + " turma(s) com esse nome continuam com o nome delas." : ""))) return;
+        await tirarEscola(id);
+        aviso("Escola fora do cadastro.", "ok");
+      } else if (nome === "escola-turma") {
         var outra = app.turmas.filter(function (x) { return String(x.id) === id; })[0];
         if (!outra) return;
         var conhecidas = window.GabaEscolas
-          ? GabaEscolas.escolas(app.turmas).map(function (e) { return e.nome; }).join("  ·  ") : "";
+          ? GabaEscolas.noFiltro(app.turmas).map(function (e) { return e.nome; }).join("  ·  ") : "";
         var escola = prompt("Escola desta turma (deixe vazio para a turma ficar sem escola):\n\n" +
-          (conhecidas ? "Escolas já usadas: " + conhecidas : "Nenhuma escola cadastrada ainda."), outra.escola || "");
+          (conhecidas ? "Escolas do cadastro: " + conhecidas : "Nenhuma escola cadastrada ainda."), outra.escola || "");
         if (escola === null) return;
         await GabaDB.salvarTurma({ id: id, nome: outra.nome, ano: outra.ano, escola: escola });
         aviso("Escola da turma atualizada.", "ok");
@@ -184,6 +234,9 @@
   /* ------------------------------------------------ importar a lista de chamada inteira */
 
   var imp = { alunos: [], problemas: [], fonte: "", colunas: null, puladas: 0, salvo: 0 };
+
+  /* o que o professor abriu na aba Ajustes: nada disso sobrevive a uma troca de aba */
+  var ajustes = { contaAberta: false, credencialAberta: false };
 
   var PAPEIS_PT = { numero: "Nº", nome: "Nome", matricula: "Matrícula", tipo: "Tipo de caderno",
     responsavel: "Responsável", email: "E-mail", telefone: "Telefone" };
@@ -374,6 +427,7 @@
   /* ---------------------------------------------------------------- desenho */
 
   function desenharTudo() {
+    desenharEscolas();
     desenharFiltroEscola();
     desenharPainel();
     desenharTurmas();
@@ -404,22 +458,98 @@
     return window.GabaEscolas ? GabaEscolas.visiveis(app.turmas) : app.turmas.slice();
   }
 
+  /* o degrau 2 da escada: a turma nova ja nasce na escola escolhida e com a tela nela */
+  function aplicarEscola(nome) {
+    var E = window.GabaEscolas;
+    var limpo = E ? E.normalizar(nome) : String(nome || "");
+    if (E) E.setFiltro(limpo);
+    var campo = $("turma-escola");
+    if (campo) campo.value = limpo;
+    desenharTudo();
+    var alvo = $("turma-nome");
+    if (alvo) {
+      alvo.focus();
+      if (alvo.scrollIntoView) alvo.scrollIntoView({ block: "center" });
+    }
+    aviso('Turma nova em "' + limpo + '": dê o nome e o ano dela.', "ok");
+  }
+
+  /* a escola sai do aparelho e do banco junto: apagar so o cadastro local faria ela
+     voltar na proxima leitura das escolas do projeto */
+  async function tirarEscola(nome) {
+    var E = window.GabaEscolas;
+    var linhas = app.escolas.filter(function (r) { return E.chave(r.nome) === E.chave(nome); });
+    for (var n = 0; n < linhas.length; n++) await GabaDB.excluirEscola(linhas[n].id);
+    E.remover(nome);
+    if (E.chave(E.filtro()) === E.chave(nome)) E.setFiltro("");
+  }
+
+  async function criarEscola(nomeBruto) {
+    var E = window.GabaEscolas;
+    var criado = E.adicionar(nomeBruto);
+    if (criado.vazio) {
+      aviso("Escreva o nome da escola.", "erro");
+      return;
+    }
+    if (!criado.novo) {
+      aviso('"' + criado.nome + '" já está no cadastro.', "erro");
+      return;
+    }
+    /* o banco e a copia para os outros aparelhos; sem ele a escola fica neste aparelho */
+    if (dbOk()) {
+      try {
+        app.escolas.push(await GabaDB.salvarEscola({ nome: criado.nome }));
+      } catch (err) {
+        aviso('Escola criada neste aparelho. No banco deu: ' + mensagemErro(err), "erro");
+        desenharTudo();
+        return;
+      }
+    }
+    aplicarEscola(criado.nome);
+  }
+
+  /* a escada comeca aqui: a escola existe antes de ter turma dentro dela */
+  function desenharEscolas() {
+    var box = $("lista-escolas-cad");
+    if (!box) return;
+    var E = window.GabaEscolas;
+    if (!E) return;
+    var lista = E.noFiltro(app.turmas);
+    if (!lista.length) {
+      box.innerHTML = '<p class="text-muted">Nenhuma escola cadastrada ainda: crie a primeira acima e as turmas entram nela.</p>';
+      return;
+    }
+    var filtro = E.filtro();
+    box.innerHTML = lista.map(function (e) {
+      var ativa = E.chave(e.nome) === E.chave(filtro);
+      return '<div class="item-lista"><div class="item-cab"><strong>' + esc(e.nome) + "</strong>" +
+        "<span>" + (e.turmas ? e.turmas + " turma(s)" : "ainda sem turma") + "</span>" +
+        (ativa ? '<span class="badge badge-on">na tela</span>' : "") +
+        '<span class="item-acoes">' +
+        botao("turma-aqui", e.nome, "adicionar turma", "btn-ghost pequeno") +
+        botao("escola-filtrar", e.nome, ativa ? "ver todas" : "ver só esta", "btn-ghost pequeno") +
+        (e.cadastrada ? botao("apagar-escola", e.nome, "tirar do cadastro", "btn-danger") : "") +
+        "</span></div></div>";
+    }).join("");
+  }
+
   function desenharFiltroEscola() {
     var sel = $("filtro-escola");
     var box = $("escola-filtro-box");
     if (!sel || !box) return;
     var E = window.GabaEscolas;
-    var lista = E ? E.escolas(app.turmas) : [];
+    var lista = E ? E.noFiltro(app.turmas) : [];
     var sem = E ? app.turmas.filter(function (t) { return !E.normalizar(t.escola); }).length : 0;
     var atual = E ? E.filtro() : "";
-    if (atual && !lista.some(function (e) { return E.chave(e.nome) === E.chave(atual); }) &&
+    if (atual && !lista.some(function (e) { return e.chave === E.chave(atual); }) &&
       !(sem && E.chave(atual) === E.chave(E.SEM_ESCOLA))) {
       E.setFiltro("");
       atual = "";
     }
     var partes = ['<option value="">Todas as escolas</option>'];
     lista.forEach(function (e) {
-      partes.push('<option value="' + esc(e.nome) + '">' + esc(e.nome) + " · " + e.turmas + " turma(s)</option>");
+      partes.push('<option value="' + esc(e.nome) + '">' + esc(e.nome) +
+        (e.turmas ? " · " + e.turmas + " turma(s)" : " · ainda sem turma") + "</option>");
     });
     if (sem) {
       partes.push('<option value="' + esc(E.SEM_ESCOLA) + '">' + esc(E.SEM_ESCOLA) +
@@ -942,7 +1072,7 @@
         : "Mostrando as turmas de todas as escolas.", "ok");
     });
 
-    ["lista-turmas", "lista-provas"].forEach(function (id) {
+    ["lista-escolas-cad", "lista-turmas", "lista-provas"].forEach(function (id) {
       var box = $(id);
       if (!box) return;
       box.addEventListener("click", function (ev) {
@@ -961,6 +1091,18 @@
     if (soRevisar) soRevisar.addEventListener("change", desenharAnalise);
     var csv = $("ana-csv");
     if (csv) csv.addEventListener("click", baixarCsvAnalise);
+
+    var formEscola = $("form-escola");
+    if (formEscola) formEscola.addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var nomeDigitado = $("escola-nome").value;
+      $("form-escola").reset();
+      try {
+        await criarEscola(nomeDigitado);
+      } catch (err) {
+        aviso(mensagemErro(err), "erro");
+      }
+    });
 
     var formTurma = $("form-turma");
     if (formTurma) formTurma.addEventListener("submit", async function (ev) {
@@ -1037,10 +1179,86 @@
       var key = $("cfg-key").value.trim();
       if (window.GabaSync && !navigator.onLine) aviso("Sem rede agora, mas as credenciais ficam guardadas aqui.", "erro");
       if (window.GabaDB) GabaDB.saveConfig(url, key);
+      ajustes.credencialAberta = false;
       badge();
       await carregarTudo();
-      aviso(dbOk() ? "Credenciais guardadas neste aparelho." : "Credenciais apagadas: o app voltou a trabalhar só no aparelho.", "ok");
+      montarConfig();
+      aviso(dbOk()
+        ? "Conexão guardada neste aparelho: não precisa digitar de novo. Agora é só o login."
+        : "Credenciais apagadas: o app voltou a trabalhar só no aparelho.", "ok");
     });
+
+    var trocarCredencial = $("btn-trocar-credencial");
+    if (trocarCredencial) trocarCredencial.addEventListener("click", function () {
+      ajustes.credencialAberta = true;
+      desenharAjustes();
+      var campo = $("cfg-url");
+      if (campo) campo.focus();
+    });
+
+    var formLogin = $("form-login");
+    if (formLogin) formLogin.addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      try {
+        await GabaDB.entrar($("login-email").value, $("login-senha").value);
+        $("form-login").reset();
+        await carregarProfessor();
+        desenharAjustes();
+        await carregarTudo();
+        aviso("Dentro. O Gaba agora salva como " + quemE() + ".", "ok");
+      } catch (err) {
+        aviso(mensagemErro(err), "erro");
+      }
+    });
+
+    var abrirConta = $("btn-nova-conta");
+    if (abrirConta) abrirConta.addEventListener("click", function () {
+      ajustes.contaAberta = true;
+      desenharAjustes();
+      var campo = $("conta-nome");
+      if (campo) campo.focus();
+    });
+
+    var formConta = $("form-conta");
+    if (formConta) formConta.addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      try {
+        var aberto = await GabaDB.criarConta($("conta-nome").value, $("conta-email").value, $("conta-senha").value);
+        $("form-conta").reset();
+        if (!aberto.confirmado) {
+          aviso("Conta criada, mas o projeto pede a confirmação do e-mail: abra a mensagem que chegou " +
+            "para você e entre depois. Para dispensar a confirmação, desligue \"Confirm email\" no Supabase.", "erro");
+          return;
+        }
+        ajustes.contaAberta = false;
+        await carregarProfessor();
+        desenharAjustes();
+        await carregarTudo();
+        aviso("Conta criada e você já está dentro como " + quemE() + ".", "ok");
+      } catch (err) {
+        aviso(mensagemErro(err), "erro");
+      }
+    });
+
+    var sairBotao = $("btn-sair");
+    if (sairBotao) sairBotao.addEventListener("click", async function () {
+      try {
+        await GabaDB.sair();
+        app.professor = null;
+        badge();
+        desenharAjustes();
+        aviso("Você saiu. A conexão com o banco continua guardada neste aparelho.", "ok");
+      } catch (err) {
+        aviso(mensagemErro(err), "erro");
+      }
+    });
+  }
+
+  function quemE() {
+    var cfg = window.GabaDB ? GabaDB.readConfig() : {};
+    var eu = app.professor;
+    if (!eu) return "sem login";
+    return eu.nome || cfg.professorNome || eu.email || "professor";
   }
 
   function montarConfig() {
@@ -1050,6 +1268,35 @@
     if (inputUrl) inputUrl.value = cfg.url || "";
     if (inputKey) inputKey.value = cfg.key || "";
     badge();
+    desenharAjustes();
+  }
+
+  /* a conexao com o banco se faz uma vez so no aparelho: depois dela os campos somem
+     e o que o professor ve todo dia e o login dele. Entrar e opcional. */
+  function desenharAjustes() {
+    var cfg = window.GabaDB ? GabaDB.readConfig() : { url: "", key: "" };
+    var cheio = Boolean(cfg.url && cfg.key);
+    var eu = app.professor;
+    var form = $("form-config");
+    if (form) form.hidden = cheio && !ajustes.credencialAberta;
+    var urlSalva = $("cfg-url-salva");
+    if (urlSalva) urlSalva.textContent = cfg.url || "";
+    var guarda = $("cfg-salva");
+    if (guarda) guarda.hidden = !cheio;
+    var trocar = $("btn-trocar-credencial");
+    if (trocar) trocar.hidden = !cheio;
+    var logado = $("professor-logado");
+    if (logado) logado.hidden = !eu;
+    var formLogin = $("form-login");
+    if (formLogin) formLogin.hidden = Boolean(eu);
+    var abrirConta = $("btn-nova-conta");
+    if (abrirConta) abrirConta.hidden = Boolean(eu) || ajustes.contaAberta;
+    var formConta = $("form-conta");
+    if (formConta) formConta.hidden = Boolean(eu) || !ajustes.contaAberta;
+    if (eu) {
+      setTexto("logado-nome", eu.nome || cfg.professorNome || String(eu.email || "").split("@")[0]);
+      setTexto("logado-email", eu.email || "");
+    }
   }
 
   document.addEventListener("DOMContentLoaded", function () {
