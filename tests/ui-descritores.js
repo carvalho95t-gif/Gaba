@@ -114,7 +114,7 @@ function check(nome, cond, extra) {
       naProva: { descritor: q.descritor, habilidade: q.habilidade_bncc },
       fechado: sel.aberto() === false,
       sumiu: document.getElementById("q-pick").hidden,
-      status: document.getElementById("cad-status").textContent.replace(/\s+/g, " ")
+      status: document.getElementById("revisao-status").textContent.replace(/\s+/g, " ")
     };
   }, []);
   check("escolher uma linha preenche o código na caixa da questão",

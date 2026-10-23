@@ -338,6 +338,44 @@ async function dirigirCadastros(marcas) {
   window.confirm = function () { return true; };
   window.prompt = function () { return marcas.novoNome; };
 
+  /* auto-responder para o pedir() que substituiu prompt/confirm */
+  window.__autoDialogo = { valor: true };
+  (function () {
+    var dlg = document.getElementById("dlg");
+    if (!dlg) return;
+    new MutationObserver(function () {
+      if (dlg.hidden || !window.__autoDialogo) return;
+      var valor = window.__autoDialogo.valor;
+      var campoBox = document.getElementById("dlg-campo-box");
+      var campo = document.getElementById("dlg-campo");
+      if (campoBox && !campoBox.hidden && campo && typeof valor === "string") {
+        campo.value = valor;
+      }
+      var opcoes = document.getElementById("dlg-opcoes");
+      if (opcoes && !opcoes.hidden && typeof valor === "string") {
+        var radios = [].slice.call(opcoes.querySelectorAll("input[type=radio]"));
+        var match = radios.filter(function (r) { return r.value === valor; })[0];
+        if (match) {
+          match.checked = true;
+          match.dispatchEvent(new Event("change", { bubbles: true }));
+        } else {
+          var outra = radios.filter(function (r) { return r.value === "__outra"; })[0];
+          if (outra) {
+            outra.checked = true;
+            outra.dispatchEvent(new Event("change", { bubbles: true }));
+            var outraIn = document.getElementById("dlg-outra-in");
+            if (outraIn) outraIn.value = valor;
+          }
+        }
+      }
+      setTimeout(function () {
+        if (dlg.hidden) return;
+        var ok = document.getElementById("dlg-ok");
+        if (ok && !ok.hidden) ok.click();
+      }, 0);
+    }).observe(dlg, { attributes: true, attributeFilter: ["hidden"] });
+  })();
+
   preenche("turma-nome", marcas.turma);
   preenche("turma-ano", "1º ano M");
   envia("form-turma");
@@ -383,12 +421,14 @@ async function dirigirCadastros(marcas) {
       return l.textContent.replace(/\s+/g, " ").trim();
     });
 
+    window.__autoDialogo.valor = marcas.novoNome;
     botaoDe("#lista-turmas", "renomear-turma").click();
     r.renomeada = await espera(function () {
       var t = window.__gaba.mb.turmas[0];
       return t && t.nome === marcas.novoNome ? { nome: t.nome, id: t.id } : null;
     }, 6000).catch(function () { return null; });
 
+    window.__autoDialogo.valor = true;
     var apagar = botaoDe("#lista-turmas", "apagar-aluno");
     var idApagado = apagar.dataset.id;
     apagar.click();
@@ -436,7 +476,7 @@ async function dirigirDocumento(cfg) {
   if (!local) { r.erro = "o .docx nao virou prova"; return r; }
   r.idLocal = String(local.id);
   r.questoes = (local.questoes || []).length;
-  r.cadStatus = texto("cad-status");
+  r.cadStatus = texto("prova-status");
 
   var aviso = document.getElementById("cad-avisos");
   var p0 = GabaCaderno.problemasDaProva(local);
@@ -553,7 +593,7 @@ async function dirigirRevisao(marcos) {
   r.bnccNoBanco = linha ? ((linha.descritores || [])[2] || {}).habilidade_bncc : null;
   r.gabaritoNoBanco = linha ? (linha.gabarito || []).length : null;
   r.botaoDepois = document.getElementById("cad-salvar-prova").hidden;
-  r.status = texto("cad-status");
+  r.status = texto("revisao-status");
   r.nota = texto("cad-nota-prova");
   return r;
 }
@@ -731,7 +771,7 @@ async function dirigirEscolas(marcos) {
       pilhas: pilhasDe().map(function (p) { return p.turma; }),
       seletorAluno: [].slice.call(document.querySelectorAll("#aluno-turma-select option"))
         .map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); }),
-      seletorAnalise: [].slice.call(document.querySelectorAll("#ana-turma option"))
+      seletorAnalise: [].slice.call(document.querySelectorAll("#ab-turma option"))
         .map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); }),
       filtro: sel.value,
       escondido: box.hidden
@@ -753,6 +793,7 @@ async function dirigirEscolas(marcos) {
   if (!primeira) { r.parouAqui = { motivo: "a turma renomeada nao esta mais no banco" }; return r; }
   window.prompt = function () { return SERRA; };
   window.confirm = function () { return true; };
+  window.__autoDialogo.valor = SERRA;
   botaoDe("#lista-turmas", "escola-turma", primeira.id).click();
   r.peloBotao = await espera(function () {
     return String(primeira.escola) === SERRA && tela().turmas ? SERRA : null;
@@ -814,6 +855,7 @@ async function dirigirEscolas(marcos) {
   sel.value = ANHANGUERA;
   sel.dispatchEvent(new Event("change", { bubbles: true }));
   await espera(function () { return tela().turmas === "1"; }, 8000).catch(function () { return null; });
+  window.__autoDialogo.valor = SERRA;
   botaoDe("#lista-turmas", "escola-turma", daAnhang.id).click();
   r.seDesligou = await espera(function () {
     var t = tela();
@@ -920,9 +962,10 @@ async function dirigirAnalise(marcos) {
   for (var i = 0; i < folhas.length; i++) await GabaSync.saveLocalResult(folhas[i]);
   await GabaApp.carregarTudo();
 
-  var sel = document.getElementById("ana-prova");
+  var sel = document.getElementById("ab-prova");
   sel.value = String(prova.id);
   sel.dispatchEvent(new Event("change", { bubbles: true }));
+  window.switchAnalise("ab-questao");
 
   function linhaDaTabela(tr) {
     var c = [].slice.call(tr.cells).map(function (td) { return td.textContent.replace(/\s+/g, " ").trim(); });
@@ -951,9 +994,9 @@ async function dirigirAnalise(marcos) {
   r.avisos = [].slice.call(document.querySelectorAll("#ana-resumo .ana-avisos li"))
     .map(function (li) { return li.textContent.replace(/\s+/g, " ").trim(); });
   r.status = texto("ana-status");
-  r.seletorProvas = [].slice.call(document.querySelectorAll("#ana-prova option"))
+  r.seletorProvas = [].slice.call(document.querySelectorAll("#ab-prova option"))
     .map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); });
-  r.seletorTurmas = [].slice.call(document.querySelectorAll("#ana-turma option"))
+  r.seletorTurmas = [].slice.call(document.querySelectorAll("#ab-turma option"))
     .map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); });
   r.seloAparelho = document.querySelectorAll("#tabela-relatorios .so-aparelho-tag").length;
 
@@ -976,7 +1019,7 @@ async function dirigirAnalise(marcos) {
   ordenar.value = "numero";
   ordenar.dispatchEvent(new Event("change", { bubbles: true }));
 
-  var selTurma = document.getElementById("ana-turma");
+  var selTurma = document.getElementById("ab-turma");
   selTurma.value = String(outra.id);
   selTurma.dispatchEvent(new Event("change", { bubbles: true }));
   r.statusSoTurma = texto("ana-status");
@@ -1138,7 +1181,7 @@ async function dirigirEscada(marcos) {
   }, 8000).catch(function () { return null; });
   r.cardComTurma = await espera(function () {
     var c = cardOf(NOVA);
-    return c && /1 turma\(s\)/.test(c.span.join(" ")) ? c : null;
+    return c && /1 turma\b/.test(c.span.join(" ")) ? c : null;
   }, 8000).catch(function () { return cardOf(NOVA); });
 
   /* 4. "adicionar turma" em outra escola muda o filtro e escreve a escola no formulario */
@@ -1159,7 +1202,7 @@ async function dirigirEscada(marcos) {
   if (r.serraAchada) {
     botaoDe("#lista-escolas-cad", "escola-filtrar", cardOf(marcos.serra).nome).click();
     r.verTodas = await espera(function () {
-      return topo().valor === "" && document.getElementById("escola-filtro-box").hidden ? topo() : null;
+      return topo().valor === "" ? topo() : null;
     }, 8000).catch(topo);
   }
 
@@ -1172,6 +1215,7 @@ async function dirigirEscada(marcos) {
   r.fantasmaCriado = Boolean(fantasma);
   r.fantasmaFiltrando = topo().valor;
   window.confirm = function () { return true; };
+  window.__autoDialogo.valor = true;
   botaoDe("#lista-escolas-cad", "apagar-escola", Fantasma).click();
   r.fantasmaDepois = await espera(function () {
     return !cardOf(Fantasma) && !noBanco(Fantasma).length ? { cards: cards().length, filtro: topo().valor } : null;
@@ -1181,6 +1225,330 @@ async function dirigirEscada(marcos) {
   r.cadastroFinal = cards();
   r.registroFinal = localStorage.getItem("gaba_escolas_registro");
   GabaEscolas.setFiltro("");
+  return r;
+}
+
+/* a planilha da escola: uma aba por turma, sem o nome da escola em lugar nenhum */
+async function dirigirImportarTurmas(marcos) {
+  var r = {};
+  var ESCOLA = marcos.escola;
+
+  function xlsxDeTeste(abas) {
+    var enc = new TextEncoder();
+    function x(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    var arquivos = {
+      "xl/workbook.xml": '<workbook xmlns:r="r"><sheets>' + abas.map(function (a, i) {
+        return '<sheet name="' + x(a.nome) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+      }).join("") + "</sheets></workbook>",
+      "xl/_rels/workbook.xml.rels": "<Relationships>" + abas.map(function (a, i) {
+        return '<Relationship Id="rId' + (i + 1) + '" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+      }).join("") + "</Relationships>"
+    };
+    abas.forEach(function (a, i) {
+      arquivos["xl/worksheets/sheet" + (i + 1) + ".xml"] = "<worksheet><sheetData>" + a.linhas.map(function (l) {
+        return "<row>" + l.map(function (v) { return '<c t="inlineStr"><is><t>' + x(v) + "</t></is></c>"; }).join("") + "</row>";
+      }).join("") + "</sheetData></worksheet>";
+    });
+    var tabela = [];
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      tabela[n] = c >>> 0;
+    }
+    function crc(b) {
+      var c = 0xFFFFFFFF;
+      for (var i = 0; i < b.length; i++) c = tabela[(c ^ b[i]) & 255] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+    var partes = [], central = [], off = 0, nomes = Object.keys(arquivos);
+    nomes.forEach(function (nome) {
+      var nb = enc.encode(nome), dados = enc.encode(arquivos[nome]), soma = crc(dados);
+      var loc = new DataView(new ArrayBuffer(30));
+      loc.setUint32(0, 0x04034b50, true); loc.setUint16(4, 20, true); loc.setUint16(6, 0x0800, true);
+      loc.setUint32(14, soma, true); loc.setUint32(18, dados.length, true); loc.setUint32(22, dados.length, true);
+      loc.setUint16(26, nb.length, true);
+      partes.push(new Uint8Array(loc.buffer), nb, dados);
+      var cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
+      cen.setUint32(16, soma, true); cen.setUint32(20, dados.length, true); cen.setUint32(24, dados.length, true);
+      cen.setUint16(28, nb.length, true); cen.setUint32(42, off, true);
+      central.push(new Uint8Array(cen.buffer), nb);
+      off += 30 + nb.length + dados.length;
+    });
+    var tamanho = central.reduce(function (s, p) { return s + p.length; }, 0);
+    var fim = new DataView(new ArrayBuffer(22));
+    fim.setUint32(0, 0x06054b50, true); fim.setUint16(8, nomes.length, true); fim.setUint16(10, nomes.length, true);
+    fim.setUint32(12, tamanho, true); fim.setUint32(16, off, true);
+    return new File(partes.concat(central, [new Uint8Array(fim.buffer)]), "chamada-da-escola.xlsx",
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  function mandar(arquivo) {
+    var dt = new DataTransfer();
+    dt.items.add(arquivo);
+    var entrada = document.getElementById("impt-arquivo");
+    entrada.files = dt.files;
+    entrada.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function painel() {
+    var box = document.getElementById("impt-painel");
+    var salvar = document.getElementById("impt-salvar");
+    return {
+      aberto: !box.hidden,
+      titulo: ((box.querySelector(".impt-titulo") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+      resumo: ((box.querySelector(".imp-resumo") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+      avisos: [].slice.call(box.querySelectorAll(".imp-problemas li")).map(function (li) { return li.textContent; }),
+      linhas: [].slice.call(box.querySelectorAll(".impt-tabela tbody tr")).map(function (tr) {
+        return { nome: tr.querySelector(".impt-nome").value, alunos: tr.querySelector(".impt-num").textContent,
+          selo: tr.querySelector(".badge").textContent, marcada: tr.querySelector("[data-impt]").checked };
+      }),
+      ano: (document.getElementById("impt-ano") || {}).value,
+      comAlunos: Boolean(document.getElementById("impt-alunos") && document.getElementById("impt-alunos").checked),
+      salvar: salvar ? { texto: salvar.textContent, desligado: salvar.disabled } : null,
+      outro: Boolean(document.getElementById("impt-outro")),
+      status: texto("impt-status")
+    };
+  }
+  function cartao() {
+    return [].slice.call(document.querySelectorAll("#lista-escolas-cad .item-lista")).map(function (d) {
+      return { nome: d.querySelector(".item-cab strong").textContent,
+        texto: d.querySelector(".item-cab").textContent.replace(/\s+/g, " "),
+        acoes: [].slice.call(d.querySelectorAll("[data-acao]")).map(function (b) { return b.dataset.acao; }) };
+    }).filter(function (c) { return GabaEscolas.chave(c.nome) === GabaEscolas.chave(ESCOLA); })[0] || null;
+  }
+
+  r.cartaoAntes = cartao();
+  var turmasAntes = window.__gaba.mb.turmas.length;
+  botaoDe("#lista-escolas-cad", "importar-turmas", cartao().nome).click();
+  mandar(xlsxDeTeste([
+    { nome: "6º A (teste)", linhas: [["1", "ALFA BRAVO TESTE", ""], ["2", "CHARLIE DELTA TESTE", "TRANSFERIDO"],
+      ["3", "ECO FOXTROT TESTE", ""]] },
+    { nome: marcos.turmaExistente, linhas: [["Nº", "Nome"], ["1", "GOLF HOTEL TESTE"], ["2", "INDIA JULIETT TESTE"]] },
+    { nome: "Resumo", linhas: [["Total", "5"]] }
+  ]));
+  r.lido = await espera(function () { var p = painel(); return p.linhas.length === 2 ? p : null; }, 15000)
+    .catch(painel);
+  r.bancoAntesDeSalvar = window.__gaba.mb.turmas.length - turmasAntes;
+
+  var todas = document.getElementById("impt-todas");
+  todas.click();
+  r.nenhuma = painel().salvar;
+  todas.click();
+  r.todasDeNovo = painel().salvar;
+
+  var nome0 = document.querySelector('[data-impt-nome="0"]');
+  nome0.value = "6º Ano A (teste)";
+  nome0.dispatchEvent(new Event("input", { bubbles: true }));
+  var nome1 = document.querySelector('[data-impt-nome="1"]');
+  nome1.value = "6º ano a (TESTE)";
+  nome1.dispatchEvent(new Event("input", { bubbles: true }));
+  document.getElementById("impt-salvar").click();
+  r.nomeRepetido = painel().status;
+  r.seloRenomeado = painel().linhas[1].selo;
+  nome1.value = marcos.turmaExistente;
+  nome1.dispatchEvent(new Event("input", { bubbles: true }));
+
+  document.getElementById("impt-salvar").click();
+  r.salvo = await espera(function () {
+    var p = painel();
+    return /Pronto/.test(p.status) ? p : null;
+  }, 15000).catch(painel);
+  var nova = window.__gaba.mb.turmas.filter(function (t) { return t.nome === "6º Ano A (teste)"; });
+  var existentes = window.__gaba.mb.turmas.filter(function (t) { return t.nome === marcos.turmaExistente; });
+  function alunosDe(t) {
+    return t ? window.__gaba.mb.alunos.filter(function (a) { return String(a.turma_id) === String(t.id); })
+      .map(function (a) { return a.numero + ":" + a.nome; }).sort() : [];
+  }
+  r.nova = nova.map(function (t) { return { escola: t.escola, ano: t.ano }; });
+  r.alunosDaNova = alunosDe(nova[0]);
+  r.existentes = existentes.length;
+  r.alunosDaExistente = alunosDe(existentes[0]);
+  r.cartaoDepois = await espera(function () {
+    var c = cartao();
+    return c && /2 turmas/.test(c.texto) ? c : null;
+  }, 8000).catch(cartao);
+  r.filtro = GabaEscolas.filtro();
+
+  document.getElementById("impt-cancelar").click();
+  r.fechado = painel().aberto;
+
+  /* arquivo sem turma nenhuma: o painel explica e oferece outro arquivo */
+  botaoDe("#lista-escolas-cad", "importar-turmas", cartao().nome).click();
+  mandar(new File(["isto nao e uma lista\n"], "anotacoes.csv", { type: "text/csv" }));
+  r.vazio = await espera(function () { var p = painel(); return p.outro ? p : null; }, 8000).catch(painel);
+  document.getElementById("impt-cancelar").click();
+
+  var alternativa = [].slice.call(document.querySelectorAll('#lista-escolas-cad [data-acao="importar-turmas"]'))
+    .filter(function (b) { return GabaEscolas.chave(b.dataset.id) !== GabaEscolas.chave(ESCOLA); })[0];
+  var leXlsx = GabaPlanilha.leXlsx;
+  var liberar;
+  var trava = new Promise(function (res) { liberar = res; });
+  try {
+    GabaPlanilha.leXlsx = async function (buf) { await trava; return leXlsx(buf); };
+    botaoDe("#lista-escolas-cad", "importar-turmas", cartao().nome).click();
+    mandar(xlsxDeTeste([{ nome: "Leitura original (teste)", linhas: [["Nº", "Nome"], ["1", "ALFA TESTE"]] }]));
+    await espera(function () { return /Lendo/.test(painel().status); }, 8000);
+    alternativa.click();
+    r.leituraBloqueada = /Espere a importação/.test(texto("app-status"));
+    mandar(new File(["Turma\nNão deve entrar\n"], "outro.csv", { type: "text/csv" }));
+    liberar();
+    r.leituraOriginal = await espera(function () {
+      var p = painel(); return p.linhas.length === 1 ? p : null;
+    }, 8000).catch(painel);
+  } finally {
+    liberar();
+    GabaPlanilha.leXlsx = leXlsx;
+  }
+  document.getElementById("impt-cancelar").click();
+
+  var salvarTurma = GabaDB.salvarTurma;
+  var salvarAlunos = GabaDB.salvarAlunosEmLote;
+  var listarTurmas = GabaDB.listTurmas;
+  var chamadas = 0;
+  var lotes = 0;
+  try {
+    botaoDe("#lista-escolas-cad", "importar-turmas", cartao().nome).click();
+    mandar(new File(["Turma;Nº;Nome\n8º A (retry teste);1;ALFA TESTE\n8º B (retry teste);1;BRAVO TESTE\n"],
+      "retry.csv", { type: "text/csv" }));
+    await espera(function () { return painel().linhas.length === 2; }, 8000);
+    document.getElementById("impt-ano").value = "2027";
+    document.getElementById("impt-alunos").click();
+    GabaDB.salvarTurma = async function (dados) {
+      chamadas++;
+      if (chamadas === 2) throw new Error("Falha simulada na segunda turma");
+      return salvarTurma(dados);
+    };
+    GabaDB.salvarAlunosEmLote = async function () { lotes++; throw new Error("Os alunos estavam desmarcados"); };
+    GabaDB.listTurmas = async function () { throw new Error("Recarga simulada sem rede"); };
+    document.getElementById("impt-salvar").click();
+    r.camposTravados = [].slice.call(document.querySelectorAll("#impt-painel input, #impt-painel button"))
+      .every(function (el) { return el.disabled; });
+    alternativa.click();
+    r.salvamentoBloqueado = /Espere a importação/.test(texto("app-status"));
+    r.retryEscolhas = await espera(function () {
+      var p = painel(); return /Falha simulada na segunda turma/.test(p.status) ? p : null;
+    }, 8000).catch(painel);
+    GabaDB.salvarTurma = salvarTurma;
+    GabaDB.listTurmas = listarTurmas;
+    document.getElementById("impt-salvar").click();
+    await espera(function () { return /Pronto/.test(painel().status); }, 8000);
+    r.retryLotes = lotes;
+    r.retryTurmas = window.__gaba.mb.turmas.filter(function (t) { return /retry teste/.test(t.nome); })
+      .map(function (t) { return { nome: t.nome, ano: t.ano, escola: t.escola }; });
+  } finally {
+    GabaDB.salvarTurma = salvarTurma;
+    GabaDB.salvarAlunosEmLote = salvarAlunos;
+    GabaDB.listTurmas = listarTurmas;
+  }
+  document.getElementById("impt-cancelar").click();
+
+  try {
+    botaoDe("#lista-escolas-cad", "importar-turmas", cartao().nome).click();
+    mandar(new File(["Turma;Nº;Nome\n9º A (retry alunos teste);1;ALFA RETRY TESTE\n"], "retry-alunos.csv", { type: "text/csv" }));
+    await espera(function () { return painel().linhas.length === 1; }, 8000);
+    GabaDB.salvarAlunosEmLote = async function () { throw new Error("Lote simulado sem rede"); };
+    GabaDB.listTurmas = async function () { throw new Error("Recarga simulada sem rede"); };
+    document.getElementById("impt-salvar").click();
+    await espera(function () { return /Lote simulado sem rede/.test(painel().status); }, 8000);
+    GabaDB.salvarAlunosEmLote = salvarAlunos;
+    GabaDB.listTurmas = listarTurmas;
+    document.getElementById("impt-salvar").click();
+    await espera(function () { return /Pronto/.test(painel().status); }, 8000);
+    var turmaRetry = window.__gaba.mb.turmas.filter(function (t) { return /retry alunos teste/.test(t.nome); });
+    r.retryDepoisDeCriar = { quantidade: turmaRetry.length, alunos: alunosDe(turmaRetry[0]) };
+  } finally {
+    GabaDB.salvarAlunosEmLote = salvarAlunos;
+    GabaDB.listTurmas = listarTurmas;
+  }
+  document.getElementById("impt-cancelar").click();
+
+  GabaEscolas.setFiltro("");
+  await GabaApp.carregarTudo();
+  return r;
+}
+
+async function dirigirDicas() {
+  var r = {};
+  var box = document.getElementById("gaba-dica");
+  var tab = document.querySelector('.tabs-polegar [data-tab="dashboard"]');
+  var outro = document.querySelector('.tabs-polegar [data-tab="relatorios"]');
+  function aberta() { return box && !box.hidden; }
+  function pausar(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  function pointer(el, tipo, touch, x) {
+    el.dispatchEvent(new PointerEvent(tipo, { bubbles: true, cancelable: true, pointerId: 5,
+      pointerType: touch ? "touch" : "mouse", isPrimary: true, clientX: x || 50, clientY: 100 }));
+  }
+  window.switchTab("turmas");
+  r.carregou = Boolean(box && box.getAttribute("role") === "tooltip");
+  r.semNativo = !document.getElementById("status-conexao").hasAttribute("title") &&
+    !document.querySelector('[data-tab="config"]').hasAttribute("title");
+  tab.setAttribute("aria-describedby", "app-status");
+  pointer(tab, "pointerover", false);
+  await pausar(120);
+  r.naoImediato = !aberta();
+  await espera(aberta, 3000);
+  r.mouse = { titulo: box.querySelector("strong").textContent, descricao: tab.getAttribute("aria-describedby"),
+    texto: box.querySelector("p").textContent };
+  pointer(tab, "pointerout", false);
+  await pausar(200);
+  r.saiu = !aberta() && tab.getAttribute("aria-describedby") === "app-status";
+
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  tab.focus();
+  r.teclado = aberta();
+  tab.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  r.esc = !aberta();
+  tab.blur();
+
+  pointer(tab, "pointerdown", true);
+  await espera(aberta, 3000);
+  r.segurar = { abriu: aberta(), titulo: box.querySelector("strong").textContent };
+  var menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  tab.dispatchEvent(menu);
+  r.semMenu = menu.defaultPrevented;
+  pointer(tab, "pointerup", true);
+  tab.click();
+  r.semCliqueLongo = !document.getElementById("tab-dashboard").classList.contains("active") && aberta();
+
+  pointer(outro, "pointerdown", true);
+  r.proximoFecha = !aberta();
+  await pausar(80);
+  pointer(outro, "pointerup", true);
+  outro.click();
+  await pausar(600);
+  r.toqueCurto = document.getElementById("tab-relatorios").classList.contains("active") && !aberta();
+
+  pointer(tab, "pointerdown", true);
+  pointer(tab, "pointermove", true, 65);
+  await pausar(650);
+  r.arrastar = !aberta();
+  pointer(tab, "pointerup", true);
+  pointer(tab, "pointerdown", true);
+  pointer(tab, "pointercancel", true);
+  await pausar(650);
+  r.cancelar = !aberta();
+
+  var segmento = document.querySelector('[data-sub="ab-descritor"]');
+  pointer(segmento, "pointerover", false);
+  await espera(aberta, 3000);
+  r.segmento = box.querySelector("strong").textContent;
+  document.dispatchEvent(new Event("scroll"));
+  r.rolar = !aberta();
+
+  window.switchTab("turmas");
+  var dinamico = document.querySelector('#lista-escolas-cad [data-acao="importar-turmas"]');
+  pointer(dinamico, "pointerover", false);
+  await espera(aberta, 3000);
+  r.dinamico = box.querySelector("strong").textContent;
+  window.dispatchEvent(new Event("beforeprint"));
+  r.imprimir = !aberta();
+
+  pointer(tab, "pointerover", false);
+  await espera(aberta, 3000);
+  await pausar(5500);
+  r.permanece = aberta();
+  tab.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  tab.removeAttribute("aria-describedby");
   return r;
 }
 
@@ -1303,7 +1671,7 @@ async function dirigirSelo(marcos) {
   envia("selo-login");
   r.entrou = await espera(function () {
     var t = tela();
-    return t.logado && !t.aberto && t.badge === "Supabase Conectado" ? t : null;
+    return t.logado && !t.aberto && t.badge === "Ana" ? t : null;
   }, 12000).catch(tela);
 
   botao.click();
@@ -1311,7 +1679,7 @@ async function dirigirSelo(marcos) {
   document.getElementById("selo-sair").click();
   r.saiu = await espera(function () {
     var t = tela();
-    return !t.logado && t.badge === "Precisa entrar" ? t : null;
+    return !t.logado && t.badge === "Entrar" ? t : null;
   }, 9000).catch(tela);
 
   /* aparelho sem banco nenhum: a janelinha nao oferece login que nao tem para onde ir */
@@ -1366,7 +1734,7 @@ function conferirEscolas(es) {
   if (es.parouAqui) return;
   check("o topo so oferece 'todas' e '(sem escola)' enquanto nenhuma turma tem escola",
     es.noInicio.opcoes.length === 2 && es.noInicio.opcoes[0].valor === "" &&
-    /\(sem escola\) · 2 turma\(s\)$/.test(es.noInicio.opcoes[1].texto), es.noInicio);
+    /\(sem escola\) · 2 turmas$/.test(es.noInicio.opcoes[1].texto), es.noInicio);
   check("o botao da linha escreve a escola na turma do banco", es.peloBotao === ESCOLA_SERRA, es.peloBotao);
   check("o formulario leva a escola no insert da turma",
     es.payloadTurma && JSON.parse(es.payloadTurma).escola === "eefm   da serra (teste)", es.payloadTurma);
@@ -1378,8 +1746,8 @@ function conferirEscolas(es) {
     es.duasEscolas.datalist);
   check("o filtro do topo conta as turmas de cada escola",
     es.duasEscolas.opcoes.length === 4 && es.duasEscolas.opcoes[1].valor === ESCOLA_SERRA &&
-    /· 2 turma\(s\)/.test(es.duasEscolas.opcoes[1].texto) &&
-    /· 1 turma\(s\)/.test(es.duasEscolas.opcoes[3].texto) && es.duasEscolas.escondido === false,
+    /· 2 turmas$/.test(es.duasEscolas.opcoes[1].texto) &&
+    /· 1 turma$/.test(es.duasEscolas.opcoes[3].texto) && es.duasEscolas.escondido === false,
     es.duasEscolas.opcoes);
   check("sem filtro cada linha mostra a propria escola",
     es.todasAsTurmas.escolaNaLinha.length === 4 && es.todasAsTurmas.turmas === "4" &&
@@ -1399,7 +1767,7 @@ function conferirEscolas(es) {
     es.soAnhanguera.pilhas.join("|") === es.soAnhanguera.linhas.join("|"),
     [es.todasAsTurmas.pilhas, es.soSerra.pilhas, es.soAnhanguera]);
   check("os seletores de turma so oferecem a escola filtrada",
-    es.soAnhanguera.seletorAluno.join("|") === "Selecione a Turma...|" + es.procura.turmaAnhanguera &&
+    es.soAnhanguera.seletorAluno.join("|") === "Selecione a turma...|" + es.procura.turmaAnhanguera &&
     es.soAnhanguera.seletorAnalise.join("|") === "Todas as turmas|" + es.procura.turmaAnhanguera,
     es.soAnhanguera);
   check("(sem escola) mostra justamente as turmas ainda sem unidade",
@@ -1505,7 +1873,7 @@ var LISTA = {
         turmas: document.getElementById("lista-turmas").textContent.trim().slice(0, 80) };
     }, []);
     check("com a conexão do pacote mas sem sessão o selo pede entrada",
-      semLogin.badge === "Precisa entrar" && /badge-off/.test(semLogin.classe) &&
+      semLogin.badge === "Entrar" && /badge-off/.test(semLogin.classe) &&
       /Entre com o seu e-mail/.test(semLogin.turmas), semLogin);
     var cadSemLogin = await c.naPagina(sondarCaderno, []);
     check("o Caderno nao consulta turmas nem provas antes de entrar",
@@ -1524,11 +1892,12 @@ var LISTA = {
       });
     }, [{ email: "setup@example.test", senha: "gaba-setup-1", nome: "Setup (teste)" }]);
     var conectado = await c.naPagina(function () {
-      return { badge: document.getElementById("status-conexao").textContent,
-        classe: document.getElementById("status-conexao").className };
+      var b = document.getElementById("status-conexao");
+      return { badge: b.textContent, classe: b.className, rotulo: b.getAttribute("aria-label") };
     }, []);
-    check("com credenciais e login o selo vira Conectado",
-      conectado.badge === "Supabase Conectado" && /badge-on/.test(conectado.classe), conectado);
+    check("com credenciais e login o selo mostra o primeiro nome do professor",
+      conectado.badge === "Setup" && /badge-on/.test(conectado.classe) &&
+      conectado.rotulo === "Conectado como Setup (teste)", conectado);
     var cadLogado = await c.naPagina(sondarCaderno, []);
     check("depois de entrar o Caderno consulta turmas e provas normalmente",
       cadLogado.pedidos.indexOf("/rest/v1/turmas") >= 0 && cadLogado.pedidos.indexOf("/rest/v1/provas") >= 0,
@@ -1565,7 +1934,7 @@ var LISTA = {
     check("o painel conta 1 turma, 1 aluno e 1 prova", r.painel.join("|") === "1|1|1|0", r.painel);
     check("a pilha da turma cobra a folha que ainda não foi lida",
       r.pilhas.length === 1 && r.pilhas[0].turma === (r.renomeada ? r.renomeada.nome : MARCAS.turma) &&
-      /1 aluno\(s\) · 0 folha\(s\) lida\(s\)/.test(r.pilhas[0].texto || "") &&
+      /1 aluno · 0 folhas lidas/.test(r.pilhas[0].texto || "") &&
       r.pilhas[0].falta === "faltam 1" && r.pilhas[0].largura === "0%", r.pilhas);
 
     console.log("\n== prova vinda de .docx ==");
@@ -1589,7 +1958,7 @@ var LISTA = {
       /D4/.test(d.recarga.descritor || "") && String(d.editorDepoisDaRecarga) === "3",
       [d.recarga, d.editorDepoisDaRecarga]);
     check("antes de salvar a linha se marca como do aparelho",
-      d.antes && d.antes.soAparelho === 1 && /salvar no banco/.test(d.antes.texto), d.antes);
+      d.antes && d.antes.soAparelho === 1 && /salvar no banco/i.test(d.antes.texto), d.antes);
     check("salvar no banco trocou o id local pelo uuid", d.eUuidDepois === true, d.idLocal);
     check("o peso, o gabarito e o descritor revisados chegaram ao banco",
       d.depois && Number((d.depois.pesos || [])[0]) === 3 && (d.depois.gabarito || [])[0] === "B" &&
@@ -1617,21 +1986,21 @@ var LISTA = {
 
     console.log("\n== revisar peso e descritor de uma prova do banco ==");
     var rv = await c.naPagina(dirigirRevisao, [{ idNoBanco: d.idNoBanco }]);
-    check("a prova promovida abre o editor de questões na aba Cadernos",
+    check("a prova promovida abre o editor de questões na revisão",
       rv.editorAberto > 0 && rv.botaoEscondido === true, rv);
     check("editar acende o botão de salvar a revisão", rv.botaoApareceu === true, rv);
     check("a revisão volta ao banco com o peso e a habilidade BNCC novos",
       rv.pesoNoBanco === 5 && rv.bnccNoBanco === "EF07LP22" && rv.gabaritoNoBanco === rv.editorAberto, rv);
     check("depois de salvar o botão se apaga e a nota máxima é refeita",
       rv.botaoDepois === true && new RegExp((d.questoes + 6).toFixed(1).replace(".", ",") + " pontos")
-        .test(rv.nota || "") && /salva no banco/.test(rv.status || ""),
+        .test(rv.nota || "") && /salva|prova/.test(rv.status || ""),
       [rv.botaoDepois, rv.nota, rv.status, d.questoes]);
 
     console.log("\n== folha lida no aparelho subindo para o banco ==");
     var s = await c.naPagina(dirigirFila, [MARCAS]);
     check("a leitura nova apareceu com o selo 'aparelho'", s.comAparelho === 1, s);
     check("a linha mostra aluna, nota e acertos",
-      /ANA DO TESTE/.test(s.linhaAntes || "") && /6\.7/.test(s.linhaAntes || "") && /2\/3/.test(s.linhaAntes || ""),
+      /ANA DO TESTE/.test(s.linhaAntes || "") && /6,7/.test(s.linhaAntes || "") && /2\/3/.test(s.linhaAntes || ""),
       s.linhaAntes);
     check("o botão subiu a folha e esvaziou a fila",
       s.sincronizada && s.sincronizada.aluno_nome === "ANA DO TESTE" && s.filaRestante === 0, s);
@@ -1640,7 +2009,7 @@ var LISTA = {
     check("o painel passou a contar a correção",
       s.painelAntes === "1" && s.painelDepois === "1", [s.painelAntes, s.painelDepois]);
     check("a folha lida zera a pilha da turma",
-      s.pilhaDepois.length === 1 && /1 aluno\(s\) · 1 folha\(s\) lida\(s\)/.test(s.pilhaDepois[0].texto || "") &&
+      s.pilhaDepois.length === 1 && /1 aluno · 1 folha lida/.test(s.pilhaDepois[0].texto || "") &&
       s.pilhaDepois[0].falta === "pilha zerada" && s.pilhaDepois[0].largura === "100%", s.pilhaDepois);
     check("o QR da folha chegou inteiro ao banco",
       s.sincronizada && /^GABA1\|/.test(s.sincronizada.qr_payload || "") && s.sincronizada.acertos === 2 &&
@@ -1686,7 +2055,7 @@ var LISTA = {
       /,/.test(an.cartoes[4].valor + an.cartoes[4].detalhe), an.cartoes[4]);
     check("a lista de avisos agrupa os itens por problema", an.avisos.length >= 1, an.avisos);
     check("as folhas que ainda só estão no aparelho entram na conta",
-      /8 folha\(s\)/.test(an.status || "") && an.seloAparelho >= 8, [an.status, an.seloAparelho]);
+      /8 folhas /.test(an.status || "") && an.seloAparelho >= 8, [an.status, an.seloAparelho]);
     check("o seletor de provas não oferece de novo o que já virou banco",
       an.seletorProvas.join(" ").indexOf("neste aparelho") < 0 && an.seletorProvas.length === 3,
       an.seletorProvas);
@@ -1698,7 +2067,7 @@ var LISTA = {
       an.primeiraCelula === an.esperado[piorAcerto].acertos + "/" + an.notas.length,
       [an.primeiraPorAcerto, piorAcerto + 1, an.primeiraCelula, an.esperado[piorAcerto].acertos]);
     check("filtrar por turma refaz a conta só com as folhas daquela turma",
-      /2 folha\(s\)/.test(an.statusSoTurma || "") && an.cartoesSoTurma[0] === "2",
+      /2 folhas /.test(an.statusSoTurma || "") && an.cartoesSoTurma[0] === "2",
       [an.statusSoTurma, an.cartoesSoTurma]);
     check("o CSV traz uma linha por questão com as 17 colunas",
       an.csvLinhas === an.total + 1 && an.csvColunas === 17 &&
@@ -1720,7 +2089,7 @@ var LISTA = {
     check("o e-mail da planilha entrou em minusculo",
       li.ver.linhas[0][5] === "responsavel60@exemplo.test", li.ver.linhas[0]);
     check("a linha TOTAL foi contada como ignorada, nao como aluna",
-      /1 linha\(s\) ignoradas/.test(li.ver.resumo) && !li.ver.linhas.some(function (l) { return /45 alunos/.test(l[1]); }),
+      /1 linha ignorada/.test(li.ver.resumo) && !li.ver.linhas.some(function (l) { return /45 alunos/.test(l[1]); }),
       [li.ver.resumo, li.ver.linhas]);
     check("os dois avisos apareceram na previa",
       li.ver.problemas.some(function (p) { return /se repete/.test(p); }) &&
@@ -1753,7 +2122,7 @@ var LISTA = {
       li.xlsx.linhas.some(function (l) { return l.some(function (celula) { return mesmoTexto(celula, li.comChamada.nome); }); }),
       [Number(li.comChamada && li.comChamada.numero), Number(li.comChamada && li.comChamada.tipo), li.xlsx.linhas.length]);
     check("a turma ficou com 47 alunos e o painel mostrou isso",
-      li.painel === "47" && /45 aluno\(s\) salvos/.test(li.fim.status || ""), [li.painel, li.fim.status]);
+      li.painel === "47" && /45 alunos salvos/.test(li.fim.status || ""), [li.painel, li.fim.status]);
 
     console.log("\n== turmas de escolas diferentes ==");
     var ESC = { renomeada: MARCAS.novoNome, turmaSerra: "Turma da Serra (teste)",
@@ -1790,7 +2159,7 @@ var LISTA = {
     check("a turma do degrau seguinte herda a escola que esta na tela",
       esc.turma && mesmaEscola(esc.turma.escola, ESCADA.escolaNova), [esc.turma, esc.turma && esc.turma.escola]);
     check("a escola sai de 'ainda sem turma' para uma turma na mesma tela",
-      esc.cardComTurma && /1 turma\(s\)/.test(esc.cardComTurma.span.join(" ")), esc.cardComTurma);
+      esc.cardComTurma && /1 turma/.test(esc.cardComTurma.span.join(" ")), esc.cardComTurma);
     check("'adicionar turma' em outra escola muda o filtro e o campo de escola",
       esc.serraAchada && esc.mudouPara && mesmaEscola(esc.campoEscola, ESCOLA_SERRA) &&
       !esc.mudouPara.escondido, [esc.campoEscola, esc.mudouPara]);
@@ -1805,6 +2174,59 @@ var LISTA = {
     check("a escola que ficou no banco volta para o cadastro do aparelho",
       esc.registroFinal && esc.registroFinal.indexOf(ESCADA.escolaNova) >= 0 &&
       !/FANTASMA/.test(esc.registroFinal), esc.registroFinal);
+
+    console.log("\n== as turmas da escola chegam num arquivo so ==");
+    var it = await c.naPagina(dirigirImportarTurmas, [{ escola: ESCADA.escolaNova, turmaExistente: ESCADA.turmaNova }]);
+    check("o cartao da escola oferece 'Importar turmas'",
+      it.cartaoAntes && it.cartaoAntes.acoes.indexOf("importar-turmas") >= 0, it.cartaoAntes);
+    check("cada aba com alunos vira uma turma; a aba sem lista fica de fora com aviso",
+      it.lido.aberto && it.lido.linhas.length === 2 && it.lido.linhas[0].nome === "6º A (teste)" &&
+      it.lido.linhas[1].nome === ESCADA.turmaNova &&
+      it.lido.avisos.some(function (a) { return /"Resumo" não tem lista de alunos/.test(a); }), it.lido);
+    check("o painel diz para qual escola vai, quantos alunos e o ano de hoje",
+      /DO CAMPO/.test(it.lido.titulo) && /2 turmas/.test(it.lido.resumo) && /4 alunos/.test(it.lido.resumo) &&
+      it.lido.ano === String(new Date().getFullYear()) && it.lido.comAlunos, it.lido);
+    check("o transferido fica de fora e o painel conta",
+      it.lido.linhas[0].alunos === "2" &&
+      it.lido.avisos.some(function (a) { return /1 aluno marcado como transferido/.test(a); }), it.lido);
+    check("a turma que ja existe na escola vem marcada, a outra como nova",
+      it.lido.linhas[0].selo === "nova" && it.lido.linhas[1].selo === "já existe", it.lido.linhas);
+    check("ler o arquivo nao grava nada antes do professor salvar", it.bancoAntesDeSalvar === 0, it.bancoAntesDeSalvar);
+    check("desmarcar todas desliga o botao, marcar de novo conta as turmas",
+      it.nenhuma.desligado && /Marque/.test(it.nenhuma.texto) && !it.todasDeNovo.desligado &&
+      it.todasDeNovo.texto === "Salvar 2 turmas", [it.nenhuma, it.todasDeNovo]);
+    check("dois nomes iguais depois de editar sao barrados antes de ir ao banco",
+      /Duas turmas ficaram com o nome/.test(it.nomeRepetido) && it.seloRenomeado === "nova", [it.nomeRepetido, it.seloRenomeado]);
+    check("a turma nova nasce na escola, com o nome corrigido e o ano",
+      it.nova.length === 1 && mesmaEscola(it.nova[0].escola, ESCADA.escolaNova) &&
+      it.nova[0].ano === String(new Date().getFullYear()), it.nova);
+    check("os alunos entram na turma nova, sem o transferido",
+      it.alunosDaNova.join("|") === "1:ALFA BRAVO TESTE|3:ECO FOXTROT TESTE", it.alunosDaNova);
+    check("a turma que ja existia nao duplica e recebe os alunos",
+      it.existentes === 1 && it.alunosDaExistente.join("|") === "1:GOLF HOTEL TESTE|2:INDIA JULIETT TESTE",
+      [it.existentes, it.alunosDaExistente]);
+    check("o resumo conta a nova, a que ja existia e os alunos salvos",
+      /1 turma nova, 1 já existia/.test(it.salvo.resumo) && /4 alunos salvos/.test(it.salvo.resumo), it.salvo);
+    check("o cartao passa a 2 turmas e o topo fica na escola",
+      it.cartaoDepois && /2 turmas/.test(it.cartaoDepois.texto) && mesmaEscola(it.filtro, ESCADA.escolaNova),
+      [it.cartaoDepois, it.filtro]);
+    check("Fechar some com o painel", it.fechado === false, it.fechado);
+    check("arquivo sem turmas explica o formato e oferece outro arquivo",
+      it.vazio.outro && /uma aba por turma/.test(it.vazio.status), it.vazio);
+    check("trocar escola ou arquivo durante a leitura nao mistura duas importacoes",
+      it.leituraBloqueada && /DO CAMPO/.test(it.leituraOriginal.titulo) &&
+      it.leituraOriginal.linhas[0].nome === "Leitura original (teste)", [it.leituraBloqueada, it.leituraOriginal]);
+    check("salvar trava os campos e impede outra importacao simultanea",
+      it.camposTravados && it.salvamentoBloqueado, [it.camposTravados, it.salvamentoBloqueado]);
+    check("falha parcial preserva o ano e a escolha de nao trazer alunos",
+      it.retryEscolhas.ano === "2027" && !it.retryEscolhas.comAlunos, it.retryEscolhas);
+    check("retry sem recarga bem-sucedida nao duplica turmas nem importa alunos desmarcados",
+      it.retryTurmas.length === 2 && it.retryTurmas.every(function (t) {
+        return t.ano === "2027" && mesmaEscola(t.escola, ESCADA.escolaNova);
+      }) && it.retryLotes === 0, [it.retryTurmas, it.retryLotes]);
+    check("falha no lote de alunos depois de criar a turma reaproveita o id no retry",
+      it.retryDepoisDeCriar.quantidade === 1 && it.retryDepoisDeCriar.alunos.join("|") === "1:ALFA RETRY TESTE",
+      it.retryDepoisDeCriar);
 
     console.log("\n== o professor entra com e-mail e senha ==");
     var LG = { nome: "Profa. Ana (teste)", email: "ana.teste@example.test", senha: "gaba-teste-1",
@@ -1842,10 +2264,10 @@ var LISTA = {
       lg.saiu && lg.saiu.logado === false && lg.saiu.loginVisivel === true &&
       lg.saiu.guardadoVisivel === true && lg.saiu.conexaoAberta === false, lg.saiu);
     check("sem login o selo pede entrada, nao diz que esta conectado",
-      lg.telaInicial.badge === "Precisa entrar" && lg.saiu && lg.saiu.badge === "Precisa entrar",
+      lg.telaInicial.badge === "Entrar" && lg.saiu && lg.saiu.badge === "Entrar",
       [lg.telaInicial.badge, lg.saiu && lg.saiu.badge]);
-    check("entrar devolve o selo de conectado",
-      lg.depoisDeEntrar && lg.depoisDeEntrar.badge === "Supabase Conectado", lg.depoisDeEntrar);
+    check("entrar devolve o selo de conectado, com o nome",
+      lg.depoisDeEntrar && lg.depoisDeEntrar.badge === "Ana", lg.depoisDeEntrar);
 
     console.log("\n== o selo do topo abre o login ali mesmo ==");
     var sl = await c.naPagina(dirigirSelo, [LG]);
@@ -1858,16 +2280,16 @@ var LISTA = {
     check("senha errada aparece dentro da janelinha, que continua aberta",
       /E-mail ou senha não batem/.test(sl.negado.erro) && sl.negado.aberto && !sl.negado.logado, sl.negado);
     check("entrar pela janelinha deixa o professor dentro e fecha a janelinha",
-      sl.entrou.logado && !sl.entrou.aberto && sl.entrou.badge === "Supabase Conectado", sl.entrou);
+      sl.entrou.logado && !sl.entrou.aberto && sl.entrou.badge === "Ana", sl.entrou);
     check("dentro, a janelinha mostra quem e e o botao Sair",
       sl.abertoDentro.dentro && !sl.abertoDentro.login && /Ana \(teste\)/.test(sl.abertoDentro.nome) &&
       sl.abertoDentro.email === LG.email, sl.abertoDentro);
-    check("Sair pela janelinha volta o selo para Precisa entrar",
-      !sl.saiu.logado && sl.saiu.badge === "Precisa entrar" && !sl.saiu.aberto, sl.saiu);
+    check("Sair pela janelinha volta o selo para Entrar",
+      !sl.saiu.logado && sl.saiu.badge === "Entrar" && !sl.saiu.aberto, sl.saiu);
     check("sem banco no aparelho a janelinha manda para Ajustes em vez de pedir senha",
       sl.semBanco.semBanco && !sl.semBanco.login && sl.semBanco.badge === "Só neste aparelho" &&
       sl.foiAjustes.aba && !sl.foiAjustes.aberto, [sl.semBanco, sl.foiAjustes]);
-    check("a conexao volta e o selo pede entrada de novo", sl.final.badge === "Precisa entrar", sl.final);
+    check("a conexao volta e o selo pede entrada de novo", sl.final.badge === "Entrar", sl.final);
     var cadSaiu = await c.naPagina(sondarCaderno, []);
     check("depois de sair o Caderno nao consulta o banco nem mantem suas listas",
       cadSaiu.pedidos.length === 0 && cadSaiu.turmas === 0 && cadSaiu.provasBanco === 0, cadSaiu);
@@ -1884,6 +2306,69 @@ var LISTA = {
     check("a conexao de teste volta intacta", en.devolvida, en);
 
     console.log("\n== nada quebrou nem ficou para trás ==");
+    console.log("\n== dicas com mouse, teclado e toque ==");
+    var dc = await c.naPagina(dirigirDicas, []);
+    check("o balao carrega com semantica de tooltip e sem title duplicado", dc.carregou && dc.semNativo, dc);
+    check("mouse espera antes de mostrar a explicacao da aba",
+      dc.naoImediato && dc.mouse.titulo === "Central de alívio" && /folhas/.test(dc.mouse.texto), dc.mouse);
+    check("aria-describedby preserva a descricao anterior e limpa so a dica",
+      dc.mouse.descricao === "app-status gaba-dica" && dc.saiu, [dc.mouse.descricao, dc.saiu]);
+    check("teclado mostra a dica e Esc fecha", dc.teclado && dc.esc, [dc.teclado, dc.esc]);
+    check("segurar o toque explica sem mudar de aba nem abrir o menu do Android",
+      dc.segurar.abriu && dc.semMenu && dc.semCliqueLongo, [dc.segurar, dc.semMenu, dc.semCliqueLongo]);
+    check("o proximo toque fecha a dica, e um toque curto ainda abre a aba",
+      dc.proximoFecha && dc.toqueCurto, [dc.proximoFecha, dc.toqueCurto]);
+    check("arrastar ou cancelar o toque nao abre dica atrasada", dc.arrastar && dc.cancelar, dc);
+    check("os segmentos da Analise e botoes dinamicos recebem dicas",
+      dc.segmento === "Por descritor" && dc.dinamico === "Importar turmas", [dc.segmento, dc.dinamico]);
+    check("rolar e imprimir fecham a dica; manter o mouse permite ler sem prazo",
+      dc.rolar && dc.imprimir && dc.permanece, dc);
+
+    await c.chama("Emulation.setDeviceMetricsOverride", { width: 390, height: 800, deviceScaleFactor: 1, mobile: true });
+    await c.chama("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    var toqueDica = await c.naPagina(function () {
+      window.switchTab("dashboard");
+      window.scrollTo(0, 0);
+      var b = document.querySelector('.tabs-polegar [data-tab="scanner"]').getBoundingClientRect();
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    }, []);
+    await c.chama("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [toqueDica] });
+    await hud.sleep(650);
+    await c.chama("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    var longoReal = await c.naPagina(function () {
+      var b = document.getElementById("gaba-dica"), r = b.getBoundingClientRect();
+      return !b.hidden && document.getElementById("tab-dashboard").classList.contains("active") &&
+        r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight;
+    }, []);
+    check("gesto real do Chrome mostra a dica sem mudar de aba e cabe em 390px", longoReal, longoReal);
+    await c.chama("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [toqueDica] });
+    await c.chama("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    var curtoReal = await c.naPagina(function () {
+      return document.getElementById("tab-scanner").classList.contains("active") && document.getElementById("gaba-dica").hidden;
+    }, []);
+    check("toque curto real continua abrindo a aba", curtoReal, curtoReal);
+    await c.chama("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await c.chama("Emulation.setDeviceMetricsOverride", { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+    await c.naPagina(function () {
+      return new Promise(function (res) { requestAnimationFrame(function () { requestAnimationFrame(function () { res(true); }); }); });
+    }, []);
+    var mouseDica = await c.naPagina(function () {
+      var r = document.querySelector('.tabs-polegar [data-tab="relatorios"]').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, []);
+    await c.chama("Input.dispatchMouseEvent", { type: "mouseMoved", x: mouseDica.x, y: mouseDica.y });
+    await c.espera("!document.getElementById('gaba-dica').hidden", 3000);
+    var centroBalao = await c.naPagina(function () {
+      var r = document.getElementById("gaba-dica").getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, []);
+    await c.chama("Input.dispatchMouseEvent", { type: "mouseMoved", x: centroBalao.x, y: centroBalao.y });
+    await hud.sleep(400);
+    var podeLer = await c.naPagina(function () { return !document.getElementById("gaba-dica").hidden; }, []);
+    check("mover o mouse para dentro do balao mantem a explicacao visivel", podeLer, [mouseDica, centroBalao]);
+    await c.chama("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await c.chama("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+
     var e = await c.naPagina(colherErros, []);
     check("nenhum erro de javascript na página", e.erros.length === 0, e.erros);
     check("exatamente uma aba aberta", e.abasAtivas === 1, e.abasAtivas);

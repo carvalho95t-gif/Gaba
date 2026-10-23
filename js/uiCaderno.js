@@ -25,10 +25,23 @@
   function $(id) { return document.getElementById(id); }
 
   function status(msg, erro) {
-    var el = $("cad-status");
+    escrever("cad-status", msg, erro);
+  }
+
+  function escrever(id, msg, erro) {
+    var el = $(id);
     if (!el) return;
+    el.hidden = false;
     el.textContent = msg;
     el.className = "cad-status" + (erro ? " erro" : "");
+  }
+
+  /* importar e revisar acontecem na aba Provas: a mensagem fica perto de quem clicou */
+  function statusProva(msg, erro) { escrever("prova-status", msg, erro); }
+  function statusRevisao(msg, erro) { escrever("revisao-status", msg, erro); }
+
+  function plural(n, um, varios) {
+    return n + " " + (n === 1 ? um : varios);
   }
 
   function lerCfg() {
@@ -169,13 +182,15 @@
     var lista = $("cad-alunos");
     if (lista) {
       lista.hidden = false;
+      lista.classList.toggle("vazia", !estado.alunos.length);
       lista.innerHTML = estado.alunos.length
         ? estado.alunos.map(function (a) {
             return "<div>" + String(a.numero || "-") + " — " + String(a.nome || "").replace(/</g, "&lt;") +
               (a.tipo ? " (tipo " + a.tipo + ")" : "") + "</div>";
           }).join(NL)
-        : "<div>Nenhum aluno carregado.</div>";
+        : '<p class="cad-status">Nenhum aluno carregado: escolha a turma acima ou cadastre os alunos em Turmas &rsaquo; Alunos.</p>';
     }
+    atualizarCaderno();
     return estado.alunos;
   }
 
@@ -214,7 +229,7 @@
     var itens = [];
     if (p.total) {
       if (p.semGabarito.length) {
-        itens.push(p.semGabarito.length + " questão(ões) sem gabarito: " + listaCurta(p.semGabarito) +
+        itens.push(plural(p.semGabarito.length, "questão", "questões") + " sem gabarito: " + listaCurta(p.semGabarito) +
           ". Sem gabarito a questão conta como não respondida.");
       }
       if (p.gabaritoFora.length) {
@@ -226,8 +241,7 @@
     }
     var doWord = (prova && prova.avisos) || [];
     doWord.forEach(function (a) { itens.push(String(a)); });
-    /* o encaixe medido no papel desenhado: sem isto o corte so aparece na impressora */
-    (estado.cortes || []).forEach(function (t) { itens.push(t); });
+    desenharCortes();
     if (!itens.length) {
       box.hidden = true;
       box.innerHTML = "";
@@ -236,6 +250,16 @@
     box.hidden = false;
     box.innerHTML = "<h3>Revisar antes de imprimir (" + itens.length + ")</h3><ul>" +
       itens.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join(NL) + "</ul>";
+  }
+
+  /* o encaixe medido no papel desenhado: sem isto o corte so aparece na impressora */
+  function desenharCortes() {
+    var box = $("cad-cortes");
+    if (!box) return;
+    var cortes = estado.cortes || [];
+    box.hidden = !cortes.length;
+    box.innerHTML = !cortes.length ? "" : "<h3>Não cabe no papel (" + cortes.length + ")</h3><ul>" +
+      cortes.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join(NL) + "</ul>";
   }
 
   function listaCurta(numeros) {
@@ -428,7 +452,7 @@
     aplicarEdicao(input);
     if (bncc) aplicarEdicao(bncc);
     input.focus();
-    status("Questão " + numero + ": descritor " + r.codigo + " (" + rotuloDaLinha(r) + ").");
+    statusRevisao("Questão " + numero + ": descritor " + r.codigo + " (" + rotuloDaLinha(r) + ").");
   }
 
   function desenharQuestoes(prova) {
@@ -451,7 +475,7 @@
       qs.map(function (q, i) { return linhaDaQuestao(q, i, prova); }).join(NL);
     marcarProblemas(p);
     if (nota) {
-      nota.textContent = qs.length + " questão(ões) · " + pontosTotais(prova).toFixed(1).replace(".", ",") +
+      nota.textContent = plural(qs.length, "questão", "questões") + " · " + pontosTotais(prova).toFixed(1).replace(".", ",") +
         " pontos na nota · " + (p.total - p.semGabarito.length) + " com gabarito";
     }
   }
@@ -474,7 +498,7 @@
     var nota = $("cad-nota-prova");
     var p = problemasDaProva(prova);
     if (nota) {
-      nota.textContent = (prova.questoes || []).length + " questão(ões) · " +
+      nota.textContent = plural((prova.questoes || []).length, "questão", "questões") + " · " +
         pontosTotais(prova).toFixed(1).replace(".", ",") + " pontos na nota · " +
         (p.total - p.semGabarito.length) + " com gabarito";
     }
@@ -550,10 +574,121 @@
     return estado.provasLocais;
   }
 
+  var provaDesenhada = "";
+
   function desenharProva(prova) {
+    var id = prova ? String(prova.id) : "";
+    if (id !== provaDesenhada) {
+      provaDesenhada = id;
+      var rev = $("revisao-status");
+      if (rev) { rev.hidden = true; rev.textContent = ""; }
+    }
     desenharQuestoes(prova);
     desenharAvisos(prova);
     mostraBotaoSalvar(prova);
+    atualizarCaderno();
+  }
+
+  /* ---- os quatro passos do caderno: só aparece o que ainda dá para escolher ---- */
+  var MODELOS = {
+    escola: "Cabeçalho da escola", enem: "Modelo ENEM", paebes: "Modelo PAEBES / SAEB", ama: "Modelo AMA / SEDU-ES"
+  };
+
+  function fato(id, html, aviso) {
+    var el = $(id);
+    if (!el) return;
+    el.hidden = !html;
+    el.innerHTML = html || "";
+    el.classList.toggle("fato-aviso", Boolean(html && aviso));
+  }
+
+  function tiposDoDocumento(prova) {
+    var n = ((prova && prova.tipos) || []).length;
+    return n > 1 ? n : 0;
+  }
+
+  function alunosDoDocumento(prova) {
+    return prova && prova.__local ? (prova.alunos || []).length : 0;
+  }
+
+  function atualizarCaderno() {
+    var prova = provaSelecionada();
+    var modo = ($("cad-modo") || {}).value || "fixa";
+    [].forEach.call(document.querySelectorAll("input[name=cad-modo-r]"), function (r) {
+      r.checked = r.value === modo;
+    });
+    [].forEach.call(document.querySelectorAll("[data-modo-mostra]"), function (el) {
+      el.hidden = el.getAttribute("data-modo-mostra").split(" ").indexOf(modo) < 0;
+    });
+
+    var tiposDoc = tiposDoDocumento(prova);
+    var alunosDoc = alunosDoDocumento(prova);
+    var campoTipos = $("cad-tipos");
+    /* com tipos no documento, o tipo de cada aluno ja vem escrito: o numero de tipos nao e escolha */
+    if (tiposDoc && campoTipos) campoTipos.value = String(tiposDoc);
+    var caixaTipos = $("cad-tipos-campo");
+    if (caixaTipos) caixaTipos.hidden = Boolean(tiposDoc);
+    fato("cad-tipos-doc", !tiposDoc ? "" : "O documento já define <b>" + tiposDoc + " tipos</b>" +
+      (alunosDoc ? " e o tipo de cada um dos " + alunosDoc + " alunos" : "") + ". Nada para escolher aqui.");
+    var avisoAluno = $("cad-aviso-aluno-doc");
+    if (avisoAluno) avisoAluno.hidden = !(tiposDoc && modo === "aluno");
+
+    var qtd = prova ? ((prova.questoes || []).length || prova.quantidade_questoes || 0) : 0;
+    var p = problemasDaProva(prova);
+    var comTexto = prova && (prova.questoes || []).some(function (q) { return (q.alternativas || []).length > 0; });
+    var html = "";
+    if (prova) {
+      var doDoc = [tiposDoc ? plural(tiposDoc, "tipo", "tipos") : "", alunosDoc ? plural(alunosDoc, "aluno", "alunos") : ""]
+        .filter(Boolean);
+      html = "<b>" + plural(qtd, "questão", "questões") + "</b> · " +
+        (doDoc.length ? doDoc.join(" e ") + (doDoc.length === 1 && (tiposDoc || alunosDoc) === 1 ? " veio" : " vieram") +
+          " do documento." : comTexto ? "questões e alternativas vêm do documento." : "só o gabarito, sem enunciado impresso.");
+      if (p.semGabarito.length) {
+        html += "<br>" + plural(p.semGabarito.length, "questão", "questões") + " sem gabarito (" +
+          esc(listaCurta(p.semGabarito)) + '). <button type="button" class="link" data-ir="provas" data-revisar="' +
+          esc(prova.id) + '">Revisar na aba Provas</button>';
+      }
+    }
+    fato("cad-fato-prova", html, p.semGabarito.length > 0);
+
+    var rotulo = $("cad-turma-rotulo");
+    if (rotulo) rotulo.textContent = alunosDoc ? "Turma (vai no cabeçalho e nas notas)" : "Para qual turma";
+    var n = estado.alunos.length;
+    fato("cad-fato-turma", alunosDoc
+      ? "Os " + alunosDoc + " alunos vêm do documento" + (tiposDoc ? ", cada um com o seu tipo." : ".")
+      : n ? plural(n, "aluno", "alunos") + ": um caderno com o nome de cada um." : "");
+
+    var colunas = ($("cad-colunas") || {}).value === "2" ? "2" : "1";
+    [].forEach.call(document.querySelectorAll(".segmento-campo [data-col]"), function (b) {
+      b.setAttribute("aria-checked", String(b.dataset.col === colunas));
+    });
+    var resumoFolha = $("cad-resumo-folha-txt");
+    if (resumoFolha) {
+      resumoFolha.textContent = [
+        MODELOS[($("cad-modelo") || {}).value] || MODELOS.escola,
+        colunas === "2" ? "duas colunas" : "uma coluna",
+        ($("cad-branco") || {}).checked !== false ? "último verso em branco" : "sem verso em branco",
+        ($("cad-descritores") || {}).checked ? "com descritor" : "sem descritor"
+      ].join(" · ");
+    }
+
+    var tipos = tiposDoc || Math.max(1, Math.min(26, parseInt((campoTipos || {}).value, 10) || 4));
+    var cadernos = plural(n, "caderno", "cadernos");
+    var fecho = $("cad-fecho-resumo");
+    if (fecho) {
+      fecho.textContent = !prova ? "Escolha a prova para ver quantos cadernos saem."
+        : !n ? "Escolha a turma para ver quantos cadernos saem."
+          : modo === "turma" ? cadernos + " em " + plural(tipos, "tipo", "tipos") + (tiposDoc ? " (do documento)." : ".")
+            : modo === "aluno" ? cadernos + ", cada um com uma ordem só do aluno."
+              : cadernos + (n === 1 ? " com" : " iguais, cada um com") + " o nome do aluno.";
+    }
+  }
+
+  /* trocar de prova: com tipos no documento, "todos iguais" vira "por tipo", como na importação */
+  function trocouProva(prova) {
+    var sel = $("cad-modo");
+    if (sel && tiposDoDocumento(prova) && sel.value === "fixa") sel.value = "turma";
+    desenharProva(prova);
   }
 
   async function carregarListas() {
@@ -582,10 +717,14 @@
     var prova = provaSelecionada();
     await carregarAlunos(prova);
     desenharProva(prova);
-    var aviso = !configurado ? "Sem credenciais: use Importar .docx para imprimir agora." :
-      (!dbOk ? "Entre com e-mail e senha para carregar as turmas do banco. Importar .docx continua disponivel." : "");
-    status([aviso, provas.length + " prova(s), " + estado.alunos.length + " aluno(s) prontos para o lote."]
-      .filter(Boolean).join(" "));
+    var aviso = !configurado ? "Sem banco conectado: importe o documento na aba Provas para imprimir agora." :
+      (!dbOk ? "Entre com e-mail e senha para carregar as turmas do banco. Importar o documento, na aba Provas, continua valendo." : "");
+    status([aviso, prontas()].filter(Boolean).join(" "));
+  }
+
+  function prontas() {
+    return plural(todasAsProvas().length, "prova", "provas") + " e " +
+      plural(estado.alunos.length, "aluno", "alunos") + " prontos para imprimir.";
   }
 
   /* guarda o lote que foi para a impressora para o leitor reproduzir as mesmas versoes */
@@ -651,7 +790,7 @@
     GabaDB.upsertProvaVersoes(prova.id, registro.itens, {
       turma_id: registro.turma_id, em: registro.em, lote_id: registro.lote_id
     }).then(function (n) {
-      status(msgBase + " " + n + " versao(oes) no banco.");
+      status(msgBase + " " + plural(n, "versão", "versões") + " no banco.");
     }).catch(function (err) {
       status(msgBase + " Versoes ficaram só neste aparelho: " + (err && err.message ? err.message : err), true);
     });
@@ -772,21 +911,22 @@
     var impresso = salvarLoteImpresso(prova, batch, turma, op);
     var p = problemasDaProva(prova);
     var encaixe = !corpo ? "" :
-      " Corpo fechado por medida: " + corpo.length + " pagina(s) de questoes, ate " + porPagina +
-      " por pagina" + (pedido <= porPagina ? " (o seu limite de " + pedido + " e que mandou)." : ".");
-    var giantes = (cadernos[0] && cadernos[0].estouradas || []).length ?
-      " Atencao: a(s) questao(es) " + cadernos[0].estouradas.join(", ") + " e maior que uma coluna inteira." : "";
-    var msg = batch.itens.length + " caderno(s) de " + porAluno + " folhas (" + op.config.colunas +
-      " coluna(s), " + brancas + " em branco no fim), " + folhas + " folhas A4 ao todo, " +
-      batch.numTipos + " tipo(s) de versao." + encaixe + giantes + " " +
-      (impresso ? "O leitor ja conhece estas versoes. " : "") +
-      (p.semGabarito.length ? p.semGabarito.length + " questao(oes) sem gabarito: elas nao dao ponto para ninguem. " : "") +
-      "Revise a previa e clique em Imprimir lote. " +
-      "No dialogo do navegador: papel A4, margens \"Nenhuma\", escala 100% e \"Cabecalhos e margens\" desligado.";
-    var aperto = estado.compactou ? " Reduzi o corpo de " + estado.compactou +
-      " caixa(s) do cabecalho para que o texto coubesse no papel." : "";
-    var corte = estado.cortes.length ? " ATENCAO: " + estado.cortes.length +
-      " linha(s) nao caberiam no papel e sairiam cortadas (lista abaixo)." : "";
+      " Corpo fechado por medida: " + plural(corpo.length, "página", "páginas") + " de questões, até " + porPagina +
+      " por página" + (pedido <= porPagina ? " (o seu limite de " + pedido + " é que mandou)." : ".");
+    var estouradas = cadernos[0] && cadernos[0].estouradas || [];
+    var giantes = estouradas.length ? " Atenção: " + (estouradas.length === 1 ? "a questão " : "as questões ") +
+      estouradas.join(", ") + (estouradas.length === 1 ? " é maior" : " são maiores") + " que uma coluna inteira." : "";
+    var msg = plural(batch.itens.length, "caderno", "cadernos") + " de " + porAluno + " folhas (" +
+      plural(Number(op.config.colunas), "coluna", "colunas") + ", " + brancas + " em branco no fim), " + folhas + " folhas A4 ao todo, " +
+      plural(batch.numTipos, "tipo", "tipos") + " de versão." + encaixe + giantes + " " +
+      (impresso ? "O leitor já conhece estas versões. " : "") +
+      (p.semGabarito.length ? plural(p.semGabarito.length, "questão", "questões") + " sem gabarito: não dão ponto para ninguém. " : "") +
+      "Revise a prévia e clique em Imprimir. " +
+      "No diálogo do navegador: papel A4, margens \"Nenhuma\", escala 100% e \"Cabeçalhos e rodapés\" desligado.";
+    var aperto = estado.compactou ? " Reduzi o corpo de " + plural(estado.compactou, "caixa", "caixas") +
+      " do cabeçalho para que o texto coubesse no papel." : "";
+    var corte = estado.cortes.length ? " ATENÇÃO: " + plural(estado.cortes.length, "linha", "linhas") +
+      " não caberiam no papel e sairiam cortadas (lista abaixo)." : "";
     status(msg + aperto + corte, estado.cortes.length > 0);
     sincronizarLote(prova, impresso, msg);
     return { folhas: folhas, batch: batch, impresso: impresso, medidas: medidas, porPagina: porPagina };
@@ -860,8 +1000,8 @@
 
   async function importarDocx(file) {
     if (!file) return;
-    if (!global.GabaDocx) { status("Modulo do parser nao carregou.", true); return; }
-    status("Lendo " + file.name + "...");
+    if (!global.GabaDocx) { statusProva("O leitor de documentos não carregou.", true); return; }
+    statusProva("Lendo " + file.name + "…");
     try {
       var buf = await file.arrayBuffer();
       var parsed = await lerDocumento(buf);
@@ -879,12 +1019,12 @@
         return (p.titulo || "Prova") + " — " + qtd + " questoes" + (p.__local ? " (documento)" : "");
       });
       if (sel) sel.value = String(prova.id);
-      await carregarAlunos(prova);
-      desenharProva(prova);
       if ((prova.tipos || []).length > 1 && ($("cad-modo") || {}).value === "fixa") {
         $("cad-modo").value = "turma";
         $("cad-tipos").value = String(prova.tipos.length);
       }
+      await carregarAlunos(prova);
+      desenharProva(prova);
       var guardada = false;
       if (global.GabaSync && GabaSync.guardarProva) {
         try {
@@ -893,13 +1033,18 @@
         } catch (err) { /* segue só em memória e a próxima frase avisa */ }
       }
       var p = problemasDaProva(prova);
-      status("Documento importado: " + (prova.questoes || []).length + " questoes, " +
-        (prova.alunos || []).length + " alunos, " + (prova.tipos || []).length + " tipo(s). " +
-        (p.semGabarito.length ? p.semGabarito.length + " sem gabarito. " : "") +
-        (guardada ? "Guardada neste aparelho: revise gabarito, peso e descritor abaixo."
-          : "Atencao: ela nao coube no armazenamento do aparelho e se perde ao fechar a pagina."));
+      var tipos = (prova.tipos || []).length;
+      var alunos = (prova.alunos || []).length;
+      statusProva("Documento importado: " + [plural((prova.questoes || []).length, "questão", "questões"),
+        alunos ? plural(alunos, "aluno", "alunos") : "", tipos > 1 ? plural(tipos, "tipo", "tipos") : ""]
+        .filter(Boolean).join(", ") + ". " +
+        (p.semGabarito.length ? plural(p.semGabarito.length, "questão", "questões") + " sem gabarito. " : "") +
+        (guardada ? "Guardada neste aparelho: revise gabarito, peso e descritor na prova aberta abaixo."
+          : "Atenção: ela não coube no armazenamento do aparelho e se perde ao fechar a página."), !guardada);
+      status(prontas());
+      if (global.GabaApp && GabaApp.provaImportada) await GabaApp.provaImportada(prova.id);
     } catch (err) {
-      status("Falha ao importar: " + (err && err.message ? err.message : err), true);
+      statusProva("Falha ao importar: " + (err && err.message ? err.message : err), true);
     }
   }
 
@@ -1004,9 +1149,10 @@
     var selProva = $("cad-prova");
     if (selProva) selProva.addEventListener("change", function () {
       var prova = provaSelecionada();
-      desenharProva(prova);
+      trocouProva(prova);
       carregarAlunos(prova).catch(function (err) { status(String(err.message || err), true); });
     });
+    ligarPassos();
     var painel = $("cad-questoes");
     if (painel) {
       painel.addEventListener("change", function (ev) {
@@ -1049,12 +1195,52 @@
     var btnSalvarProva = $("cad-salvar-prova");
     if (btnSalvarProva) btnSalvarProva.addEventListener("click", function () {
       salvarProvaNoBanco().then(function (salvo) {
-        status("Prova \"" + salvo.titulo + "\" salva no banco com os pesos e descritores revisados.");
+        statusRevisao("Prova \"" + salvo.titulo + "\" salva no banco com os pesos e descritores revisados.");
       }).catch(function (err) {
-        status("Não deu para salvar no banco: " + (err && err.message ? err.message : err), true);
+        statusRevisao("Não deu para salvar no banco: " + (err && err.message ? err.message : err), true);
       });
     });
     carregarListas().catch(function () { /* ja avisou */ });
+  }
+
+  /* os controles visíveis espelham os selects escondidos, que continuam sendo a fonte da verdade */
+  function ligarPassos() {
+    function mudar(id, valor) {
+      var el = $(id);
+      if (!el) return;
+      el.value = String(valor);
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    [].forEach.call(document.querySelectorAll("input[name=cad-modo-r]"), function (r) {
+      r.addEventListener("change", function () { if (r.checked) mudar("cad-modo", r.value); });
+    });
+    [].forEach.call(document.querySelectorAll(".segmento-campo [data-col]"), function (b) {
+      b.addEventListener("click", function () { mudar("cad-colunas", b.dataset.col); });
+    });
+    [].forEach.call(document.querySelectorAll("[data-tipos]"), function (b) {
+      b.addEventListener("click", function () {
+        var atual = parseInt(($("cad-tipos") || {}).value, 10) || 4;
+        mudar("cad-tipos", Math.max(1, Math.min(26, atual + Number(b.dataset.tipos))));
+      });
+    });
+    ["cad-modo", "cad-tipos", "cad-colunas", "cad-modelo", "cad-branco", "cad-descritores"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.addEventListener("change", atualizarCaderno);
+    });
+    var mudarFolha = $("cad-folha-mudar");
+    var opcoesFolha = $("cad-folha-opcoes");
+    if (mudarFolha && opcoesFolha) mudarFolha.addEventListener("click", function () {
+      var abrir = opcoesFolha.hidden;
+      opcoesFolha.hidden = !abrir;
+      mudarFolha.textContent = abrir ? "Fechar" : "Mudar";
+      mudarFolha.setAttribute("aria-expanded", String(abrir));
+    });
+    var fatoProva = $("cad-fato-prova");
+    if (fatoProva) fatoProva.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-revisar]");
+      if (b && global.GabaApp && GabaApp.revisarProva) GabaApp.revisarProva(b.dataset.revisar);
+    });
+    atualizarCaderno();
   }
 
   if (document.readyState === "loading") {
@@ -1075,6 +1261,7 @@
     provaDoLote: provaDoLote,
     problemasDaProva: problemasDaProva,
     desenharQuestoes: desenharQuestoes,
+    atualizarCaderno: atualizarCaderno,
     aplicarEdicao: aplicarEdicao,
     esquecerProvaLocal: esquecerProvaLocal,
     salvarProvaNoBanco: salvarProvaNoBanco,

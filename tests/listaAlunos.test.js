@@ -134,6 +134,92 @@ function check(nome, cond, detalhe) {
     itens.filter(function (i) { return /Gabarito/.test(i.fonte); })[0].lista.linhaCabecalho < 0,
     itens.filter(function (i) { return /Gabarito/.test(i.fonte); })[0].lista.linhaCabecalho);
 
+  console.log("\n== quem saiu da turma e o rotulo ALUNOS ==");
+  var chamada = GabaLista.montar([
+    ["", "ALUNOS", ""],
+    ["1", "ALFA BRAVO CHARLIE", ""],
+    ["2", "DELTA ECO FOXTROT", "TRANSFERIDO"],
+    ["3", "GOLF HOTEL INDIA", ""],
+    ["4", "JULIETT KILO LIMA", "Remanejada"]
+  ]);
+  check("a faixa ALUNOS nao virou aluno",
+    !chamada.alunos.some(function (a) { return /^ALUNOS$/i.test(a.nome); }), chamada.alunos);
+  check("transferido e remanejada ficaram de fora com aviso",
+    chamada.alunos.length === 2 && chamada.saidas === 2 &&
+    chamada.problemas.some(function (p) { return /2 alunos marcados como transferidos/.test(p); }),
+    [chamada.alunos.map(function (a) { return a.numero; }), chamada.problemas]);
+
+  console.log("\n== turmas de uma escola num arquivo so ==");
+  var pasta = GabaLista.turmasDaPasta([
+    { rotulo: "6º ANO A", arquivo: "chamada.xlsx", linhas: [
+      ["1", "ALFA BRAVO CHARLIE", ""], ["2", "DELTA ECO FOXTROT", "TRANSFERIDO"], ["3", "GOLF HOTEL INDIA", ""]] },
+    { rotulo: "6º ANO B", arquivo: "chamada.xlsx", linhas: [
+      ["1", "JULIETT KILO LIMA", ""], ["2", "MIKE NOVEMBER OSCAR", "REMANEJADO"],
+      ["3", "PAPA QUEBEC ROMEO", ""], ["4", "SIERRA TANGO UNIFORM", ""]] },
+    { rotulo: "Resumo", arquivo: "chamada.xlsx", linhas: [["Total de alunos", "7"]] },
+    { rotulo: "Planilha4", arquivo: "chamada.xlsx", linhas: [["", ""]] }
+  ]);
+  check("uma aba por turma: o nome da aba vira o nome da turma",
+    pasta.turmas.map(function (t) { return t.nome; }).join("|") === "6º ANO A|6º ANO B", pasta.turmas);
+  check("cada turma com os seus alunos, sem quem saiu",
+    pasta.turmas[0].alunos.length === 2 && pasta.turmas[1].alunos.length === 3 && pasta.saidas === 2,
+    pasta.turmas.map(function (t) { return [t.alunos.length, t.saidas]; }));
+  check("aba sem lista fica de fora com o nome, aba vazia some calada",
+    pasta.ignoradas.join("|") === "Resumo", pasta.ignoradas);
+  check("o aviso de lista sem cabecalho nao se repete em cada turma",
+    pasta.turmas.every(function (t) { return !t.problemas.length; }), pasta.turmas.map(function (t) { return t.problemas; }));
+
+  var secretaria = GabaLista.turmasDaPasta([{ rotulo: "escola.csv", arquivo: "escola.csv", linhas: [
+    ["Turma", "Nº", "Nome do aluno"],
+    ["7º A", "1", "ALFA UM"],
+    ["", "2", "BRAVO DOIS"],
+    ["7º B", "1", "CHARLIE TRES"],
+    ["7º A", "3", "DELTA QUATRO"]
+  ] }]);
+  check("coluna Turma separa a escola inteira, com celula mesclada",
+    secretaria.turmas.map(function (t) { return t.nome + "=" + t.alunos.length; }).join("|") === "7º A=3|7º B=1",
+    secretaria.turmas.map(function (t) { return [t.nome, t.alunos.map(function (a) { return a.nome; })]; }));
+
+  var soNomes = GabaLista.turmasDaPasta([{ rotulo: "turmas.csv", arquivo: "turmas.csv",
+    linhas: [["Turmas"], ["6º A"], ["6º B"], ["7º A"], ["6º A"]] }]);
+  check("uma coluna so com os nomes cria turmas vazias",
+    soNomes.turmas.map(function (t) { return t.nome; }).join("|") === "6º A|6º B|7º A" &&
+    soNomes.turmas.every(function (t) { return !t.alunos.length; }), soNomes.turmas);
+  check("turma repetida no arquivo nao vira duas",
+    soNomes.repetidas.join("|") === "6º A" && !soNomes.ignoradas.length, [soNomes.repetidas, soNomes.ignoradas]);
+
+  var comTurno = GabaLista.turmasDaPasta([{ rotulo: "Planilha1", arquivo: "turmas.xlsx",
+    linhas: [["Turma", "Turno"], ["8º A", "Matutino"], ["8º B", "Vespertino"]] }]);
+  check("coluna Turma sem nomes de aluno tambem vira lista de turmas",
+    comTurno.turmas.map(function (t) { return t.nome; }).join("|") === "8º A|8º B", comTurno.turmas);
+
+  var csvUnico = GabaLista.turmasDaPasta([{ rotulo: "9º ANO C.csv", arquivo: "9º ANO C.csv",
+    linhas: [["Nº", "Nome"], ["1", "ALFA BRAVO"], ["2", "CHARLIE DELTA"]] }]);
+  var abaGenerica = GabaLista.turmasDaPasta([{ rotulo: "Planilha1", arquivo: "8º ANO B.xlsx",
+    linhas: [["Nº", "Nome"], ["1", "ALFA BRAVO"]] }]);
+  check("CSV e aba sem nome levam o nome do arquivo, sem extensao",
+    csvUnico.turmas[0].nome === "9º ANO C" && abaGenerica.turmas[0].nome === "8º ANO B",
+    [csvUnico.turmas, abaGenerica.turmas]);
+
+  var comFaixa = GabaLista.turmasDaPasta([{ rotulo: "6º A", linhas: [
+    ["Turma", "6º A"], ["Nº", "Nome"], ["1", "ALFA TESTE"], ["2", "BRAVO TESTE"]
+  ] }]);
+  check("a faixa Turma acima do cabecalho nao transforma numeros de chamada em turmas",
+    comFaixa.turmas.length === 1 && comFaixa.turmas[0].nome === "6º A" && comFaixa.turmas[0].alunos.length === 2,
+    comFaixa.turmas);
+  var duasFaixas = GabaLista.turmasDaPasta([{ rotulo: "chamada", linhas: [
+    ["Turma", "Todas"], ["Turma", "Nº", "Nome"], ["7º A", "1", "ALFA TESTE"], ["7º B", "1", "BRAVO TESTE"]
+  ] }]);
+  check("a coluna Turma do cabecalho tem prioridade sobre a faixa de titulo",
+    duasFaixas.turmas.map(function (t) { return t.nome + "=" + t.alunos.length; }).join("|") === "7º A=1|7º B=1",
+    duasFaixas.turmas);
+  var vaziaDeSaidas = GabaLista.turmasDaPasta([{ rotulo: "8º A", linhas: [
+    ["Nº", "Nome", "Situação"], ["1", "ALFA TESTE", "TRANSFERIDO"]
+  ] }]);
+  check("a turma continua reconhecida mesmo quando todos os alunos estao transferidos",
+    vaziaDeSaidas.turmas.length === 1 && !vaziaDeSaidas.turmas[0].alunos.length && vaziaDeSaidas.saidas === 1,
+    vaziaDeSaidas);
+
   console.log("\n== erros honestos ==");
   var naoEhXlsx = await GabaPlanilha.leXlsx(leBuffer("chamada-sedu.csv")).catch(function (err) { return { erro: err.message }; });
   check("um CSV com nome .xlsx e barrado com explicação",

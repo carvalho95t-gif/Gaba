@@ -16,11 +16,14 @@
     <header class="navbar">
         <div class="logo"><h1>Gaba <span>OMR</span></h1></div>
         <div class="escola-filtro" id="escola-filtro-box" hidden>
-            <label for="filtro-escola">Escola</label>
-            <select id="filtro-escola"></select>
+            <button type="button" class="escola-botao" id="escola-botao" aria-haspopup="dialog">
+                <span class="escola-botao-rotulo">Escola</span>
+                <span class="escola-botao-nome" id="escola-botao-nome">Todas</span>
+            </button>
+            <select id="filtro-escola" hidden aria-hidden="true" tabindex="-1"></select>
         </div>
         <div class="conta-selo" id="conta-selo">
-            <button type="button" id="status-conexao" class="badge badge-off" aria-haspopup="dialog" aria-expanded="false" aria-controls="selo-painel">Supabase Desconectado</button>
+            <button type="button" id="status-conexao" class="badge badge-off" aria-haspopup="dialog" aria-expanded="false" aria-controls="selo-painel"><span class="selo-texto">Conta</span></button>
             <div id="selo-painel" class="selo-painel" role="dialog" aria-label="Conta do professor" hidden>
                 <form id="selo-login" hidden>
                     <p class="selo-dica">Entre para o Gaba guardar no banco.</p>
@@ -55,26 +58,35 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5h3M21 8V5h-3M3 16v3h3M21 16v3h-3"/><circle cx="12" cy="12" r="3.4"/></svg>
                 Leitor</button>
             <button class="tab-btn" type="button" data-tab="relatorios" onclick="switchTab('relatorios')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14V4a2 2 0 1 0-4 0v10a4 4 0 1 0 4 0Z"/><path d="M12 9h3"/></svg>
-                Notas</button>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg>
+                An&aacute;lise</button>
             <button class="tab-btn" type="button" data-tab="turmas" data-grupo="bastidor" onclick="switchTab('turmas')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5Z"/><path d="m4 12 8 3.5L20 12M4 16.5 12 20l8-3.5"/></svg>
                 Bastidor</button>
         </nav>
 
-        <nav class="tabs tabs-bastidor" id="tabs-bastidor" aria-label="Telas de bastidor" hidden>
-            <button class="tab-btn" type="button" data-tab="turmas" onclick="switchTab('turmas')">Turmas</button>
-            <button class="tab-btn" type="button" data-tab="provas" onclick="switchTab('provas')">Provas</button>
-            <button class="tab-btn" type="button" data-tab="caderno" onclick="switchTab('caderno'); GabaCaderno &amp;&amp; GabaCaderno.aoAbrir()">Cadernos</button>
-            <button class="tab-btn" type="button" data-tab="config" onclick="switchTab('config')">Ajustes</button>
+        <nav class="tabs tabs-bastidor tabs-caminho" id="tabs-bastidor" aria-label="Telas de bastidor" hidden>
+            <button class="tab-btn" type="button" data-tab="turmas" onclick="switchTab('turmas')"><span class="caminho-n">1</span>Turmas</button>
+            <button class="tab-btn" type="button" data-tab="provas" onclick="switchTab('provas')"><span class="caminho-n">2</span>Provas</button>
+            <button class="tab-btn" type="button" data-tab="caderno" onclick="switchTab('caderno'); GabaCaderno &amp;&amp; GabaCaderno.aoAbrir()"><span class="caminho-n">3</span>Cadernos</button>
+            <button class="tab-btn tab-ajustes" type="button" data-tab="config" onclick="switchTab('config')" aria-label="Ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="tab-ajustes-rotulo">Ajustes</span></button>
         </nav>
 
         <p id="app-status" class="app-status"></p>
 
         <!-- ABA 1: CENTRAL DE ALÍVIO -->
         <section id="tab-dashboard" class="tab-content active">
-            <h2>Central de Alívio</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">O que o Gaba já tirou das suas mãos. Cada folha lida é uma pilha a menos na sua mesa.</p>
+            <h2>Central de alívio</h2>
+            <p class="alivio-lema">
+                <span class="alivio-lema-icone" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" width="26" height="26">
+                        <rect class="f3" x="6" y="12" width="20" height="14" rx="2.5"/>
+                        <rect class="f2" x="6" y="9" width="20" height="14" rx="2.5"/>
+                        <g class="f1"><rect x="6" y="5" width="20" height="14" rx="2.5"/><path d="M10 10h12M10 14h8"/></g>
+                    </svg>
+                </span>
+                <span>Cada folha lida é <mark>uma pilha a menos</mark> na sua mesa.</span>
+            </p>
             <div class="alivio">
                 <div class="alivio-grande">
                     <h3 id="dash-papel">0 g</h3>
@@ -93,107 +105,143 @@
                 <div class="card"><h3 id="dash-provas-count">0</h3><p>Provas</p></div>
                 <div class="card card-accent"><h3 id="dash-correcoes-count">0</h3><p>Corrigidas</p></div>
             </div>
-            <p class="text-muted" id="dash-nota"></p>
-            <h3 class="alivio-titulo">As pilhas, uma por uma</h3>
+            <p class="ajuda" id="dash-nota"></p>
+            <h3 class="secao">As pilhas, uma por uma</h3>
             <div id="dash-pilhas" class="card-list"></div>
         </section>
 
         <!-- ABA 2: ESCOLAS, DEPOIS AS TURMAS DE CADA UMA -->
         <section id="tab-turmas" class="tab-content">
             <h2>Turmas</h2>
-            <p class="passo">1 &mdash; Crie a escola</p>
+            <p class="text-muted">Primeiro a escola, depois as turmas dela, depois os alunos.</p>
+
+            <h3 class="secao"><span class="secao-n">1</span>Escola</h3>
             <div class="form-container">
-                <form id="form-escola">
-                    <input type="text" id="escola-nome" placeholder="Nome da escola (Ex: EEFM da Serra)" autocomplete="off" required>
+                <form id="form-escola" class="linha-acao">
+                    <div class="field"><label for="escola-nome">Nome da escola</label>
+                        <input type="text" id="escola-nome" placeholder="Ex.: EEFM da Serra" autocomplete="off" required></div>
                     <button type="submit" class="btn-primary">Criar escola</button>
                 </form>
-                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola nasce aqui, antes de qualquer turma. Ela entra no seletor do topo e no cadastro da turma mesmo no dia em que ainda n&atilde;o tem aluno nenhum.</p>
+                <p class="ajuda">A escola nasce aqui, antes de qualquer turma, e já aparece no seletor do topo. Depois, em <strong>Importar turmas</strong>, mande a planilha da escola (uma aba por turma, ou uma coluna Turma): o Gaba cria as turmas dentro dela, com os alunos. O arquivo não precisa ter o nome da escola.</p>
             </div>
             <div id="lista-escolas-cad" class="card-list"></div>
-            <p class="passo">2 &mdash; Adicione as turmas da escola</p>
+            <input type="file" id="impt-arquivo" accept=".xlsx,.csv,.txt,.tsv" multiple hidden>
+            <div id="impt-painel" class="form-container impt-painel" hidden></div>
+
+            <h3 class="secao"><span class="secao-n">2</span>Turmas</h3>
             <div class="form-container">
                 <form id="form-turma">
-                    <input type="text" id="turma-nome" placeholder="Nome da Turma (Ex: 1º Ano A)" required>
-                    <input type="text" id="turma-ano" placeholder="Ano/Período" required>
-                    <input type="text" id="turma-escola" list="lista-escolas" placeholder="Escola (Ex: EEFM da Serra)" autocomplete="off">
+                    <div class="cad-linha">
+                        <div class="field"><label for="turma-nome">Nome da turma</label><input type="text" id="turma-nome" placeholder="Ex.: 1º ano A" required></div>
+                        <div class="field"><label for="turma-ano">Ano / período</label><input type="text" id="turma-ano" placeholder="Ex.: 2026" required></div>
+                        <div class="field"><label for="turma-escola">Escola</label><input type="text" id="turma-escola" list="lista-escolas" placeholder="Ex.: EEFM da Serra" autocomplete="off"></div>
+                    </div>
                     <datalist id="lista-escolas"></datalist>
-                    <button type="submit" class="btn-primary">Salvar Turma</button>
+                    <div class="cad-acoes"><button type="submit" class="btn-primary">Salvar turma</button></div>
                 </form>
-                <p class="text-muted" style="margin:6px 0 0;font-size:.85rem;">A escola &eacute; o que separa as turmas das unidades diferentes: escolha-a no seletor do topo para trabalhar em uma s&oacute; por vez.</p>
-            </div>
-            
-            <h2 style="margin-top: 20px;">Cadastrar Aluno</h2>
-            <div class="form-container">
-                <form id="form-aluno">
-                    <select id="aluno-turma-select" required>
-                        <option value="">Selecione a Turma...</option>
-                    </select>
-                    <input type="text" id="aluno-nome" placeholder="Nome do Aluno" required>
-                    <input type="number" id="aluno-numero" placeholder="Nº de Chamada" required>
-                    <button type="submit" class="btn-primary">Adicionar Aluno</button>
-                </form>
-            </div>
-
-            <h2 style="margin-top: 20px;">Importar a lista de chamada</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">
-                Solte o .xlsx da escola, um CSV salvo do Excel, ou cole as células direto da planilha.
-                A coluna é encontrada sozinha (Nº, Nome, Matrícula, Responsável, E-mail, Telefone, Tipo de Prova)
-                e nada é gravado antes de você ver a prévia. Tudo lido aqui no aparelho.
-            </p>
-            <div class="form-container">
-                <div class="cad-linha">
-                    <div>
-                        <label for="imp-turma">Turma que recebe a lista</label>
-                        <select id="imp-turma"></select>
-                    </div>
-                    <div>
-                        <label for="imp-arquivo">Arquivo .xlsx, .csv, .txt ou .tsv</label>
-                        <input type="file" id="imp-arquivo" accept=".xlsx,.csv,.txt,.tsv">
-                    </div>
-                </div>
-                <label for="imp-texto">Ou cole aqui do Excel</label>
-                <textarea id="imp-texto" rows="6" spellcheck="false"></textarea>
-                <div class="cad-linha">
-                    <button type="button" id="imp-ver" class="btn-ghost">Ver o que a lista tem</button>
-                    <button type="button" id="imp-salvar" class="btn-primary" disabled>Salvar na turma</button>
-                    <button type="button" id="imp-limpar" class="btn-ghost">Limpar</button>
-                </div>
-                <p id="imp-status" class="app-status"></p>
-                <div id="imp-previa"></div>
             </div>
             <div id="lista-turmas" class="card-list"></div>
+
+            <h3 class="secao"><span class="secao-n">3</span>Alunos</h3>
+            <div class="form-container">
+                <div class="segmento" id="alunos-segmento" role="tablist" aria-label="Como cadastrar alunos">
+                    <button type="button" role="tab" aria-selected="true" data-seg="um">Um por vez</button>
+                    <button type="button" role="tab" aria-selected="false" data-seg="lista">Importar a lista</button>
+                </div>
+                <div data-painel="um">
+                    <form id="form-aluno">
+                        <div class="cad-linha">
+                            <div class="field"><label for="aluno-turma-select">Turma</label>
+                                <select id="aluno-turma-select" required>
+                                    <option value="">Selecione a turma...</option>
+                                </select></div>
+                            <div class="field"><label for="aluno-nome">Nome do aluno</label><input type="text" id="aluno-nome" placeholder="Nome completo" required></div>
+                            <div class="field"><label for="aluno-numero">Nº de chamada</label><input type="number" id="aluno-numero" placeholder="Ex.: 12" required></div>
+                        </div>
+                        <div class="cad-acoes"><button type="submit" class="btn-primary">Adicionar aluno</button></div>
+                    </form>
+                </div>
+                <div data-painel="lista" hidden>
+                    <p class="ajuda ajuda-topo">Solte o .xlsx da escola, um CSV do Excel ou cole as células. As colunas são achadas sozinhas (Nº, Nome, Matrícula, Responsável, E-mail, Telefone, Tipo de Prova) e nada é gravado antes da prévia. Tudo é lido aqui no aparelho.</p>
+                    <div class="cad-linha">
+                        <div class="field"><label for="imp-turma">Turma que recebe a lista</label><select id="imp-turma"></select></div>
+                        <div class="field"><label for="imp-arquivo">Arquivo .xlsx, .csv, .txt ou .tsv</label><input type="file" id="imp-arquivo" accept=".xlsx,.csv,.txt,.tsv"></div>
+                    </div>
+                    <div class="field field-solto"><label for="imp-texto">Ou cole aqui do Excel</label><textarea id="imp-texto" rows="4" spellcheck="false"></textarea></div>
+                    <div class="cad-acoes">
+                        <button type="button" id="imp-ver" class="btn-ghost">Ver o que a lista tem</button>
+                        <button type="button" id="imp-salvar" class="btn-primary" disabled>Salvar na turma</button>
+                        <button type="button" id="imp-limpar" class="btn-ghost">Limpar</button>
+                    </div>
+                    <p id="imp-status" class="app-status"></p>
+                    <div id="imp-previa"></div>
+                </div>
+            </div>
         </section>
 
         <!-- ABA 3: PROVAS E GABARITOS -->
         <section id="tab-provas" class="tab-content">
-            <h2>Criar Prova Oficial</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Aqui você salva só o gabarito oficial (folha A–E sem enunciados). Para imprimir o caderno com as questões do documento, use Importar documento (.docx, .doc ou PDF) na aba Cadernos.</p>
-            <div class="form-container">
+            <h2>Provas</h2>
+            <p class="text-muted">Como você quer criar a prova?</p>
+
+            <div class="escolhas escolhas-2" role="radiogroup" aria-label="Como criar a prova">
+                <label class="escolha">
+                    <input type="radio" name="prova-nova" value="doc" checked>
+                    <span class="escolha-titulo">Tenho o documento com as questões</span>
+                    <span class="escolha-texto">.docx, .doc ou PDF. O Gaba lê questões, gabarito, tipos e alunos.</span>
+                </label>
+                <label class="escolha">
+                    <input type="radio" name="prova-nova" value="gab">
+                    <span class="escolha-titulo">Só o gabarito</span>
+                    <span class="escolha-texto">Folha de respostas A–E, sem enunciado impresso.</span>
+                </label>
+            </div>
+
+            <div class="form-container" data-nova="doc">
+                <div class="cad-acoes cad-acoes-topo">
+                    <button type="button" class="btn-primary" id="cad-docx">Importar documento</button>
+                    <input type="file" id="cad-arquivo" accept=".docx,.doc,.pdf" hidden>
+                </div>
+                <p class="ajuda">Depois de importar, a prova aparece na lista abaixo para revisar e imprimir.</p>
+                <p class="cad-status" id="prova-status" hidden></p>
+            </div>
+            <div class="form-container" data-nova="gab" hidden>
                 <form id="form-prova">
-                    <input type="text" id="prova-titulo" placeholder="Título (Ex: Bimestral MTM)" required>
-                    <input type="text" id="prova-disciplina" placeholder="Disciplina" required>
-                    <input type="number" id="prova-qtd" min="1" max="90" value="10" onchange="gerarCamposGabarito()" placeholder="Qtd. Questões" required>
-                    
-                    <h3 style="margin-top: 10px; font-size: 1rem;">Gabarito Oficial:</h3>
+                    <div class="cad-linha">
+                        <div class="field"><label for="prova-titulo">Título</label><input type="text" id="prova-titulo" placeholder="Ex.: Bimestral de Matemática" required></div>
+                        <div class="field"><label for="prova-disciplina">Disciplina</label><input type="text" id="prova-disciplina" placeholder="Ex.: Matemática" required></div>
+                        <div class="field"><label for="prova-qtd">Quantidade de questões</label><input type="number" id="prova-qtd" min="1" max="90" value="10" onchange="gerarCamposGabarito()" required></div>
+                    </div>
+                    <p class="rotulo-solto">Gabarito oficial</p>
                     <div id="gabarito-inputs" class="gabarito-grid"></div>
-                    
-                    <button type="submit" class="btn-primary">Salvar Prova</button>
+                    <div class="cad-acoes"><button type="submit" class="btn-primary">Salvar prova</button></div>
                 </form>
             </div>
+
+            <h3 class="secao">Suas provas</h3>
             <div id="lista-provas" class="card-list"></div>
+            <div class="revisao" id="prova-revisao" hidden>
+                <div class="cad-avisos" id="cad-avisos" hidden></div>
+                <div class="q-editor" id="cad-questoes" hidden></div>
+                <p class="cad-nota" id="cad-nota-prova"></p>
+                <div class="cad-acoes"><button type="button" class="btn-success" id="cad-salvar-prova" hidden>Salvar revisão no banco</button></div>
+                <p class="cad-status" id="revisao-status" hidden></p>
+            </div>
         </section>
 
         <!-- ABA 4: SCANNER (OMR) -->
         <section id="tab-scanner" class="tab-content">
-            <h2>Super Scanner Contínuo</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Aponte a folha e o app lê sozinho: reconhece a versão pelo QR, corrige, apita e salva. Não precisa apertar botão a cada aluno.</p>
+            <h2>Leitor</h2>
+            <p class="text-muted">Aponte a folha e o Gaba lê sozinho: reconhece a versão pelo QR, corrige, apita e salva. Não precisa apertar botão a cada aluno.</p>
             <div class="form-container">
                 <div class="cad-linha">
-                    <div><label for="scan-prova">Prova</label><select id="scan-prova"></select></div>
-                    <div><label for="scan-turma">Turma</label><select id="scan-turma"></select></div>
-                    <div><label for="scan-sens">Sensibilidade (caneta &harr; lápis)</label>
-                        <input type="range" id="scan-sens" min="0.6" max="1.6" step="0.1" value="1">
-                        <span id="scan-sens-valor">1.0</span>
+                    <div class="field"><label for="scan-prova">Prova</label><select id="scan-prova"></select></div>
+                    <div class="field"><label for="scan-turma">Turma</label><select id="scan-turma"></select></div>
+                    <div class="field"><label for="scan-sens">Sensibilidade (caneta &harr; lápis)</label>
+                        <div class="faixa-linha">
+                            <input type="range" id="scan-sens" min="0.6" max="1.6" step="0.1" value="1">
+                            <output id="scan-sens-valor" class="faixa-valor" for="scan-sens">1,0</output>
+                        </div>
                     </div>
                 </div>
                 <div class="cad-acoes">
@@ -208,186 +256,296 @@
                     <canvas id="scan-overlay"></canvas>
                     <p class="scan-dica" id="scan-alvo"></p>
                 </div>
-                <div class="grid-cards">
+                <div class="grid-cards grid-cards-3">
                     <div class="card"><h3 id="scan-total">0</h3><p>Folhas lidas</p></div>
-                    <div class="card card-accent"><h3 id="scan-duvida">0</h3><p>Com dúvida</p></div>
+                    <div class="card card-atencao"><h3 id="scan-duvida">0</h3><p>Com dúvida</p></div>
                     <div class="card"><h3 id="scan-fila">0</h3><p>Na fila offline</p></div>
                 </div>
                 <div id="scan-ultimas" class="scan-ultimas"></div>
             </div>
         </section>
 
-        <!-- ABA 5: RELATÓRIOS -->
+        <!-- ABA 5: ANÁLISE BÁSICA -->
         <section id="tab-relatorios" class="tab-content">
-            <h2>Relatório de Correções</h2>
-            <div class="cad-acoes">
-                <button type="button" class="btn-ghost" id="nota-sincronizar">Subir folhas do aparelho</button>
-                <a href="dashboard.html" class="btn-ghost link-acoes">Análise e Excel</a>
-            </div>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Marcadas com &quot;aparelho&quot; são as folhas lidas que ainda não estão no banco (passe a mouse para ver o motivo).</p>
-            <div style="overflow-x: auto;">
-                <table class="data-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-                    <thead>
-                        <tr style="background: #f1f5f9; text-align: left;">
-                            <th>Data</th>
-                            <th>Aluno</th>
-                            <th>Turma</th>
-                            <th>Prova</th>
-                            <th>Nota Final</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabela-relatorios">
-                        <tr><td colspan="5" class="text-muted">Nenhuma correção registrada.</td></tr>
-                    </tbody>
-                </table>
+            <h2>An&aacute;lise</h2>
+            <p class="text-muted">O que as folhas lidas dizem: a nota da turma, cada aluno, cada quest&atilde;o e cada descritor.</p>
+            <div class="segmento segmento-analise" id="analise-segmento" role="tablist" aria-label="Partes da an&aacute;lise">
+                <button type="button" role="tab" aria-selected="true" data-sub="ab-resumo" onclick="switchAnalise('ab-resumo')">Resumo</button>
+                <button type="button" role="tab" aria-selected="false" data-sub="ab-aluno" onclick="switchAnalise('ab-aluno')">Por aluno</button>
+                <button type="button" role="tab" aria-selected="false" data-sub="ab-questao" onclick="switchAnalise('ab-questao')">Por quest&atilde;o</button>
+                <button type="button" role="tab" aria-selected="false" data-sub="ab-descritor" onclick="switchAnalise('ab-descritor')">Por descritor</button>
             </div>
 
-            <h2 style="margin-top: 24px;">Análise de item e distratores</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">
-                Cada questão mostra quantos acertaram, se ela separa os melhores dos piores (discriminação) e qual
-                alternativa errada mais enganou. Contamos as folhas desta prova — as do banco e as que ainda estão
-                só neste aparelho — sempre na ordem da prova base, mesmo com cadernos embaralhados.
-            </p>
             <div class="form-container">
                 <div class="cad-linha">
-                    <div><label for="ana-prova">Prova</label><select id="ana-prova"></select></div>
-                    <div><label for="ana-turma">Turma</label><select id="ana-turma"></select></div>
-                    <div><label for="ana-ordenar">Ordenar por</label>
-                        <select id="ana-ordenar">
-                            <option value="numero">Ordem da prova</option>
-                            <option value="acerto">Menos acertos primeiro</option>
-                            <option value="discriminacao">Pior discriminação primeiro</option>
-                            <option value="distrator">Distrator mais forte primeiro</option>
-                        </select>
+                    <div class="field"><label for="ab-prova">Prova</label><select id="ab-prova"></select></div>
+                    <div class="field"><label for="ab-turma">Turma</label><select id="ab-turma"></select></div>
+                </div>
+            </div>
+
+            <!-- SUB-ABA: RESUMO -->
+            <div id="ab-resumo" class="ab-painel active">
+                <div id="ab-resumo-cards"></div>
+                <div id="ab-resumo-distrib"></div>
+                <h3 class="secao">Corre&ccedil;&otilde;es recentes</h3>
+                <div class="form-container">
+                    <div class="cad-acoes cad-acoes-topo">
+                        <button type="button" class="btn-ghost" id="nota-sincronizar">Subir folhas do aparelho</button>
+                    </div>
+                    <p class="ajuda">Do banco e deste aparelho, da mais nova para a mais antiga. A etiqueta &ldquo;aparelho&rdquo; marca o que ainda n&atilde;o subiu.</p>
+                    <div class="tabela-rola">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Aluno</th>
+                                    <th>Turma</th>
+                                    <th>Prova</th>
+                                    <th>Nota final</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-relatorios">
+                                <tr><td colspan="5" class="text-muted">Nenhuma corre&ccedil;&atilde;o registrada.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="cad-acoes">
-                    <label class="cad-check"><input type="checkbox" id="ana-revisar"> Mostrar só as questões a revisar</label>
-                    <button type="button" class="btn-ghost" id="ana-csv">Baixar CSV da análise</button>
+            </div>
+
+            <!-- SUB-ABA: POR ALUNO -->
+            <div id="ab-aluno" class="ab-painel">
+                <div class="form-container">
+                    <p class="cad-status" id="ab-aluno-status">Escolha a prova para ver o ranking e a ficha de cada aluno.</p>
+                    <div id="ab-aluno-conteudo" class="ab-aluno"></div>
                 </div>
-                <p class="cad-status" id="ana-status">Escolha a prova.</p>
-                <div class="ana-resumo" id="ana-resumo"></div>
-                <div class="ana-itens" id="ana-itens"></div>
+            </div>
+
+            <!-- SUB-ABA: POR QUESTÃO (reusa analise.js) -->
+            <div id="ab-questao" class="ab-painel">
+                <div class="form-container">
+                    <div class="cad-linha">
+                        <div class="field"><label for="ana-ordenar">Ordenar por</label>
+                            <select id="ana-ordenar">
+                                <option value="numero">Ordem da prova</option>
+                                <option value="acerto">Menos acertos primeiro</option>
+                                <option value="discriminacao">Pior discrimina&ccedil;&atilde;o primeiro</option>
+                                <option value="distrator">Distrator mais forte primeiro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="cad-acoes">
+                        <label class="cad-check"><input type="checkbox" id="ana-revisar"> Mostrar s&oacute; as quest&otilde;es a revisar</label>
+                        <button type="button" class="btn-ghost" id="ana-csv">Baixar CSV da an&aacute;lise</button>
+                    </div>
+                    <p class="cad-status" id="ana-status">Escolha a prova.</p>
+                    <div class="ana-resumo" id="ana-resumo"></div>
+                    <div class="ana-itens" id="ana-itens"></div>
+                </div>
+            </div>
+
+            <!-- SUB-ABA: POR DESCRITOR -->
+            <div id="ab-descritor" class="ab-painel">
+                <div class="form-container">
+                    <p class="cad-status" id="ab-desc-status">Escolha a prova para ver o desempenho por descritor.</p>
+                    <div id="ab-desc-conteudo"></div>
+                </div>
             </div>
         </section>
 
         <!-- ABA: IMPRESSÃO NOMINAL EM LOTE -->
         <section id="tab-caderno" class="tab-content">
-            <h2>Impressão Nominal A4 em Lote</h2>
-            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">Cada aluno recebe o próprio caderno: folha de respostas com QR na página 1, questões embaralhadas da versão a partir da página 2 e verso final em branco.</p>
+            <h2>Imprimir cadernos</h2>
+            <p class="text-muted">Cada aluno recebe o caderno com o próprio nome: folha de respostas com QR na página 1 e questões a partir da página 2.</p>
+
+            <h3 class="secao"><span class="secao-n">1</span>Prova</h3>
             <div class="form-container">
+                <div class="field"><label for="cad-prova">Qual prova</label><select id="cad-prova"></select></div>
+                <p class="ajuda">Ainda não tem a prova? <button type="button" class="link" data-ir="provas">Crie na aba Provas</button>.</p>
+                <div class="fato" id="cad-fato-prova" hidden></div>
+            </div>
+
+            <h3 class="secao"><span class="secao-n">2</span>Turma</h3>
+            <div class="form-container">
+                <div class="field"><label for="cad-turma" id="cad-turma-rotulo">Para qual turma</label><select id="cad-turma"></select></div>
+                <div class="fato" id="cad-fato-turma" hidden></div>
+                <div class="cad-lista" id="cad-alunos" hidden></div>
+            </div>
+
+            <h3 class="secao"><span class="secao-n">3</span>Como cada aluno recebe a prova</h3>
+            <div class="form-container">
+                <select id="cad-modo" hidden aria-hidden="true" tabindex="-1">
+                    <option value="fixa">Todos iguais</option>
+                    <option value="turma">Por tipo de caderno</option>
+                    <option value="aluno">Um para cada aluno</option>
+                </select>
+                <div class="escolhas escolhas-3" role="radiogroup" aria-label="Embaralhamento">
+                    <label class="escolha">
+                        <input type="radio" name="cad-modo-r" value="fixa" checked>
+                        <span class="escolha-titulo">Todos iguais</span>
+                        <span class="escolha-texto">A mesma ordem para a sala inteira.</span>
+                    </label>
+                    <label class="escolha">
+                        <input type="radio" name="cad-modo-r" value="turma">
+                        <span class="escolha-titulo">Por tipo de caderno</span>
+                        <span class="escolha-texto">Alguns cadernos diferentes (tipo 1, 2, 3…) que se repetem na sala.</span>
+                    </label>
+                    <label class="escolha">
+                        <input type="radio" name="cad-modo-r" value="aluno">
+                        <span class="escolha-titulo">Um para cada aluno</span>
+                        <span class="escolha-texto">Cada aluno recebe uma ordem só dele.</span>
+                    </label>
+                </div>
+                <div class="modo-extra" data-modo-mostra="turma">
+                    <div class="field field-curto" id="cad-tipos-campo">
+                        <label for="cad-tipos">Quantos tipos</label>
+                        <div class="passo-num">
+                            <button type="button" class="btn-ghost" data-tipos="-1" aria-label="menos um tipo">−</button>
+                            <input type="number" id="cad-tipos" min="1" max="26" value="4">
+                            <button type="button" class="btn-ghost" data-tipos="1" aria-label="mais um tipo">+</button>
+                        </div>
+                    </div>
+                    <div class="fato" id="cad-tipos-doc" hidden></div>
+                </div>
+                <div class="fato fato-aviso modo-extra" id="cad-aviso-aluno-doc" hidden>Os tipos que vieram no documento ficam de lado: cada aluno ganha uma ordem nova.</div>
+                <label class="cad-check modo-extra" data-modo-mostra="turma aluno"><input type="checkbox" id="cad-alt" checked> Embaralhar também as alternativas (a letra certa muda de lugar)</label>
+                <p class="ajuda" data-modo-mostra="fixa">Ninguém precisa escolher mais nada: sai uma versão só, na ordem original.</p>
+            </div>
+
+            <h3 class="secao"><span class="secao-n">4</span>Como a folha sai</h3>
+            <div class="form-container">
+                <div class="resumo-folha">
+                    <span id="cad-resumo-folha-txt"></span>
+                    <button type="button" class="btn-ghost" id="cad-folha-mudar" aria-expanded="false" aria-controls="cad-folha-opcoes">Mudar</button>
+                </div>
+                <div id="cad-folha-opcoes" hidden>
+                    <div class="cad-linha">
+                        <div class="field"><label for="cad-modelo">Modelo de prova</label>
+                            <select id="cad-modelo">
+                                <option value="escola">Cabeçalho da escola</option>
+                                <option value="enem">ENEM — duas colunas, “Questão 01”</option>
+                                <option value="paebes">PAEBES / SAEB — cartão na capa</option>
+                                <option value="ama">AMA / SEDU-ES — folha de respostas na capa</option>
+                            </select>
+                        </div>
+                        <div class="field"><label id="cad-colunas-rotulo">Colunas do corpo</label>
+                            <select id="cad-colunas" hidden aria-hidden="true" tabindex="-1">
+                                <option value="1">Uma coluna</option>
+                                <option value="2">Duas colunas</option>
+                            </select>
+                            <div class="segmento segmento-campo" role="radiogroup" aria-labelledby="cad-colunas-rotulo">
+                                <button type="button" role="radio" aria-checked="true" data-col="1">Uma coluna</button>
+                                <button type="button" role="radio" aria-checked="false" data-col="2">Duas colunas</button>
+                            </div>
+                        </div>
+                    </div>
+                    <label class="cad-check"><input type="checkbox" id="cad-branco" checked> Último verso em branco (frente e verso)</label>
+                    <label class="cad-check"><input type="checkbox" id="cad-descritores"> Imprimir o descritor sob cada questão</label>
+                    <details class="cad-cabecalho">
+                        <summary>Cabeçalho impresso</summary>
+                        <div class="cad-linha cad-linha-dentro">
+                            <div class="field"><label for="cad-rede">Rede / superintendência</label><input type="text" id="cad-rede" placeholder="Secretaria de Estado da Educação"></div>
+                            <div class="field"><label for="cad-escola">Escola</label><input type="text" id="cad-escola" placeholder="EEFM ..."></div>
+                            <div class="field"><label for="cad-titulo">Título impresso</label><input type="text" id="cad-titulo" placeholder="Avaliação bimestral"></div>
+                            <div class="field"><label for="cad-disciplina">Disciplina</label><input type="text" id="cad-disciplina" placeholder="Língua Portuguesa"></div>
+                            <div class="field"><label for="cad-professor">Professor(a)</label><input type="text" id="cad-professor" placeholder="Quem aplicou"></div>
+                            <div class="field"><label for="cad-ano">Ano / série</label><input type="text" id="cad-ano" placeholder="2º ano EM"></div>
+                            <div class="field"><label for="cad-bimestre">Bimestre</label><input type="text" id="cad-bimestre" placeholder="2º bimestre"></div>
+                            <div class="field"><label for="cad-data">Data</label><input type="text" id="cad-data" placeholder="__/__/____"></div>
+                        </div>
+                        <div class="field field-solto">
+                            <label for="cad-instrucoes">Instruções impressas na primeira página de questões</label>
+                            <textarea id="cad-instrucoes" rows="3" placeholder="Uma linha por instrução. Deixe vazio para usar o texto do modelo escolhido."></textarea>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <details class="dobra-avancada">
+                <summary>Ajustes avançados</summary>
                 <div class="cad-linha">
-                    <div><label for="cad-prova">Prova</label><select id="cad-prova"></select></div>
-                    <div><label for="cad-turma">Turma</label><select id="cad-turma"></select></div>
-                    <div><label for="cad-modo">Embaralhamento</label>
-                        <select id="cad-modo">
-                            <option value="fixa">Única (ordem original)</option>
-                            <option value="turma">Por tipo de caderno</option>
-                            <option value="aluno">Ordem própria por aluno</option>
-                        </select>
-                    </div>
+                    <div class="field"><label for="cad-por-pagina">Máximo de questões por página</label><input type="number" id="cad-por-pagina" min="1" max="30" value="30">
+                        <p class="ajuda">O Gaba mede o papel e fecha as colunas sozinho. Use só para limitar.</p></div>
+                    <div class="field" data-modo-mostra="turma aluno"><label for="cad-salt">Chave do embaralhamento</label><input type="text" id="cad-salt" placeholder="vazio = sempre a mesma ordem">
+                        <p class="ajuda">Mude a chave para sortear outra ordem com a mesma turma.</p></div>
                 </div>
-                <div class="cad-linha" style="margin-top: 12px;">
-                    <div><label for="cad-tipos">Nº de tipos</label><input type="number" id="cad-tipos" min="1" max="26" value="4"></div>
-                    <div><label for="cad-por-pagina">Máximo por página</label><input type="number" id="cad-por-pagina" min="1" max="30" value="30" title="O app mede o papel e fecha as colunas na conta; este número é só o teto."></div>
-                    <div><label for="cad-salt">Chave do embaralhamento</label><input type="text" id="cad-salt" placeholder="vazio = sempre a mesma ordem"></div>
-                </div>
-                <label class="cad-check"><input type="checkbox" id="cad-alt" checked> Embaralhar também as alternativas (A-B-C vira outra letra)</label>
-                <label class="cad-check"><input type="checkbox" id="cad-descritores"> Imprimir o descritor sob cada questão (o caderno do aluno sai limpo se deixar desmarcado)</label>
-                <div class="cad-linha" style="margin-top: 12px;">
-                    <div><label for="cad-modelo">Modelo de prova</label>
-                        <select id="cad-modelo">
-                            <option value="escola">Cabeçalho da escola</option>
-                            <option value="enem">ENEM — duas colunas, “Questão 01”</option>
-                            <option value="paebes">PAEBES / SAEB — cartão na capa</option>
-                            <option value="ama">AMA / SEDU-ES — folha de respostas na capa</option>
-                        </select>
-                    </div>
-                    <div><label for="cad-colunas">Colunas do corpo</label>
-                        <select id="cad-colunas">
-                            <option value="1">Uma coluna</option>
-                            <option value="2">Duas colunas</option>
-                        </select>
-                    </div>
-                </div>
-                <label class="cad-check"><input type="checkbox" id="cad-branco" checked> Folha de respostas na página 1, questões a partir da 2 e último verso em branco (frente e verso)</label>
-                <details class="cad-cabecalho">
-                    <summary>Cabeçalho impresso na folha de respostas</summary>
-                    <div class="cad-linha" style="margin-top: 10px;">
-                        <div><label for="cad-rede">Rede / superintendência</label><input type="text" id="cad-rede" placeholder="Secretaria de Estado da Educação"></div>
-                        <div><label for="cad-escola">Escola</label><input type="text" id="cad-escola" placeholder="EEFM ..."></div>
-                        <div><label for="cad-titulo">Título impresso</label><input type="text" id="cad-titulo" placeholder="Avaliação bimestral"></div>
-                        <div><label for="cad-disciplina">Disciplina</label><input type="text" id="cad-disciplina" placeholder="Língua Portuguesa"></div>
-                        <div><label for="cad-professor">Professor(a)</label><input type="text" id="cad-professor" placeholder="Quem aplicou"></div>
-                        <div><label for="cad-ano">Ano / série</label><input type="text" id="cad-ano" placeholder="2º ano EM"></div>
-                        <div><label for="cad-bimestre">Bimestre</label><input type="text" id="cad-bimestre" placeholder="2º bimestre"></div>
-                        <div><label for="cad-data">Data</label><input type="text" id="cad-data" placeholder="__/__/____"></div>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <label for="cad-instrucoes" style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:4px;">Instruções impressas na primeira página de questões</label>
-                        <textarea id="cad-instrucoes" rows="3" placeholder="Uma linha por instrução. Deixe vazio para usar o texto do modelo escolhido."></textarea>
-                    </div>
-                </details>
+            </details>
+
+            <div class="fecho">
+                <p class="fecho-resumo" id="cad-fecho-resumo"></p>
                 <div class="cad-acoes">
                     <button type="button" class="btn-primary" id="cad-previa">Gerar prévia</button>
-                    <button type="button" class="btn-success" id="cad-imprimir">Imprimir lote</button>
+                    <button type="button" class="btn-success" id="cad-imprimir">Imprimir</button>
                     <button type="button" class="btn-ghost" id="cad-baixar">Baixar HTML</button>
-                    <button type="button" class="btn-ghost" id="cad-docx">Importar documento</button>
-                    <button type="button" class="btn-success" id="cad-salvar-prova" hidden>Salvar revisão no banco</button>
-                    <input type="file" id="cad-arquivo" accept=".docx,.doc,.pdf" hidden>
                 </div>
                 <p class="cad-status" id="cad-status">Escolha a prova e a turma.</p>
-                <div class="cad-avisos" id="cad-avisos" hidden></div>
-                <p class="cad-nota" id="cad-nota-prova"></p>
-                <div class="q-editor" id="cad-questoes" hidden></div>
-                <div class="cad-lista" id="cad-alunos" hidden></div>
+                <div class="cad-avisos" id="cad-cortes" hidden></div>
             </div>
         </section>
 
         <!-- ABA 6: AJUSTES -->
         <section id="tab-config" class="tab-content">
             <h2>Ajustes</h2>
-            <p class="passo">Professor</p>
+            <p class="text-muted">Quem est&aacute; usando o Gaba neste aparelho e para qual banco as folhas lidas sobem.</p>
+            <h3 class="secao">Professor</h3>
             <div class="form-container">
                 <div id="professor-logado" hidden>
-                    <p style="font-size:1rem;"><strong id="logado-nome">&nbsp;</strong></p>
+                    <p><strong id="logado-nome">&nbsp;</strong></p>
                     <p class="text-muted" id="logado-email">&nbsp;</p>
-                    <button type="button" id="btn-sair" class="btn-ghost">Sair</button>
+                    <div class="cad-acoes"><button type="button" id="btn-sair" class="btn-ghost">Sair</button></div>
                 </div>
                 <form id="form-login">
-                    <input type="email" id="login-email" placeholder="Seu e-mail" autocomplete="username" required>
-                    <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password" required>
-                    <button type="submit" class="btn-primary">Entrar</button>
+                    <div class="cad-linha">
+                        <div class="field"><label for="login-email">E-mail</label><input type="email" id="login-email" placeholder="seu@email.com" autocomplete="username" required></div>
+                        <div class="field"><label for="login-senha">Senha</label><input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password" required></div>
+                    </div>
+                    <div class="cad-acoes"><button type="submit" class="btn-primary">Entrar</button></div>
                 </form>
-                <p id="login-obrigatorio" class="text-muted" style="margin-top:10px;font-size:.85rem;">Entrar &eacute; o que abre o banco: sem login o Gaba continua corrigindo e guardando tudo neste aparelho, e nada sobe para o Supabase.</p>
-                <button type="button" id="btn-nova-conta" class="btn-ghost" style="margin-top:12px;">Criar conta de professor</button>
+                <p id="login-obrigatorio" class="ajuda">Entrar &eacute; o que abre o banco: sem login o Gaba continua corrigindo e guardando tudo neste aparelho, e nada sobe para o Supabase.</p>
+                <button type="button" id="btn-nova-conta" class="btn-ghost botao-solto">Criar conta de professor</button>
                 <form id="form-conta" hidden>
-                    <input type="text" id="conta-nome" placeholder="Seu nome (Ex: Prof. Ana)" required>
-                    <input type="email" id="conta-email" placeholder="Seu e-mail" required>
-                    <input type="password" id="conta-senha" placeholder="Senha nova (m&iacute;nimo 6 caracteres)" required>
-                    <button type="submit" class="btn-success">Criar conta e entrar</button>
+                    <div class="cad-linha">
+                        <div class="field"><label for="conta-nome">Seu nome</label><input type="text" id="conta-nome" placeholder="Ex.: Prof. Ana" required></div>
+                        <div class="field"><label for="conta-email">E-mail</label><input type="email" id="conta-email" placeholder="seu@email.com" required></div>
+                        <div class="field"><label for="conta-senha">Senha nova</label><input type="password" id="conta-senha" placeholder="m&iacute;nimo 6 caracteres" required></div>
+                    </div>
+                    <div class="cad-acoes"><button type="submit" class="btn-success">Criar conta e entrar</button></div>
                 </form>
             </div>
 
-            <p class="passo">Banco de dados</p>
+            <h3 class="secao">Banco de dados</h3>
             <div class="form-container">
-                <p id="cfg-salva" hidden><span id="cfg-como">Conex&atilde;o guardada neste aparelho</span>: <code id="cfg-url-salva"></code></p>
+                <p id="cfg-salva" class="ajuda ajuda-topo" hidden><span id="cfg-como">Conex&atilde;o guardada neste aparelho</span>: <code id="cfg-url-salva"></code></p>
                 <button type="button" id="btn-trocar-credencial" class="btn-ghost" hidden>Trocar a conex&atilde;o</button>
                 <button type="button" id="btn-usar-embutida" class="btn-ghost" hidden>Usar a conex&atilde;o que vem no app</button>
                 <form id="form-config" hidden>
-                    <input type="url" id="cfg-url" placeholder="Project URL (https://xyz.supabase.co)" required>
-                    <input type="password" id="cfg-key" placeholder="Chave Pública (anon / public key)" required>
-                    <button type="submit" class="btn-primary">Salvar Credenciais</button>
+                    <div class="cad-linha">
+                        <div class="field"><label for="cfg-url">Endereço do projeto (Project URL)</label><input type="url" id="cfg-url" placeholder="https://xyz.supabase.co" required></div>
+                        <div class="field"><label for="cfg-key">Chave pública (anon / public key)</label><input type="password" id="cfg-key" placeholder="eyJ..." required></div>
+                    </div>
+                    <div class="cad-acoes"><button type="submit" class="btn-primary">Salvar conexão</button></div>
                 </form>
-                <p id="cfg-aviso" class="text-muted" style="margin-top: 12px; font-size: 0.84rem;">A <code>anon key</code> &eacute; p&uacute;blica por natureza e vai dentro do app: quem protege o banco &eacute; o login, porque as pol&iacute;ticas s&oacute; atendem quem est&aacute; dentro. A <code>service_role</code> nunca entra aqui.</p>
+                <p id="cfg-aviso" class="ajuda">A <code>anon key</code> &eacute; p&uacute;blica por natureza e vai dentro do app: quem protege o banco &eacute; o login, porque as pol&iacute;ticas s&oacute; atendem quem est&aacute; dentro. A <code>service_role</code> nunca entra aqui.</p>
+                <p class="ajuda">O endere&ccedil;o e a chave v&ecirc;m no pr&oacute;prio pacote (js/credencial.js), ent&atilde;o nenhum aparelho precisa digitar nada. Digite aqui apenas se este celular deva apontar para outro banco.</p>
             </div>
-            <p class="text-muted" style="font-size: 0.84rem;">O endere&ccedil;o e a chave v&ecirc;m no pr&oacute;prio pacote (js/credencial.js), ent&atilde;o nenhum aparelho precisa digitar nada. Digite aqui apenas se este celular deva apontar para outro banco.</p>
         </section>
 
         <!-- SOMENTE O QUE GABA FOLHA DESENHA ENTRA AQUI NA HORA DE IMPRIMIR -->
         <div id="print-root"></div>
         <div id="print-medidor" aria-hidden="true"></div>
     </main>
+
+    <!-- painel do próprio Gaba no lugar das janelas confirm/prompt do navegador -->
+    <div class="dlg-fundo" id="dlg-fundo" hidden></div>
+    <div class="dlg" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-titulo" hidden>
+        <h3 id="dlg-titulo"></h3>
+        <p class="dlg-texto" id="dlg-texto" hidden></p>
+        <div class="field" id="dlg-campo-box" hidden><label for="dlg-campo" id="dlg-campo-rotulo"></label><input type="text" id="dlg-campo" autocomplete="off"></div>
+        <div class="dlg-opcoes" id="dlg-opcoes" hidden></div>
+        <div class="dlg-acoes">
+            <button type="button" class="btn-ghost" id="dlg-cancelar">Cancelar</button>
+            <button type="button" class="btn-primary" id="dlg-ok">Salvar</button>
+        </div>
+    </div>
     <script src="js/omrLayout.js"></script>
     <script src="js/qrPayload.js"></script>
     <script src="js/versoes.js"></script>
@@ -398,6 +556,7 @@
     <script src="js/listaAlunos.js"></script>
     <script src="js/folha.js"></script>
     <script src="js/analise.js"></script>
+    <script src="js/analiseBasica.js"></script>
     <script src="js/credencial.js"></script>
     <script src="js/supabaseClient.js"></script>
     <script src="js/offlineSync.js"></script>
@@ -405,6 +564,7 @@
     <script src="js/descritoresMatriz.js"></script>
     <script src="js/uiCaderno.js"></script>
     <script src="js/uiScanner.js"></script>
+    <script src="js/dicas.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

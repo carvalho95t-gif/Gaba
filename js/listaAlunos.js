@@ -43,6 +43,7 @@
 
   var ROTULOS_DE_DESCARTE = {};
   ["nome", "nomedoaluno", "nomecompleto", "nomedoestudante", "estudante", "aluno", "numero", "n", "matricula",
+    "alunos", "alunas", "estudantes", "nomes", "discentes", "nomedosalunos", "nomedosestudantes",
     "tipodeprova", "tipo", "componente", "turma", "media", "total", "resultadofinal", "aprovacao",
     "cartuldadematria", "responsavel", "email", "telefone"].forEach(function (k) {
     ROTULOS_DE_DESCARTE[k] = true;
@@ -50,6 +51,23 @@
 
   /* linhas de resumo que as planilhas colocam embaixo da chamada */
   var RODAPE = /^(total|somatorio|media|desvio|variancia|quantidade|numerodealunos?|ndealuno|aprovad|reprovad|assinatura|legenda|instru|observa|disciplina|componente|turma)/i;
+
+  /* a chamada oficial mantem quem saiu da turma, com a situacao numa coluna ao lado */
+  var SAIU = /^(transferid|remanejad)/;
+
+  function saiuDaTurma(linha, idxNome) {
+    return linha.some(function (c, i) {
+      var t = chaveDe(c);
+      return i === idxNome ? /\b(transferid|remanejad)/.test(t) : SAIU.test(t);
+    });
+  }
+
+  function avisoDeSaidas(n) {
+    return n === 1 ? "1 aluno marcado como transferido ou remanejado ficou de fora."
+      : n + " alunos marcados como transferidos ou remanejados ficaram de fora.";
+  }
+
+  var AVISO_SEM_CABECALHO = "A lista não tem linha de cabeçalho: usei a primeira coluna com números como Nº e a coluna de texto mais longo como nome.";
 
   function ehRodape(texto) {
     var t = chaveDe(texto);
@@ -160,7 +178,7 @@
       desde = linhaCabecalho + 1;
     } else {
       idx = adivinharColunas(linhas);
-      problemas.push("A lista não tem linha de cabeçalho: usei a primeira coluna com números como Nº e a coluna de texto mais longo como nome.");
+      problemas.push(AVISO_SEM_CABECALHO);
     }
     if (idx.nome < 0) {
       problemas.push("Não encontrei a coluna de nomes. Reordene as colunas ou cole só Nº e Nome.");
@@ -172,12 +190,14 @@
     var alunos = [];
     var maior = 0;
     var puladas = 0;
+    var saidas = 0;
     for (var n = desde; n < linhas.length; n++) {
       var linha = linhas[n];
       var nome = nomeCelula(linha, idx.nome);
       if (!nome || nome.length < 3) { puladas++; continue; }
       var chaveNome = limpo(nome);
       if (ROTULOS_DE_DESCARTE[chaveNome] || ehRodape(nome) || pareceContato(nome)) { puladas++; continue; }
+      if (saiuDaTurma(linha, idx.nome)) { saidas++; continue; }
 
       var brutoNumero = idx.numero >= 0 ? rotuloDe(linha[idx.numero] || "") : "";
       var num = numeroDe(brutoNumero);
@@ -232,6 +252,7 @@
     if (semNumero) {
       problemas.push(semNumero + " linha(s) sem número de chamada: recebam os números seguintes automaticamente.");
     }
+    if (saidas) problemas.push(avisoDeSaidas(saidas));
     if (!alunos.length) problemas.push("Nenhum aluno reconhecido nesta lista.");
     alunos.sort(function (a, b) { return a.numero - b.numero; });
 
@@ -242,6 +263,7 @@
       linhaCabecalho: linhaCabecalho,
       colunas: idx,
       puladas: puladas,
+      saidas: saidas,
       total: alunos.length
     };
   }
@@ -259,9 +281,148 @@
     return melhor;
   }
 
+  /* ------------------------------------------- varias turmas de uma escola num arquivo so */
+
+  var COLUNA_TURMA = /^(turma|turmas|classe|sala|serie turma|turma serie|ano turma|turma ano)$/;
+  var PARECE_TURMA = /\d|^turma\s+\S/i;
+  var ABA_GENERICA = /^(planilha|plan|sheet|folha|pagina|página)\s*\d*$/i;
+
+  function linhasCheias(linhas) {
+    return (linhas || []).filter(function (l) {
+      return Array.isArray(l) && l.some(function (c) { return /\S/.test(String(c == null ? "" : c)); });
+    });
+  }
+
+  function semExtensao(nome) {
+    return rotuloDe(nome).replace(/\.[a-z0-9]{2,4}$/i, "");
+  }
+
+  /* a linha de cabecalho que tem uma coluna "Turma"; diz se ela vem com a coluna de nomes */
+  function colunaDeTurma(linhas) {
+    var soTurmas = null;
+    var cabecalhoDeAlunos = false;
+    for (var i = 0; i < Math.min(linhas.length, 25); i++) {
+      var linha = linhas[i];
+      if (ehCabecalho(linha)) cabecalhoDeAlunos = true;
+      for (var c = 0; c < linha.length; c++) {
+        if (!COLUNA_TURMA.test(chaveDe(linha[c]))) continue;
+        var comNome = linha.some(function (v, j) { return j !== c && papelDaColuna(v) === "nome"; });
+        if (comNome) return { linha: i, coluna: c, comNome: true };
+        var temValor = linha.some(function (v, j) { return j !== c && PARECE_TURMA.test(rotuloDe(v)); });
+        if (!soTurmas && !temValor) soTurmas = { linha: i, coluna: c, comNome: false };
+      }
+    }
+    return cabecalhoDeAlunos ? null : soTurmas;
+  }
+
+  /* a secretaria exporta a escola inteira numa aba, com a turma de cada aluno ao lado */
+  function separarPorTurma(linhas, onde) {
+    var cab = linhas[onde.linha].slice();
+    cab[onde.coluna] = "";
+    var grupos = [];
+    var porChave = Object.create(null);
+    var atual = "";
+    for (var i = onde.linha + 1; i < linhas.length; i++) {
+      var l = linhas[i].slice();
+      var v = rotuloDe(l[onde.coluna] || "");
+      /* celula mesclada: so a primeira linha da turma traz o nome */
+      if (v) atual = v;
+      l[onde.coluna] = "";
+      if (!atual) continue;
+      var k = limpo(atual);
+      if (!porChave[k]) {
+        porChave[k] = { nome: atual, linhas: [] };
+        grupos.push(porChave[k]);
+      }
+      porChave[k].linhas.push(l);
+    }
+    return grupos.map(function (g) { return { nome: g.nome, lista: montar([cab].concat(g.linhas)) }; });
+  }
+
+  /* so os nomes das turmas, sem alunos: uma coluna "Turma" ou uma coluna solta de "6º A", "7º B" */
+  function nomesDeTurmas(linhas, onde) {
+    if (onde) {
+      return linhas.slice(onde.linha + 1).map(function (l) { return rotuloDe(l[onde.coluna] || ""); })
+        .filter(Boolean);
+    }
+    var valores = [];
+    linhas.forEach(function (l) {
+      var cheias = l.map(rotuloDe).filter(Boolean);
+      if (cheias.length === 1) valores.push(cheias[0]);
+    });
+    if (!linhas.length || valores.length < linhas.length * 0.8) return null;
+    if (valores.length && COLUNA_TURMA.test(chaveDe(valores[0]))) valores.shift();
+    var turmas = valores.filter(function (v) { return v.length <= 30 && PARECE_TURMA.test(v); });
+    if (!turmas.length || turmas.length < valores.length * 0.8) return null;
+    return turmas;
+  }
+
+  function avisoProprio(p) {
+    return p !== AVISO_SEM_CABECALHO && p !== "Nenhum aluno reconhecido nesta lista." &&
+      !/marcados? como transferidos? ou remanejados? (ficou|ficaram) de fora\.$/.test(p);
+  }
+
+  /* cada aba (ou arquivo) vira uma ou mais turmas; o nome da escola nao precisa estar no arquivo */
+  function turmasDaPasta(itens) {
+    var turmas = [];
+    var ignoradas = [];
+    var repetidas = [];
+    var porNome = Object.create(null);
+    var saidas = 0;
+    var abasPorArquivo = Object.create(null);
+    (itens || []).forEach(function (it) {
+      if (!linhasCheias(it.linhas).length) return;
+      var arq = it.arquivo || "";
+      abasPorArquivo[arq] = (abasPorArquivo[arq] || 0) + 1;
+    });
+
+    function guardar(nome, alunos, problemas, fonte, saiu) {
+      nome = rotuloDe(nome).slice(0, 120);
+      var k = limpo(nome);
+      if (!k) return;
+      if (porNome[k]) {
+        repetidas.push(nome);
+        return;
+      }
+      saidas += saiu || 0;
+      porNome[k] = true;
+      turmas.push({ nome: nome, alunos: alunos, problemas: problemas.filter(avisoProprio), saidas: saiu || 0, fonte: fonte });
+    }
+
+    (itens || []).forEach(function (it) {
+      var linhas = linhasCheias(it.linhas);
+      if (!linhas.length) return;
+      var rotulo = rotuloDe(it.rotulo);
+      var onde = colunaDeTurma(linhas);
+      if (onde && onde.comNome) {
+        separarPorTurma(linhas, onde).forEach(function (g) {
+          if (g.lista.alunos.length || g.lista.saidas) guardar(g.nome, g.lista.alunos, g.lista.problemas, rotulo, g.lista.saidas);
+        });
+        return;
+      }
+      var nomes = nomesDeTurmas(linhas, onde);
+      if (nomes) {
+        nomes.forEach(function (n) { guardar(n, [], [], rotulo, 0); });
+        return;
+      }
+      var lista = montar(linhas);
+      if (!lista.alunos.length && !lista.saidas) {
+        ignoradas.push(rotulo);
+        return;
+      }
+      var nome = rotulo;
+      if (!it.arquivo || rotulo === it.arquivo) nome = semExtensao(rotulo);
+      else if (ABA_GENERICA.test(rotulo) && abasPorArquivo[it.arquivo] === 1) nome = semExtensao(it.arquivo);
+      guardar(nome, lista.alunos, lista.problemas, rotulo, lista.saidas);
+    });
+
+    return { turmas: turmas, ignoradas: ignoradas, repetidas: repetidas, saidas: saidas };
+  }
+
   global.GabaLista = {
     montar: montar,
     melhorDasListas: melhorDasListas,
+    turmasDaPasta: turmasDaPasta,
     papelDaColuna: papelDaColuna,
     ehCabecalho: ehCabecalho,
     numeroDe: numeroDe,

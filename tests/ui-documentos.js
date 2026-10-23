@@ -38,7 +38,7 @@ async function importar(caminho, nome) {
     }).length,
     comando1: String((p.questoes[0] || {}).comando || "").slice(-20),
     enunciado1: String((p.questoes[0] || {}).enunciado || "").slice(0, 40),
-    status: document.getElementById("cad-status").textContent.replace(/\s+/g, " ").slice(0, 150),
+    status: document.getElementById("prova-status").textContent.replace(/\s+/g, " ").slice(0, 150),
     avisos: [].slice.call(document.querySelectorAll("#cad-avisos li")).map(function (li) {
       return li.textContent.replace(/\s+/g, " ").slice(0, 130);
     })

@@ -485,13 +485,16 @@
 
     var avisos = [];
     if (state.repetidas) {
-      avisos.push(state.repetidas + " questão(ões) repetidas em outras folhas foram descartadas (banco único mantido).");
+      avisos.push(state.repetidas === 1
+        ? "1 questão repetida em outra folha foi descartada (banco único mantido)."
+        : state.repetidas + " questões repetidas em outras folhas foram descartadas (banco único mantido).");
     }
     if (origin === "tipo-1") {
       avisos.push("Gabarito oficial adotado da matriz do Tipo 1, que corresponde à ordem das questões da primeira folha.");
     }
     var semGabarito = state.questoes.filter(function (q) { return !q.gabarito; }).map(function (q) { return q.numero; });
-    if (semGabarito.length) avisos.push(semGabarito.length + " questão(ões) sem gabarito: " + semGabarito.slice(0, 20).join(", "));
+    if (semGabarito.length) avisos.push(semGabarito.length + (semGabarito.length === 1 ? " questão" : " questões") +
+      " sem gabarito: " + semGabarito.slice(0, 20).join(", "));
     var semAlternativas = state.questoes.filter(function (q) { return Object.keys(q.alternativas).length < 2; }).map(function (q) { return q.numero; });
     if (semAlternativas.length) avisos.push("Questões com menos de 2 alternativas: " + semAlternativas.slice(0, 20).join(", "));
     if (!state.questoes.length) avisos.push("nenhuma questão reconhecida neste arquivo");

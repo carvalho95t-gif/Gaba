@@ -322,8 +322,8 @@
     linha.innerHTML = "<strong>" + esc(String(r.aluno_numero || "-")) + "</strong> " +
       "<span>" + esc(r.aluno_nome || r.aluno_id || "") + "</span>" +
       "<span>tipo " + esc(String(r.versao)) + " / " + esc(String(r.codigo || "")) + "</span>" +
-      "<span><b>" + r.acertos + "</b>/" + r.total_questoes + " = " + Number(r.nota).toFixed(1) + "</span>" +
-      "<span>" + (duvida ? "revisar: " + r.confusao.join(", ") : (result.confidence ? "confianca " + Math.round(result.confidence * 100) + "%" : "")) + "</span>";
+      "<span><b>" + r.acertos + "</b>/" + r.total_questoes + " = " + Number(r.nota).toFixed(1).replace(".", ",") + "</span>" +
+      "<span>" + (duvida ? "revisar: " + r.confusao.join(", ") : (result.confidence ? "confiança " + Math.round(result.confidence * 100) + "%" : "")) + "</span>";
     box.insertBefore(linha, box.firstChild);
     while (box.children.length > 40) box.removeChild(box.lastChild);
     var total = $("scan-total");
@@ -331,7 +331,7 @@
     if (total) total.textContent = String(estado.resultados.length);
     if (dup) dup.textContent = String(estado.resultados.filter(function (x) { return (x.confusao || []).length; }).length);
     status("Leu " + (r.aluno_nome || r.aluno_numero || "") + ": " + r.acertos + "/" + r.total_questoes +
-      " (nota " + Number(r.nota).toFixed(1) + "). Pode virar a folha.");
+      " (nota " + Number(r.nota).toFixed(1).replace(".", ",") + "). Pode virar a folha.");
   }
 
   function salvar(registro) {
@@ -415,13 +415,13 @@
 
   async function iniciar() {
     var prova = opcoesProva();
-    if (!prova) { status("Escolha a prova antes de ligar a camera.", "erro"); return; }
+    if (!prova) { status("Escolha a prova antes de ligar a câmera.", "erro"); return; }
     estado.prova = prova;
     await carregarAlunos();
     await montarIndice();
     if (!estado.totalQuestoes || !Object.keys(estado.porAluno).length) {
-      status("Nao deu para montar as versoes desta prova (" + (estado.fonte || "sem indice") +
-        "). Abra a aba Caderno, importe o documento e faca a previa do lote primeiro.", "erro");
+      status("Não deu para montar as versões desta prova (" + (estado.fonte || "sem índice") +
+        "). Abra a aba Cadernos, importe o documento e faça a prévia do lote primeiro.", "erro");
       return;
     }
     try {
@@ -430,8 +430,8 @@
         audio: false
       });
     } catch (err) {
-      status("A camera nao abriu: " + (err && err.message ? err.message : err) +
-        " (o navegador so libera camera em HTTPS ou localhost).", "erro");
+      status("A câmera não abriu: " + (err && err.message ? err.message : err) +
+        " (o navegador só libera câmera em HTTPS ou localhost).", "erro");
       return;
     }
     var video = $("scan-video");
@@ -443,9 +443,10 @@
     var b2 = $("scan-parar");
     if (b1) b1.disabled = true;
     if (b2) b2.disabled = false;
-    status("Procurando folha... " + estado.totalQuestoes + " questoes, " +
-      Object.keys(estado.versoes).length + " versao(oes) e " + estado.alunos.length +
-      " aluno(s) (" + estado.fonte + ").");
+    var nVersoes = Object.keys(estado.versoes).length;
+    status("Procurando folha... " + estado.totalQuestoes + " questões, " +
+      nVersoes + (nVersoes === 1 ? " versão e " : " versões e ") + estado.alunos.length +
+      (estado.alunos.length === 1 ? " aluno" : " alunos") + " (" + estado.fonte + ").");
     global.requestAnimationFrame(laco);
   }
 
@@ -491,7 +492,7 @@
         turmas = global.GabaEscolas ? GabaEscolas.visiveis(todas) : todas;
         provas = provas.concat(await GabaDB.listProvas());
       } catch (err) {
-        status("Supabase indisponivel: " + (err.message || err), "erro");
+        status("Supabase indisponível: " + (err.message || err), "erro");
       }
     }
     estado.provas = provas;
@@ -501,7 +502,7 @@
         var qtd = (p.questoes || []).length || p.quantidade_questoes || 0;
         return '<option value="' + String(p.id).replace(/"/g, "&quot;") + '">' +
           String(p.titulo || "Prova " + (i + 1)).replace(/</g, "&lt;") +
-          " — " + qtd + " questoes" + (p.__impresso ? " (lote impresso)" : "") + "</option>";
+          " — " + qtd + " questões" + (p.__impresso ? " (lote impresso)" : "") + "</option>";
       }).join("") || '<option value="">sem prova</option>';
     }
     var selT = $("scan-turma");
@@ -515,8 +516,9 @@
       await carregarAlunos();
       await montarIndice();
     }
-    status(provas.length + " prova(s) e " + estado.alunos.length + " aluno(s) carregados" +
-      (estado.fonte ? " — versoes pelo " + estado.fonte : "") + ".");
+    status(provas.length + (provas.length === 1 ? " prova e " : " provas e ") + estado.alunos.length +
+      (estado.alunos.length === 1 ? " aluno carregado" : " alunos carregados") +
+      (estado.fonte ? " — versões pelo " + estado.fonte : "") + ".");
   }
 
   function init() {
@@ -536,7 +538,7 @@
     if (sens) sens.addEventListener("input", function () {
       estado.sensibilidade = Number(sens.value) || 1;
       var out = $("scan-sens-valor");
-      if (out) out.textContent = estado.sensibilidade.toFixed(1);
+      if (out) out.textContent = estado.sensibilidade.toFixed(1).replace(".", ",");
     });
     var sel = $("scan-prova");
     if (sel) sel.addEventListener("change", function () {
@@ -553,7 +555,7 @@
         if (fila) fila.textContent = String(n);
       });
     }
-    status("Escolha a prova e ligue a camera.");
+    status("Escolha a prova e ligue a câmera.");
   }
 
   if (document.readyState === "loading") {
