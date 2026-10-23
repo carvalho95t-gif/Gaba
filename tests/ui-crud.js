@@ -1268,6 +1268,66 @@ async function dirigirLogin(marcos) {
   return r;
 }
 
+async function dirigirSelo(marcos) {
+  var r = {};
+  var botao = document.getElementById("status-conexao");
+  var painel = document.getElementById("selo-painel");
+  function vis(id) { return !document.getElementById(id).hidden; }
+  function tela() {
+    return {
+      aberto: !painel.hidden, expandido: botao.getAttribute("aria-expanded"),
+      login: vis("selo-login"), dentro: vis("selo-dentro"), semBanco: vis("selo-sem-banco"),
+      erro: vis("selo-erro") ? texto("selo-erro") : "",
+      nome: texto("selo-nome"), email: texto("selo-quem-email"), badge: texto("status-conexao"),
+      foco: document.activeElement ? document.activeElement.id : "",
+      logado: Boolean(window.GabaApp.estado.professor)
+    };
+  }
+
+  r.tag = botao.tagName;
+  botao.click();
+  r.aberto = tela();
+  document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  r.foraFecha = tela();
+  botao.click();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  r.escFecha = tela();
+
+  botao.click();
+  preenche("selo-email", marcos.email);
+  preenche("selo-senha", "senha-errada-9");
+  envia("selo-login");
+  r.negado = await espera(function () { var t = tela(); return t.erro ? t : null; }, 9000).catch(tela);
+
+  preenche("selo-senha", marcos.senha);
+  envia("selo-login");
+  r.entrou = await espera(function () {
+    var t = tela();
+    return t.logado && !t.aberto && t.badge === "Supabase Conectado" ? t : null;
+  }, 12000).catch(tela);
+
+  botao.click();
+  r.abertoDentro = tela();
+  document.getElementById("selo-sair").click();
+  r.saiu = await espera(function () {
+    var t = tela();
+    return !t.logado && t.badge === "Precisa entrar" ? t : null;
+  }, 9000).catch(tela);
+
+  /* aparelho sem banco nenhum: a janelinha nao oferece login que nao tem para onde ir */
+  GabaDB.saveConfig("", "");
+  await window.GabaApp.carregarTudo();
+  botao.click();
+  r.semBanco = tela();
+  document.getElementById("selo-ir-ajustes").click();
+  r.foiAjustes = { aba: document.getElementById("tab-config").classList.contains("active"), aberto: !painel.hidden };
+  GabaDB.saveConfig(marcos.url, marcos.key);
+  await window.GabaApp.carregarTudo();
+  window.switchTab("dashboard");
+  r.final = tela();
+  return r;
+}
+
 function conferirEscolas(es) {
   if (es.parouAqui) return;
   check("o topo so oferece 'todas' e '(sem escola)' enquanto nenhuma turma tem escola",
@@ -1744,6 +1804,28 @@ var LISTA = {
       [lg.telaInicial.badge, lg.saiu && lg.saiu.badge]);
     check("entrar devolve o selo de conectado",
       lg.depoisDeEntrar && lg.depoisDeEntrar.badge === "Supabase Conectado", lg.depoisDeEntrar);
+
+    console.log("\n== o selo do topo abre o login ali mesmo ==");
+    var sl = await c.naPagina(dirigirSelo, [LG]);
+    check("o selo e um botao", sl.tag === "BUTTON", sl.tag);
+    check("tocar no selo abre a janelinha com e-mail e senha, cursor no e-mail",
+      sl.aberto.aberto && sl.aberto.expandido === "true" && sl.aberto.login && !sl.aberto.dentro &&
+      !sl.aberto.semBanco && sl.aberto.foco === "selo-email", sl.aberto);
+    check("tocar fora fecha a janelinha", !sl.foraFecha.aberto && sl.foraFecha.expandido === "false", sl.foraFecha);
+    check("Esc fecha a janelinha", !sl.escFecha.aberto, sl.escFecha);
+    check("senha errada aparece dentro da janelinha, que continua aberta",
+      /E-mail ou senha não batem/.test(sl.negado.erro) && sl.negado.aberto && !sl.negado.logado, sl.negado);
+    check("entrar pela janelinha deixa o professor dentro e fecha a janelinha",
+      sl.entrou.logado && !sl.entrou.aberto && sl.entrou.badge === "Supabase Conectado", sl.entrou);
+    check("dentro, a janelinha mostra quem e e o botao Sair",
+      sl.abertoDentro.dentro && !sl.abertoDentro.login && /Ana \(teste\)/.test(sl.abertoDentro.nome) &&
+      sl.abertoDentro.email === LG.email, sl.abertoDentro);
+    check("Sair pela janelinha volta o selo para Precisa entrar",
+      !sl.saiu.logado && sl.saiu.badge === "Precisa entrar" && !sl.saiu.aberto, sl.saiu);
+    check("sem banco no aparelho a janelinha manda para Ajustes em vez de pedir senha",
+      sl.semBanco.semBanco && !sl.semBanco.login && sl.semBanco.badge === "Só neste aparelho" &&
+      sl.foiAjustes.aba && !sl.foiAjustes.aberto, [sl.semBanco, sl.foiAjustes]);
+    check("a conexao volta e o selo pede entrada de novo", sl.final.badge === "Precisa entrar", sl.final);
 
     console.log("\n== nada quebrou nem ficou para trás ==");
     var e = await c.naPagina(colherErros, []);

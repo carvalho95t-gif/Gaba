@@ -19,7 +19,30 @@
             <label for="filtro-escola">Escola</label>
             <select id="filtro-escola"></select>
         </div>
-        <div id="status-conexao" class="badge badge-off">Supabase Desconectado</div>
+        <div class="conta-selo" id="conta-selo">
+            <button type="button" id="status-conexao" class="badge badge-off" aria-haspopup="dialog" aria-expanded="false" aria-controls="selo-painel">Supabase Desconectado</button>
+            <div id="selo-painel" class="selo-painel" role="dialog" aria-label="Conta do professor" hidden>
+                <form id="selo-login" hidden>
+                    <p class="selo-dica">Entre para o Gaba guardar no banco.</p>
+                    <label for="selo-email">E-mail</label>
+                    <input type="email" id="selo-email" placeholder="seu@email.com" autocomplete="username" required>
+                    <label for="selo-senha">Senha</label>
+                    <input type="password" id="selo-senha" placeholder="Sua senha" autocomplete="current-password" required>
+                    <p id="selo-erro" class="selo-erro" role="alert" hidden></p>
+                    <button type="submit" class="btn-primary">Entrar</button>
+                </form>
+                <div id="selo-dentro" hidden>
+                    <p class="selo-dica">Conectado como</p>
+                    <strong id="selo-nome"></strong>
+                    <span id="selo-quem-email" class="selo-email"></span>
+                    <button type="button" id="selo-sair" class="btn-ghost">Sair</button>
+                </div>
+                <div id="selo-sem-banco" hidden>
+                    <p class="selo-dica">Este aparelho ainda n&atilde;o sabe qual &eacute; o banco.</p>
+                    <button type="button" id="selo-ir-ajustes" class="btn-ghost">Abrir Ajustes</button>
+                </div>
+            </div>
+        </div>
     </header>
 
     <main class="container">

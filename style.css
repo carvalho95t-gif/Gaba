@@ -36,6 +36,19 @@ body { background-color: var(--bg); color: var(--text); padding-bottom: 40px; li
 .badge { padding: 5px 12px; border-radius: var(--raio-p); font-size: .75rem; font-weight: 800; border: 1px solid transparent; white-space: nowrap; }
 .badge-on { background-color: var(--menta-fundo); color: var(--primary); border-color: var(--menta-linha); }
 .badge-off { background-color: var(--laranja-fundo); color: var(--laranja-escuro); border-color: var(--laranja-linha); }
+.conta-selo { position: relative; flex: none; }
+.conta-selo .badge { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.conta-selo .badge::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .14s; }
+.conta-selo .badge[aria-expanded="true"]::after { transform: translateY(1px) rotate(-135deg); }
+.selo-painel { position: absolute; right: 0; top: calc(100% + 10px); width: min(300px, calc(100vw - 24px)); background: var(--card-bg); border: 1px solid var(--linha); border-radius: var(--raio-m); box-shadow: var(--sombra-2); padding: var(--e4); z-index: 30; text-align: left; }
+.selo-painel[hidden], .selo-painel [hidden] { display: none; }
+.selo-painel form, .selo-painel > div { display: flex; flex-direction: column; gap: var(--e2); }
+.selo-painel label { font-size: .72rem; font-weight: 800; color: var(--tinta-3); text-transform: uppercase; letter-spacing: .06em; }
+.selo-painel input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; font-size: .95rem; }
+.selo-painel .btn-primary, .selo-painel .btn-ghost { margin-top: var(--e1); width: 100%; }
+.selo-dica { margin: 0; font-size: .85rem; color: var(--tinta-2); }
+.selo-email { font-size: .85rem; color: var(--tinta-2); overflow-wrap: anywhere; }
+.selo-erro { margin: 0; padding: 8px 10px; border-radius: var(--raio-s); background: var(--laranja-fundo); border: 1px solid var(--laranja-linha); color: var(--laranja-escuro); font-size: .82rem; }
 .container { max-width: 960px; margin: var(--e5) auto; padding: 0 15px; }
 .escola-filtro { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
 .escola-filtro[hidden] { display: none; }

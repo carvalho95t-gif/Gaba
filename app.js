@@ -1250,14 +1250,8 @@
     if (formLogin) formLogin.addEventListener("submit", async function (ev) {
       ev.preventDefault();
       try {
-        await GabaDB.entrar($("login-email").value, $("login-senha").value);
+        await entrarComo($("login-email").value, $("login-senha").value);
         $("form-login").reset();
-        await carregarProfessor();
-        desenharAjustes();
-        var fila = await descerFila();
-        await carregarTudo();
-        aviso("Dentro. O Gaba agora salva como " + quemE() + "." +
-          (fila && fila.synced ? " " + fila.synced + " leitura(s) presas no aparelho subiram para o banco." : ""), "ok");
       } catch (err) {
         aviso(mensagemErro(err), "erro");
       }
@@ -1294,17 +1288,108 @@
     });
 
     var sairBotao = $("btn-sair");
-    if (sairBotao) sairBotao.addEventListener("click", async function () {
-      try {
-        await GabaDB.sair();
-        app.professor = null;
-        badge();
-        desenharAjustes();
-        await carregarTudo();
-        aviso("Você saiu. O banco para de atender até entrar de novo; as leituras continuam neste aparelho.", "ok");
-      } catch (err) {
-        aviso(mensagemErro(err), "erro");
+    if (sairBotao) sairBotao.addEventListener("click", sairDaConta);
+
+    ligarSelo();
+  }
+
+  async function entrarComo(email, senha) {
+    await GabaDB.entrar(email, senha);
+    await carregarProfessor();
+    desenharAjustes();
+    var fila = await descerFila();
+    await carregarTudo();
+    aviso("Dentro. O Gaba agora salva como " + quemE() + "." +
+      (fila && fila.synced ? " " + fila.synced + " leitura(s) presas no aparelho subiram para o banco." : ""), "ok");
+  }
+
+  async function sairDaConta() {
+    try {
+      await GabaDB.sair();
+      app.professor = null;
+      badge();
+      desenharAjustes();
+      await carregarTudo();
+      aviso("Você saiu. O banco para de atender até entrar de novo; as leituras continuam neste aparelho.", "ok");
+    } catch (err) {
+      aviso(mensagemErro(err), "erro");
+    }
+  }
+
+  function desenharSelo() {
+    var eu = app.professor;
+    var conectavel = temConexao();
+    var login = $("selo-login");
+    if (login) login.hidden = !conectavel || Boolean(eu);
+    var dentro = $("selo-dentro");
+    if (dentro) dentro.hidden = !eu;
+    var semBanco = $("selo-sem-banco");
+    if (semBanco) semBanco.hidden = conectavel;
+    if (eu) {
+      var cfg = GabaDB.readConfig();
+      setTexto("selo-nome", eu.nome || cfg.professorNome || String(eu.email || "").split("@")[0]);
+      setTexto("selo-quem-email", eu.email || "");
+    }
+  }
+
+  function abrirSelo(abrir) {
+    var painel = $("selo-painel");
+    var botao = $("status-conexao");
+    if (!painel || !botao) return;
+    painel.hidden = !abrir;
+    botao.setAttribute("aria-expanded", abrir ? "true" : "false");
+    if (!abrir) return;
+    var erro = $("selo-erro");
+    if (erro) erro.hidden = true;
+    desenharSelo();
+    var primeiro = !$("selo-login").hidden ? $("selo-email") : (!$("selo-dentro").hidden ? $("selo-sair") : $("selo-ir-ajustes"));
+    if (primeiro) primeiro.focus();
+  }
+
+  function ligarSelo() {
+    var botao = $("status-conexao");
+    var caixa = $("conta-selo");
+    if (!botao || !caixa) return;
+    botao.addEventListener("click", function () {
+      abrirSelo($("selo-painel").hidden);
+    });
+    document.addEventListener("click", function (ev) {
+      if (!$("selo-painel").hidden && !caixa.contains(ev.target)) abrirSelo(false);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && !$("selo-painel").hidden) {
+        abrirSelo(false);
+        botao.focus();
       }
+    });
+
+    $("selo-login").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var erro = $("selo-erro");
+      var enviar = this.querySelector("button[type=submit]");
+      erro.hidden = true;
+      enviar.disabled = true;
+      try {
+        await entrarComo($("selo-email").value, $("selo-senha").value);
+        this.reset();
+        abrirSelo(false);
+      } catch (err) {
+        erro.textContent = mensagemErro(err);
+        erro.hidden = false;
+        $("selo-senha").select();
+      } finally {
+        enviar.disabled = false;
+      }
+    });
+
+    $("selo-sair").addEventListener("click", async function () {
+      abrirSelo(false);
+      await sairDaConta();
+    });
+
+    $("selo-ir-ajustes").addEventListener("click", function () {
+      abrirSelo(false);
+      window.switchTab("config");
     });
   }
 
