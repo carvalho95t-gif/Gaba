@@ -7,7 +7,9 @@ var JSQR_URL = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
 var GLayout = null;
 var GQR = null;
 var PX_PER_MM = 8;
-var PARAMS = { fillRatio: 0.38, ambigDelta: 0.08, roiScale: 0.82 };
+/* roiScale 0,60: o traco de 0,35mm da bolha comeca a 1,75mm do centro; em 0,82 o disco ia a
+   1,72mm e qualquer borrao punha o anel vazio na conta, que empatava as cinco e virava duvida */
+var PARAMS = { fillRatio: 0.38, ambigDelta: 0.08, roiScale: 0.6 };
 
 var cvReady = false;
 var loadError = null;
