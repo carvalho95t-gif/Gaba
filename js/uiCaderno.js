@@ -557,7 +557,8 @@
   }
 
   async function carregarListas() {
-    var dbOk = global.GabaDB && GabaDB.isConfigured();
+    var configurado = global.GabaDB && GabaDB.isConfigured();
+    var dbOk = configurado && Boolean(await GabaDB.usuario());
     await carregarProvasLocais();
     if (dbOk) {
       try {
@@ -567,6 +568,9 @@
       } catch (err) {
         status("Falha ao ler o Supabase: " + (err && err.message ? err.message : err), true);
       }
+    } else {
+      estado.turmas = [];
+      estado.provasSupabase = [];
     }
     preencher($("cad-turma"), estado.turmas, function (t) { return t.id; }, function (t) { return t.nome; }, "Todas as turmas");
     herdarEscolaDaTurma();
@@ -578,7 +582,8 @@
     var prova = provaSelecionada();
     await carregarAlunos(prova);
     desenharProva(prova);
-    var aviso = !dbOk ? "Sem credenciais: use Importar .docx para imprimir agora." : "";
+    var aviso = !configurado ? "Sem credenciais: use Importar .docx para imprimir agora." :
+      (!dbOk ? "Entre com e-mail e senha para carregar as turmas do banco. Importar .docx continua disponivel." : "");
     status([aviso, provas.length + " prova(s), " + estado.alunos.length + " aluno(s) prontos para o lote."]
       .filter(Boolean).join(" "));
   }

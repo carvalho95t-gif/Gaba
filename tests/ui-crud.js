@@ -1328,6 +1328,22 @@ async function dirigirSelo(marcos) {
   return r;
 }
 
+async function sondarCaderno() {
+  var inicio = window.__gaba.reqs.length;
+  var estado = GabaCaderno.estado;
+  var locaisAntes = estado.provasLocais.map(function (p) { return p.id; });
+  await GabaCaderno.carregarListas();
+  return {
+    pedidos: window.__gaba.reqs.slice(inicio).filter(function (r) {
+      return new URL(r.url).pathname.indexOf("/rest/v1/") === 0;
+    }).map(function (r) { return new URL(r.url).pathname; }),
+    turmas: estado.turmas.length,
+    provasBanco: estado.provasSupabase.length,
+    locaisAntes: locaisAntes,
+    locaisDepois: estado.provasLocais.map(function (p) { return p.id; })
+  };
+}
+
 function enderecosColados() {
   var chave = "gaba_supabase_url";
   var antes = localStorage.getItem(chave);
@@ -1491,6 +1507,10 @@ var LISTA = {
     check("com a conexão do pacote mas sem sessão o selo pede entrada",
       semLogin.badge === "Precisa entrar" && /badge-off/.test(semLogin.classe) &&
       /Entre com o seu e-mail/.test(semLogin.turmas), semLogin);
+    var cadSemLogin = await c.naPagina(sondarCaderno, []);
+    check("o Caderno nao consulta turmas nem provas antes de entrar",
+      cadSemLogin.pedidos.length === 0 && cadSemLogin.turmas === 0 && cadSemLogin.provasBanco === 0,
+      cadSemLogin);
 
     /* o resto da tela fala com o banco, e o banco falso agora so atende logado:
        a conta de setup entra antes de qualquer cadastro */
@@ -1509,6 +1529,10 @@ var LISTA = {
     }, []);
     check("com credenciais e login o selo vira Conectado",
       conectado.badge === "Supabase Conectado" && /badge-on/.test(conectado.classe), conectado);
+    var cadLogado = await c.naPagina(sondarCaderno, []);
+    check("depois de entrar o Caderno consulta turmas e provas normalmente",
+      cadLogado.pedidos.indexOf("/rest/v1/turmas") >= 0 && cadLogado.pedidos.indexOf("/rest/v1/provas") >= 0,
+      cadLogado);
 
     console.log("\n== turmas e alunos ==");
     var r = await c.naPagina(dirigirCadastros, [MARCAS]);
@@ -1844,6 +1868,11 @@ var LISTA = {
       sl.semBanco.semBanco && !sl.semBanco.login && sl.semBanco.badge === "Só neste aparelho" &&
       sl.foiAjustes.aba && !sl.foiAjustes.aberto, [sl.semBanco, sl.foiAjustes]);
     check("a conexao volta e o selo pede entrada de novo", sl.final.badge === "Precisa entrar", sl.final);
+    var cadSaiu = await c.naPagina(sondarCaderno, []);
+    check("depois de sair o Caderno nao consulta o banco nem mantem suas listas",
+      cadSaiu.pedidos.length === 0 && cadSaiu.turmas === 0 && cadSaiu.provasBanco === 0, cadSaiu);
+    check("sair nao remove as provas locais do Caderno",
+      JSON.stringify(cadSaiu.locaisAntes) === JSON.stringify(cadSaiu.locaisDepois), cadSaiu);
 
     console.log("\n== o endereco colado do painel vira so a raiz do projeto ==");
     var en = await c.naPagina(enderecosColados, []);
