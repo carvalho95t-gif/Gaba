@@ -5,8 +5,29 @@
 -- 413 linhas. As 6 sem descricao vem de paginas onde o PDF imprime duas matrizes uma sobre a
 -- outra; ficam pelo codigo para o seletor nao mostrar chute.
 --
--- Rode supabase/schema.sql antes (a tabela descritores e as politicas dela estao la). Idempotente:
+-- A tabela, o index e a leitura publica sao as mesmas instrucoes de supabase/schema.sql. Vao
+-- repetidas aqui para este arquivo ser um paste so no SQL Editor do Supabase. Idempotente:
 -- roda de novo e atualiza linha por linha pela mesma chave.
+create table if not exists public.descritores (
+  id uuid primary key default gen_random_uuid(),
+  chave text not null unique,
+  matriz text not null,
+  codigo text not null,
+  disciplina text,
+  componente text,
+  ano text,
+  banda text,
+  descricao text,
+  fonte text,
+  pagina integer,
+  duvidoso boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists descritores_filtros_idx on public.descritores (disciplina, ano, codigo);
+alter table public.descritores enable row level security;
+drop policy if exists "descritores_select_anon" on public.descritores;
+create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);
+grant select on public.descritores to anon, authenticated;
 
 insert into public.descritores
   (chave, matriz, codigo, disciplina, componente, ano, banda, descricao, fonte, pagina, duvidoso)
