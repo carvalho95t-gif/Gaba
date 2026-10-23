@@ -55,6 +55,10 @@ var server = http.createServer(function (req, res) {
   if (url === "/") url = "/index.html";
   var alvo = path.join(RAIZ, path.normalize(url).replace(/^(\.\.[/\\])+/, ""));
   if (!alvo.startsWith(RAIZ)) return send(res, 403, "fora da raiz");
+  // Os testes não podem receber a credencial do banco real.
+  if (alvo.toLowerCase() === path.join(RAIZ, "js", "credencial.js").toLowerCase()) {
+    return send(res, 200, 'window.GabaCredencial = { url: "", key: "" };', TYPES[".js"]);
+  }
   fs.readFile(alvo, function (err, buf) {
     if (err) return send(res, 404, "nao encontrado: " + url);
     send(res, 200, buf, TYPES[path.extname(alvo).toLowerCase()] || "application/octet-stream");

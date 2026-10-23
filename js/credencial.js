@@ -6,6 +6,6 @@
    Um aparelho pode escapar deste arquivo: digite outra dupla em Ajustes > Banco de
    dados e o que estiver digitado no aparelho tem prioridade sobre esta pagina. */
 window.GabaCredencial = {
-  url: "",
-  key: ""
+  url: "https://intbnvkilmwxyglxppyg.supabase.co",
+  key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludGJudmtpbG13eHlnbHhwcHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1OTcwNzAsImV4cCI6MjEwODE3MzA3MH0.AVXydoa0QPO5kv9y8CIQyrAS67Q3W0pAnCuwOXAHwVU"
 };
