@@ -3,40 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#16a34a" />
+  <meta name="theme-color" content="#0F172A" />
   <title>Gaba — Painel do professor</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icons/icon-192.png" />
   <style>
+    /* SEM PILHA: os mesmos tokens do style.css. O JavaScript desta pagina nao le nada daqui. */
     :root {
-      --bg: #f4f7fb; --card: #fff; --text: #0f172a; --muted: #64748b;
-      --line: #e2e8f0; --green: #16a34a; --navy: #0f2744;
+      --bg: #F8FAFC; --card: #ffffff; --text: #0F172A; --muted: #64748B;
+      --line: #E2E8F0; --line-2: #CBD5E1; --grafite: #0F172A;
+      --menta: #10B981; --menta-2: #34D399; --menta-fundo: #ECFDF5; --menta-linha: #A7F3D0;
+      --primary: #047857; --danger: #B91C1C;
+      --raio-s: 10px; --raio-m: 16px; --raio-l: 24px; --raio-p: 999px;
+      --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px;
+      --sombra-1: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.05);
+      --sombra-2: 0 4px 6px -2px rgba(15,23,42,.06), 0 12px 24px -6px rgba(15,23,42,.12);
+      --sombra-menta: 0 0 0 4px rgba(16,185,129,.18);
+      --curva: cubic-bezier(.2,.8,.2,1);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Inter, Segoe UI, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
     header {
-      background: var(--navy); color: #fff; padding: 16px 18px calc(16px + env(safe-area-inset-top));
+      background: var(--grafite); color: #fff; padding: 16px 18px calc(16px + env(safe-area-inset-top));
       display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+      box-shadow: var(--sombra-2);
     }
-    header a { color: #bbf7d0; text-decoration: none; font-weight: 700; }
-    main { padding: 16px; max-width: 1100px; margin: 0 auto; }
-    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-    .card h3 { margin: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-    .card p { margin: 8px 0 0; font-size: 28px; font-weight: 800; }
-    .filters { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 8px; margin: 16px 0; }
+    header strong { font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; }
+    header strong span { color: var(--menta-2); font-weight: 800; }
+    header a { color: var(--menta-2); text-decoration: none; font-weight: 700; border-radius: var(--raio-s); }
+    header a:hover { text-decoration: underline; }
+    :focus-visible { outline: 3px solid var(--menta); outline-offset: 2px; }
+    main { padding: var(--e4); max-width: 1100px; margin: 0 auto; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--e3); }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--raio-m); padding: var(--e5) var(--e4); text-align: center; box-shadow: var(--sombra-1); }
+    .card h3 { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .card p { margin: 8px 0 0; font-size: 2rem; font-weight: 800; letter-spacing: -.03em; color: var(--primary); font-variant-numeric: tabular-nums; }
+    .filters { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: var(--e2); margin: var(--e5) 0 var(--e4); }
     input, select, button {
-      padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font: inherit;
+      padding: 11px 13px; min-height: 44px; border-radius: var(--raio-s); border: 1px solid var(--line-2);
+      background: #fff; font: inherit; font-size: .95rem; color: var(--text);
+      transition: border-color .14s, box-shadow .14s;
     }
-    button.primary { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; cursor: pointer; }
-    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 16px; overflow: hidden; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
-    th { background: #eef4fb; font-size: 12px; color: var(--muted); }
-    .ok { color: var(--green); font-weight: 700; }
-    .bad { color: #dc2626; font-weight: 700; }
-    dialog { border: 1px solid var(--line); border-radius: 16px; width: min(420px, 92vw); }
-    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input:focus, select:focus { border-color: var(--menta); box-shadow: var(--sombra-menta); outline: none; }
+    button { cursor: pointer; font-weight: 700; }
+    button.primary {
+      background: var(--menta); color: #04291F; border-color: transparent; border-radius: var(--raio-p);
+      padding: 11px 20px; box-shadow: var(--sombra-1); transition: filter .14s var(--curva);
+    }
+    button.primary:hover { filter: brightness(.94); }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: var(--raio-m); overflow: hidden; box-shadow: var(--sombra-1); }
+    th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
+    tr:last-child td { border-bottom: none; }
+    th { background: #F8FAFC; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    td { font-variant-numeric: tabular-nums; }
+    .ok { color: var(--primary); font-weight: 800; }
+    .bad { color: var(--danger); font-weight: 800; }
+    dialog { border: 1px solid var(--line); border-radius: var(--raio-l); width: min(420px, 92vw); padding: var(--e5); box-shadow: var(--sombra-2); }
+    dialog::backdrop { background: rgba(15,23,42,.45); }
+    dialog h3 { margin: 0 0 var(--e4); font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; }
+    label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin: var(--e4) 0 4px; }
     input[type="text"], input[type="email"], input[type="password"] { width: 100%; }
+    /* os campos do dialog nao declaram type: sem isto eles nao herdam a largura cheia */
+    dialog input { width: 100%; }
     @media (max-width: 800px) {
       .cards, .filters { grid-template-columns: 1fr; }
       table { font-size: 12px; display: block; overflow-x: auto; }
@@ -46,7 +74,7 @@
 <body>
   <header>
     <div>
-      <strong>Gaba · Painel</strong>
+      <strong>Gaba <span>Painel</span></strong>
       <div id="profName" style="opacity:.75;font-size:13px">Professor</div>
     </div>
     <nav>

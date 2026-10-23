@@ -325,7 +325,7 @@
     }
     var turmaId = $("imp-turma") ? $("imp-turma").value : "";
     if (!dbOk()) {
-      impStatus("Sem credenciais na aba Config: a lista de alunos só pode ser guardada no banco do professor.", "erro");
+      impStatus("Sem credenciais na aba Ajustes: a lista de alunos só pode ser guardada no banco do professor.", "erro");
       return;
     }
     if (!turmaId) {
@@ -434,21 +434,67 @@
     }
   }
 
+  /* as duas contas do alívio: quanto de papel e de caneta o app já tirou da mão do professor */
+  var GRAMA_POR_FOLHA = 5;
+  var SEG_POR_FOLHA = 22;
+
+  function papelDevolvido(folhas) {
+    var g = folhas * GRAMA_POR_FOLHA;
+    return g >= 1000 ? decimal((g / 1000).toFixed(1)) + " kg" : g + " g";
+  }
+
+  function tempoDevolvido(seg) {
+    var h = Math.floor(seg / 3600);
+    var m = Math.round((seg % 3600) / 60);
+    if (!h) return m + " min";
+    return m ? h + "h" + (m < 10 ? "0" : "") + m : h + "h";
+  }
+
+  function desenharPilhas(visiveis) {
+    var box = $("dash-pilhas");
+    if (!box) return;
+    if (!visiveis.length) {
+      box.innerHTML = '<div class="item-lista"><div class="item-cab">' +
+        '<span class="text-muted">Nenhuma turma ainda: cadastre em Bastidor &rsaquo; Turmas.</span></div></div>';
+      return;
+    }
+    var lidas = app.correcoes.concat(leiturasSoNoAparelho());
+    box.innerHTML = visiveis.map(function (t) {
+      var alunos = app.alunos.filter(function (a) { return String(a.turma_id) === String(t.id); }).length;
+      var feitas = lidas.filter(function (r) { return String(r.turma_id) === String(t.id); }).length;
+      var pct = alunos ? Math.min(100, Math.round(feitas / alunos * 100)) : 0;
+      var falta = Math.max(alunos - feitas, 0);
+      return '<div class="item-lista"><div class="item-cab"><strong>' + esc(t.nome) + "</strong>" +
+        "<span>" + alunos + " aluno(s) · " + feitas + " folha(s) lida(s)</span>" +
+        (falta ? '<span class="alivio-falta">faltam ' + falta + "</span>"
+               : '<span class="alivio-falta" style="color:var(--primary)">pilha zerada</span>') +
+        '</div><span class="alivio-barra"><i style="width:' + pct + '%"></i></span></div>';
+    }).join("");
+  }
+
   function desenharPainel() {
     var soAparelho = leiturasSoNoAparelho().length;
     var visiveis = turmasVisiveis();
     var dasVisiveis = {};
     visiveis.forEach(function (t) { dasVisiveis[String(t.id)] = true; });
     var filtrando = window.GabaEscolas && GabaEscolas.filtro();
+    var lidas = app.correcoes.length + soAparelho;
+    setTexto("dash-papel", papelDevolvido(lidas));
+    setTexto("dash-tempo", tempoDevolvido(lidas * SEG_POR_FOLHA));
+    setTexto("dash-papel-detalhe", lidas + " folha(s) × " + GRAMA_POR_FOLHA +
+      " g: papel que você não carregou, não conferiu e não guardou.");
+    setTexto("dash-tempo-detalhe", lidas + " folha(s) × " + SEG_POR_FOLHA +
+      " s de caneta na mão, na conta de uma correção manual.");
     setTexto("dash-turmas-count", visiveis.length);
     setTexto("dash-alunos-count", filtrando
       ? app.alunos.filter(function (a) { return dasVisiveis[String(a.turma_id)]; }).length
       : app.alunos.length);
     setTexto("dash-provas-count", app.provas.length + provasSoNoAparelho().length);
-    setTexto("dash-correcoes-count", app.correcoes.length + soAparelho);
+    setTexto("dash-correcoes-count", lidas);
     setTexto("dash-nota", (filtrando ? "Mostrando a escola \"" + filtrando + "\". " : "") + (dbOk()
       ? (soAparelho ? soAparelho + " folha(s) corrigida(s) ainda só neste aparelho." : "Tudo que foi lido está no banco.")
-      : "Sem credenciais em Config: turmas, provas e notas ficam só neste aparelho."));
+      : "Sem credenciais em Ajustes: turmas, provas e notas ficam só neste aparelho."));
+    desenharPilhas(visiveis);
   }
 
   function setTexto(id, valor) {
@@ -476,7 +522,7 @@
     if (!visiveis.length) {
       box.innerHTML = "<p class=\"text-muted\">" + (dbOk()
         ? "Nenhuma turma no banco. Crie a primeira acima."
-        : "Sem credenciais: as turmas ficam no banco assim que você configurar o Supabase na aba Config.") + "</p>";
+        : "Sem credenciais: as turmas ficam no banco assim que você configurar o Supabase na aba Ajustes.") + "</p>";
       return;
     }
     var E = window.GabaEscolas;
@@ -868,15 +914,18 @@
     };
   }
 
+  var BASTIDOR = ["turmas", "provas", "caderno", "config"];
+
   window.switchTab = function switchTab(tabId) {
     document.querySelectorAll(".tab-content").forEach(function (el) { el.classList.remove("active"); });
-    document.querySelectorAll(".tab-btn").forEach(function (el) { el.classList.remove("active"); });
     var alvo = $("tab-" + tabId);
     if (alvo) alvo.classList.add("active");
     document.querySelectorAll(".tab-btn").forEach(function (btn) {
-      var onclick = btn.getAttribute("onclick") || "";
-      if (onclick.indexOf("'" + tabId + "'") >= 0) btn.classList.add("active");
+      var noBastidor = btn.dataset.grupo === "bastidor" && BASTIDOR.indexOf(tabId) >= 0;
+      btn.classList.toggle("active", noBastidor || btn.dataset.tab === tabId);
     });
+    var faixa = $("tabs-bastidor");
+    if (faixa) faixa.hidden = BASTIDOR.indexOf(tabId) < 0;
     atualizarAba();
   };
 

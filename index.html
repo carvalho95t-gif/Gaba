@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#4f46e5">
+    <meta name="theme-color" content="#0F172A">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 </head>
@@ -23,22 +23,47 @@
     </header>
 
     <main class="container">
-        <!-- Navegação por Abas -->
-        <nav class="tabs">
-            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Painel</button>
-            <button class="tab-btn" onclick="switchTab('turmas')">👥 Turmas</button>
-            <button class="tab-btn" onclick="switchTab('provas')">📝 Provas</button>
-            <button class="tab-btn" onclick="switchTab('caderno'); GabaCaderno &amp;&amp; GabaCaderno.aoAbrir()">🖨️ Cadernos</button>
-            <button class="tab-btn tab-highlight" onclick="switchTab('scanner'); GabaScanner &amp;&amp; GabaScanner.aoAbrir()">📷 Leitor</button>
-            <button class="tab-btn" onclick="switchTab('relatorios')">📈 Notas</button>
-            <button class="tab-btn" onclick="switchTab('config')">⚙️ Config</button>
+        <!-- Navegação: 4 slots de polegar. O Bastidor abre a faixa de dentro com as 4 telas de cadastro. -->
+        <nav class="tabs tabs-polegar" aria-label="Navegação principal">
+            <button class="tab-btn active" type="button" data-tab="dashboard" onclick="switchTab('dashboard')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h9"/><path d="m16 18 2 2 4-5"/></svg>
+                Alívio</button>
+            <button class="tab-btn tab-highlight" type="button" data-tab="scanner" onclick="switchTab('scanner'); GabaScanner &amp;&amp; GabaScanner.aoAbrir()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5h3M21 8V5h-3M3 16v3h3M21 16v3h-3"/><circle cx="12" cy="12" r="3.4"/></svg>
+                Leitor</button>
+            <button class="tab-btn" type="button" data-tab="relatorios" onclick="switchTab('relatorios')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14V4a2 2 0 1 0-4 0v10a4 4 0 1 0 4 0Z"/><path d="M12 9h3"/></svg>
+                Notas</button>
+            <button class="tab-btn" type="button" data-tab="turmas" data-grupo="bastidor" onclick="switchTab('turmas')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5Z"/><path d="m4 12 8 3.5L20 12M4 16.5 12 20l8-3.5"/></svg>
+                Bastidor</button>
+        </nav>
+
+        <nav class="tabs tabs-bastidor" id="tabs-bastidor" aria-label="Telas de bastidor" hidden>
+            <button class="tab-btn" type="button" data-tab="turmas" onclick="switchTab('turmas')">Turmas</button>
+            <button class="tab-btn" type="button" data-tab="provas" onclick="switchTab('provas')">Provas</button>
+            <button class="tab-btn" type="button" data-tab="caderno" onclick="switchTab('caderno'); GabaCaderno &amp;&amp; GabaCaderno.aoAbrir()">Cadernos</button>
+            <button class="tab-btn" type="button" data-tab="config" onclick="switchTab('config')">Ajustes</button>
         </nav>
 
         <p id="app-status" class="app-status"></p>
 
-        <!-- ABA 1: DASHBOARD -->
+        <!-- ABA 1: CENTRAL DE ALÍVIO -->
         <section id="tab-dashboard" class="tab-content active">
-            <h2>Visão Geral</h2>
+            <h2>Central de Alívio</h2>
+            <p class="text-muted" style="margin-bottom: 10px; font-size: 0.9rem;">O que o Gaba já tirou das suas mãos. Cada folha lida é uma pilha a menos na sua mesa.</p>
+            <div class="alivio">
+                <div class="alivio-grande">
+                    <h3 id="dash-papel">0 g</h3>
+                    <p>papel que você não conferiu</p>
+                    <small id="dash-papel-detalhe">folha lida = 5 g que não saem da pilha</small>
+                </div>
+                <div class="alivio-grande alivio-tempo">
+                    <h3 id="dash-tempo">0 min</h3>
+                    <p>de correção devolvidos</p>
+                    <small id="dash-tempo-detalhe">na conta de 22 s por folha corrigida à mão</small>
+                </div>
+            </div>
             <div class="grid-cards">
                 <div class="card"><h3 id="dash-turmas-count">0</h3><p>Turmas</p></div>
                 <div class="card"><h3 id="dash-alunos-count">0</h3><p>Alunos</p></div>
@@ -46,6 +71,8 @@
                 <div class="card card-accent"><h3 id="dash-correcoes-count">0</h3><p>Corrigidas</p></div>
             </div>
             <p class="text-muted" id="dash-nota"></p>
+            <h3 class="alivio-titulo">As pilhas, uma por uma</h3>
+            <div id="dash-pilhas" class="card-list"></div>
         </section>
 
         <!-- ABA 2: TURMAS E ALUNOS -->
@@ -294,6 +321,7 @@
                     <input type="password" id="cfg-key" placeholder="Chave Pública (anon / public key)" required>
                     <button type="submit" class="btn-primary">Salvar Credenciais</button>
                 </form>
+                <p class="text-muted" style="margin-top: 12px; font-size: 0.84rem;">A chave pública (<code>anon</code>) é a que vai no app. A <code>service_role</code> fica no servidor — se ela entrar aqui, o banco inteiro passa a poder ser lido de qualquer navegador.</p>
             </div>
         </section>
 

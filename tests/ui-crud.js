@@ -244,7 +244,16 @@ function montarHelpers() {
       turma: document.getElementById("imp-turma").value
     };
   };
-  return { helpers: ["espera", "texto", "preenche", "envia", "botaoDe", "previaDe"]
+  window.pilhasDe = function () {
+    return [].slice.call(document.querySelectorAll("#dash-pilhas .item-lista")).map(function (d) {
+      var barra = d.querySelector(".alivio-barra i");
+      return { turma: (d.querySelector(".item-cab strong") || {}).textContent || "",
+        texto: d.querySelector(".item-cab").textContent.replace(/\s+/g, " ").trim(),
+        falta: (d.querySelector(".alivio-falta") || {}).textContent || "",
+        largura: barra ? barra.style.width : "" };
+    });
+  };
+  return { helpers: ["espera", "texto", "preenche", "envia", "botaoDe", "previaDe", "pilhasDe"]
     .filter(function (n) { return window[n]; }).length };
 }
 
@@ -336,6 +345,7 @@ async function dirigirCadastros(marcas) {
   r.provaStatus = texto("app-status");
   await espera(function () { return texto("dash-provas-count") === "1"; }, 4000).catch(function () { return null; });
   r.painel = ["dash-turmas-count", "dash-alunos-count", "dash-provas-count", "dash-correcoes-count"].map(texto);
+  r.pilhas = pilhasDe();
   return r;
 }
 
@@ -479,7 +489,8 @@ async function dirigirAbas() {
   b.click();
   await new Promise(function (res) { setTimeout(res, 1500); });
   r.abaAtiva = [].slice.call(document.querySelectorAll(".tab-content.active")).map(function (el) { return el.id; });
-  r.botaoAtivo = (document.querySelector(".tab-btn.active") || {}).textContent || "";
+  r.botaoAtivo = (document.querySelector(".tabs-bastidor .tab-btn.active") || {}).textContent || "";
+  r.grupoAtivo = (document.querySelector(".tabs-polegar .tab-btn.active") || {}).textContent || "";
   r.cadProva = String((document.getElementById("cad-prova") || {}).value || "");
   r.provasNoCaderno = [].slice.call(document.querySelectorAll("#cad-prova option")).map(function (o) {
     return o.textContent.replace(/\s+/g, " ").trim();
@@ -539,6 +550,7 @@ async function dirigirFila(marcas) {
   }).filter(function (t) { return /ANA DO TESTE/.test(t); })[0] || "";
   r.status = texto("app-status");
   r.painelDepois = texto("dash-correcoes-count");
+  r.pilhaDepois = pilhasDe();
   return r;
 }
 
@@ -640,6 +652,7 @@ async function dirigirEscolas(marcos) {
         .filter(function (s) { return /\(teste\)|\(sem escola\)/.test(s); }),
       turmas: document.getElementById("dash-turmas-count").textContent,
       alunos: document.getElementById("dash-alunos-count").textContent,
+      pilhas: pilhasDe().map(function (p) { return p.turma; }),
       seletorAluno: [].slice.call(document.querySelectorAll("#aluno-turma-select option"))
         .map(function (o) { return o.textContent.replace(/\s+/g, " ").trim(); }),
       seletorAnalise: [].slice.call(document.querySelectorAll("#ana-turma option"))
@@ -1003,6 +1016,10 @@ function conferirEscolas(es) {
     es.soSerra.escolaNaLinha.length === 0, es.soSerra.escolaNaLinha);
   check("o painel conta so a escola filtrada",
     es.soAnhanguera.turmas === "1" && es.soAnhanguera.alunos === "0", es.soAnhanguera);
+  check("as pilhas do alívio seguem o filtro da escola",
+    es.todasAsTurmas.pilhas.length === 4 && es.soSerra.pilhas.length === 2 &&
+    es.soAnhanguera.pilhas.join("|") === es.soAnhanguera.linhas.join("|"),
+    [es.todasAsTurmas.pilhas, es.soSerra.pilhas, es.soAnhanguera]);
   check("os seletores de turma so oferecem a escola filtrada",
     es.soAnhanguera.seletorAluno.join("|") === "Selecione a Turma...|" + es.procura.turmaAnhanguera &&
     es.soAnhanguera.seletorAnalise.join("|") === "Todas as turmas|" + es.procura.turmaAnhanguera,
@@ -1056,7 +1073,7 @@ var LISTA = {
     console.log("\n== sem credenciais ==");
     var inicio = await c.naPagina(vigiarErros, []);
     var h = await c.naPagina(montarHelpers, []);
-    check("os auxiliares de página foram montados", h.helpers === 6, h);
+    check("os auxiliares de página foram montados", h.helpers === 7, h);
     check("todos os modulos carregaram", inicio.modulosFaltando.length === 0, inicio.modulosFaltando);
     check("o selo diz que é só neste aparelho",
       inicio.badge === "Só neste aparelho" && /badge-off/.test(inicio.classe), inicio);
@@ -1100,6 +1117,10 @@ var LISTA = {
       r.provaPayload && r.provaPayload.descritores[0]);
     check("a tela confirmou a prova salva", r.provaNaTela && /salva/.test(r.provaStatus), [r.provaNaTela, r.provaStatus]);
     check("o painel conta 1 turma, 1 aluno e 1 prova", r.painel.join("|") === "1|1|1|0", r.painel);
+    check("a pilha da turma cobra a folha que ainda não foi lida",
+      r.pilhas.length === 1 && r.pilhas[0].turma === (r.renomeada ? r.renomeada.nome : MARCAS.turma) &&
+      /1 aluno\(s\) · 0 folha\(s\) lida\(s\)/.test(r.pilhas[0].texto || "") &&
+      r.pilhas[0].falta === "faltam 1" && r.pilhas[0].largura === "0%", r.pilhas);
 
     console.log("\n== prova vinda de .docx ==");
     var d = await c.naPagina(dirigirDocumento, [{ sampleUrl: BASE + "/_sample.docx" }]);
@@ -1140,6 +1161,8 @@ var LISTA = {
     var a = await c.naPagina(dirigirAbas, []);
     check("o botão cadernos troca para a aba Cadernos",
       a.abaAtiva.join() === "tab-caderno" && /Cadernos/.test(a.botaoAtivo), [a.abaAtiva, a.botaoAtivo]);
+    check("com o caderno aberto o polegar continua aceso no Bastidor",
+      /Bastidor/.test(a.grupoAtivo), a.grupoAtivo);
     check("a prova escolhida entrou no seletor de cadernos", a.cadProva === a.provaId, [a.cadProva, a.provaId]);
     check("o seletor de cadernos lista a prova do banco",
       (a.provasNoCaderno || []).some(function (t) { return /UIcrudprova|Bimestral teste/.test(t); }), a.provasNoCaderno);
@@ -1170,6 +1193,9 @@ var LISTA = {
       s.aparelhoDepois === 0 && /ANA DO TESTE/.test(s.linhaDepois || ""), [s.aparelhoDepois, s.linhaDepois]);
     check("o painel passou a contar a correção",
       s.painelAntes === "1" && s.painelDepois === "1", [s.painelAntes, s.painelDepois]);
+    check("a folha lida zera a pilha da turma",
+      s.pilhaDepois.length === 1 && /1 aluno\(s\) · 1 folha\(s\) lida\(s\)/.test(s.pilhaDepois[0].texto || "") &&
+      s.pilhaDepois[0].falta === "pilha zerada" && s.pilhaDepois[0].largura === "100%", s.pilhaDepois);
     check("o QR da folha chegou inteiro ao banco",
       s.sincronizada && /^GABA1\|/.test(s.sincronizada.qr_payload || "") && s.sincronizada.acertos === 2 &&
       String(s.sincronizada.prova_id) === String(r.provaSalva.id), s.sincronizada);
