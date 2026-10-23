@@ -56,7 +56,7 @@ function check(nome, cond, detalhe) {
   check("quatro alunos e a linha TOTAL fora", sedu.alunos.length === 4, [sedu.alunos.length, sedu.problemas]);
   check("acento preservado", s[2] && s[2].nome === "JOSÉ TIBURCIO DAS NEVES", s[2]);
   check("campina entre aspas virou nome normal", s[3] && s[3].nome === "QUITERIA BANDEIRA DO PRADO", s[3]);
-  check("e-mail gravado em minusculo", s[1] && s[1].email_responsavel === "responsavel60@exemplo.test", s[1]);
+  check("e-mail gravado em minusculo", s[1] && s[1].email_responsavel === "responsavel1@exemplo.test", s[1]);
   check("telefone limpo mas legivel", s[1] && s[1].telefone_responsavel === "(27) 90000-0060", s[1]);
   check("matricula longa nao virou numero de chamada", s[1] && s[1].matricula === "209900001", s[1]);
   check("responsavel chegou", s[1] && s[1].responsavel === "Rutélia Antunes", s[1]);
