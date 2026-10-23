@@ -17,6 +17,16 @@ function bytesDe(arquivo) {
   return new Uint8Array(fs.readFileSync(path.join(FIX, arquivo)));
 }
 
+/* pdf de mentira montado byte a byte: o que se confere aqui e o corte dos streams,
+   e nenhum gravador de verdade escreve um arquivo desses */
+function bruto(txt) { return Buffer.from(txt, "latin1"); }
+function cabeca() { return bruto("%PDF-1.4\n"); }
+function peca(n, dict) { return bruto(n + " 0 obj " + dict + " endobj\n"); }
+
+function comStream(n, dict, dados) {
+  return Buffer.concat([bruto(n + " 0 obj " + dict + " stream\n"), dados, bruto("\nendstream\nendobj\n")]);
+}
+
 var falhas = 0;
 function check(nome, cond, detalhe) {
   console.log((cond ? "  ok   " : "  FALHA ") + nome + (detalhe !== undefined && !cond ? "  ->  " + JSON.stringify(detalhe) : ""));
@@ -63,6 +73,15 @@ function check(nome, cond, detalhe) {
 
   var comKerning = GabaPdf.textoDoConteudo("BT [(A)-300(B) -190(C)] TJ ET", { F1: semMapa });
   check("os numeros do array TJ sao kerning e nao viram espaco nem letra", comKerning === "ABC", JSON.stringify(comKerning));
+
+  /* o Chrome imprime o tamanho com 7 decimais; se o Tf nao e reconhecido a pagina inteira sai
+     como codigo de 1 byte — letra por letra com caractere nulo no meio */
+  var doChrome = GabaPdf.textoDoConteudo(
+    ["BT", "/F1 10.3999996 Tf", "1 0 0 -1 45.5 1172 Tm", "<0041> Tj", "6.1012421 0 Td <0042> Tj", "ET"].join("\n"),
+    { F1: { mapa: { 0x41: "ç", 0x42: "Ã" }, largura: 2 } }
+  );
+  check("o tamanho da fonte com 7 decimais ainda troca de fonte (PDF impresso no navegador)",
+    /çÃ/.test(doChrome.replace(/\s+/g, "")), JSON.stringify(doChrome));
 })();
 
 (function refluio() {
@@ -103,7 +122,8 @@ function check(nome, cond, detalhe) {
   var t0 = Date.now();
   var lido = await GabaPdf.parsePdf(bytesDe(AMOSTRA));
   check("le todas as paginas sem aviso de fonte quebrada",
-    lido.paginas === 176 && lido.avisos.length === 0, { paginas: lido.paginas, avisos: lido.avisos });
+    lido.paginas === 182 && lido.avisos.length === 0, { paginas: lido.paginas, avisos: lido.avisos });
+
   check("o texto sai com os acentos do documento",
     /AVALIAÇÃO DE FILOSOFIA — 2ª SÉRIE/.test(lido.texto) && /carruagem/.test(lido.texto), lido.texto.slice(0, 80));
   console.log("  (" + lido.texto.length + " caracteres em " + (Date.now() - t0) + " ms)");
@@ -140,7 +160,119 @@ function check(nome, cond, detalhe) {
   check("os dez tipos de prova do documento aparecem na prova importada",
     parsed.tipos.length === 10 && prova.tipos.length === 10, { tipos: parsed.tipos.length });
 
+  console.log("\n== aparas e ordem dos streams ==");
+  var zlib = require("zlib");
+  /* o deflate pode terminar em 0x0A e o PDF ainda escreve a quebra antes de endstream:
+     aparar todas as linhas do fim rouba um byte dos dados e a pagina inteira cala */
+  function streamAcabandoEmLinha(prefixo) {
+    for (var k = 0; k < 6000; k++) {
+      var texto = prefixo + new Array(k + 2).join("x");
+      var dados = zlib.deflateSync(bruto("BT /F1 10 Tf (" + texto + ") Tj ET"));
+      if (dados[dados.length - 1] === 0x0a) return { dados: dados, texto: texto };
+    }
+    return null;
+  }
+  var aparado = streamAcabandoEmLinha("APARAS");
+  check("dei um jeito de o deflate terminar em quebra de linha", !!aparado);
+  var fonteSolta = peca(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  if (aparado) {
+    var pdfAparas = new Uint8Array(Buffer.concat([
+      cabeca(),
+      peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+      peca(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+      peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
+      fonteSolta,
+      comStream(4, "<< /Filter /FlateDecode /Length " + aparado.dados.length + " >>", aparado.dados)
+    ]));
+    var lidoAparas = await GabaPdf.parsePdf(pdfAparas);
+    check("o ultimo byte do deflate, que e uma linha, nao e aparado",
+      lidoAparas.porPagina[0] === aparado.texto && lidoAparas.avisos.length === 0,
+      { texto: lidoAparas.porPagina[0], avisos: lidoAparas.avisos });
+
+    var semDeclarado = new Uint8Array(Buffer.concat([
+      cabeca(),
+      peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+      peca(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+      peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
+      fonteSolta,
+      comStream(4, "<< >>", bruto("BT /F1 10 Tf (SEM LENGTH) Tj ET\n\n"))
+    ]));
+    var lidoSem = await GabaPdf.parsePdf(semDeclarado);
+    check("sem /Length as quebras sobrando antes de endstream nao comem o texto",
+      /SEM LENGTH/.test(lidoSem.porPagina[0]), lidoSem.porPagina[0]);
+
+    var eco = bruto(".... 6 0 obj ....");
+    var pdfOrdem = new Uint8Array(Buffer.concat([
+      cabeca(),
+      peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+      peca(2, "<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>"),
+      comStream(9, "<< >>", eco),
+      peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>"),
+      fonteSolta,
+      peca(6, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 8 0 R >>"),
+      comStream(7, "<< >>", bruto("BT /F1 10 Tf (PRIMEIRA) Tj ET")),
+      comStream(8, "<< >>", bruto("BT /F1 10 Tf (SEGUNDA) Tj ET"))
+    ]));
+    var lidoOrdem = await GabaPdf.parsePdf(pdfOrdem);
+    check("um \"6 0 obj\" escrito dentro de um stream binario nao embaralha as paginas",
+      lidoOrdem.porPagina[0] === "PRIMEIRA" && lidoOrdem.porPagina[1] === "SEGUNDA",
+      lidoOrdem.porPagina);
+  }
+
+  console.log("\n== texto escondido dentro de form XObject ==");
+  var pdfForm = new Uint8Array(Buffer.concat([
+    cabeca(),
+    peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+    peca(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> " +
+      "/XObject << /Fm0 8 0 R >> >> /Contents 4 0 R >>"),
+    fonteSolta,
+    comStream(4, "<< >>", bruto("q 0.24 0 0 0.24 0 850 cm /Fm0 Do Q")),
+    comStream(8, "<< /Type /XObject /Subtype /Form /BBox [0 0 595 842] >>",
+      bruto("BT /F1 10 Tf (O TEXTO MORA DENTRO DO FORM) Tj ET"))
+  ]));
+  var lidoForm = await GabaPdf.parsePdf(pdfForm);
+  check("a pagina que so desenha um form XObject entrega o texto que esta la dentro",
+    /O TEXTO MORA DENTRO DO FORM/.test(lidoForm.porPagina[0]) &&
+    !/sao imagem/.test(lidoForm.avisos.join(" ")),
+    { texto: lidoForm.porPagina[0], avisos: lidoForm.avisos });
+
+  /* form aninhado, com o PROPRIO /Resources e o mesmo nome /F1 para outra fonte: quem-cache
+     pelo nome entrega o mapa da pagina e o <0041> do form vira lixo */
+  var cmap = [
+    "/CMapName /Adobe-Identity-UCS def", "begincodespacerange", "<0000> <FFFF>",
+    "endcodespacerange", "1 beginbfchar", "<0041> <00E7>", "endbfchar"
+  ].join("\n");
+  var pdfNinho = new Uint8Array(Buffer.concat([
+    cabeca(),
+    peca(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+    peca(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    peca(3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> " +
+      "/XObject << /FmA 8 0 R >> >> /Contents 4 0 R >>"),
+    fonteSolta,
+    comStream(4, "<< >>", bruto("BT /F1 10 Tf (PAGINA) Tj ET Q /FmA Do q")),
+    comStream(8, "<< /Type /XObject /Subtype /Form /Resources << /Font << /F1 9 0 R >> " +
+      "/XObject << /FmB 12 0 R >> >> >>", bruto("BT /F1 10 Tf <0041> Tj ET /FmB Do")),
+    peca(9, "<< /Type /Font /Subtype /Type0 /BaseFont /CO /Encoding /Identity-H " +
+      "/DescendantFonts [11 0 R] /ToUnicode 10 0 R >>"),
+    comStream(10, "<< /Length " + bruto(cmap).length + " >>", bruto(cmap)),
+    peca(11, "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /CO /CIDSystemInfo << >> >>"),
+    comStream(12, "<< /Type /XObject /Subtype /Form /Resources << /XObject << /FmA 8 0 R >> >> >>",
+      bruto("BT /F1 10 Tf (FILA) Tj ET /FmA Do"))
+  ]));
+  var lidoNinho = await GabaPdf.parsePdf(pdfNinho);
+  check("form dentro de form, e cada um com sua fonte do mesmo nome, sai por inteiro",
+    /PAGINA/.test(lidoNinho.porPagina[0]) && lidoNinho.porPagina[0].indexOf("ç") >= 0 &&
+    /FILA/.test(lidoNinho.porPagina[0]), JSON.stringify(lidoNinho.porPagina[0]));
+  check("form que se referencia de volta nao prende nem duplica o texto",
+    lidoNinho.paginas === 1 && /PAGINA/.test(lidoNinho.porPagina[0]) &&
+    (lidoNinho.porPagina[0].match(/FILA/g) || []).length === 1,
+    JSON.stringify(lidoNinho.porPagina[0]));
+
+
   console.log("\n== PDF que o app nao deve tentar ler ==");
+
+
   var senha = new Uint8Array(64);
   var cab = "%PDF-1.7\n1 0 obj << /Encrypt 5 0 R >> endobj\n";
   for (var i = 0; i < cab.length; i++) senha[i] = cab.charCodeAt(i);

@@ -11,9 +11,14 @@
   var GRID_TOP_MM = 70;
   var MAX_QUESTIONS = 90;
 
+  /* as marcas ficam a 12mm da borda: a 6mm elas caem na faixa que impressora a laser e o
+     alimentador de documento cortam, e o leitor fica sem referencia. o QR recua junto para
+     32mm porque a marca de cima a esquerda passaria a encostar na zona de silencio dele. */
   var fiducialMm = 12;
-  var fiducialInsetMm = 6;
-  var qr = { xMm: 14, yMm: 20, wMm: 40, hMm: 40 };
+  var fiducialInsetMm = 12;
+  var qr = { xMm: 32, yMm: 20, wMm: 40, hMm: 40 };
+  /* o recorte que o leitor entrega ao jsQR: nenhum preto de marca pode entrar aqui */
+  var FOLGA_RECORTE_QR_MM = 6;
 
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
@@ -54,6 +59,7 @@
       optionLetters: ["A", "B", "C", "D", "E"].slice(0, nOpts),
       fiducialMm: fiducialMm,
       fiducialInsetMm: fiducialInsetMm,
+      qrFolgaRecorteMm: FOLGA_RECORTE_QR_MM,
       qr: qr,
       grid: {
         xMm: round1(xMm),
@@ -71,6 +77,7 @@
     layout.colRow = function (qIndex) { return colRow(layout, qIndex); };
     layout.bubbleCenterMm = function (qIndex, optIndex) { return bubbleCenterMm(layout, qIndex, optIndex); };
     layout.fiducialCenters = function () { return fiducialCentersMm(layout); };
+    layout.qrRoiMm = function (folga) { return qrRoiMm(layout, folga); };
     layout.problemas = function () { return validate(layout); };
     return layout;
   }
@@ -101,6 +108,16 @@
     ];
   }
 
+  function qrRoiMm(layout, folga) {
+    var f = folga === undefined ? (layout.qrFolgaRecorteMm || FOLGA_RECORTE_QR_MM) : folga;
+    return {
+      x0: Math.max(0, layout.qr.xMm - f),
+      y0: Math.max(0, layout.qr.yMm - f),
+      x1: Math.min(layout.pageWmm, layout.qr.xMm + layout.qr.wMm + f),
+      y1: Math.min(layout.pageHmm, layout.qr.yMm + layout.qr.hMm + f)
+    };
+  }
+
   function validate(layout) {
     var g = layout.grid;
     var problems = [];
@@ -110,6 +127,16 @@
     if (bottom > gridBottomMm()) problems.push("grade invade a faixa das marcas de canto em " + round1(bottom - gridBottomMm()) + "mm");
     if (g.yMm < layout.qr.yMm + layout.qr.hMm) problems.push("grade começa sobre o QR Code");
     if (g.cols * g.questionsPerCol < layout.total) problems.push("grade comporta apenas " + g.cols * g.questionsPerCol + " questões");
+    if (layout.fiducialInsetMm < 10) {
+      problems.push("marca de canto a " + round1(layout.fiducialInsetMm) + "mm da borda: a impressora e o alimentador cortam");
+    }
+    var roi = qrRoiMm(layout);
+    var meio = layout.fiducialMm / 2;
+    fiducialCentersMm(layout).forEach(function (c) {
+      if (c.x + meio > roi.x0 && c.x - meio < roi.x1 && c.y + meio > roi.y0 && c.y - meio < roi.y1) {
+        problems.push("marca de canto " + c.name + " encosta no recorte do QR Code");
+      }
+    });
     return problems;
   }
 
@@ -119,6 +146,7 @@
     colRow: colRow,
     bubbleCenterMm: bubbleCenterMm,
     fiducialCentersMm: fiducialCentersMm,
+    qrRoiMm: qrRoiMm,
     validate: validate
   };
 });

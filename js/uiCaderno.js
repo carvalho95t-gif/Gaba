@@ -15,6 +15,7 @@
     batch: null,
     ultimoHtml: "",
     cortes: [],
+    compactou: 0,
     sujo: false
   };
 
@@ -512,6 +513,20 @@
 
   /* o corpo em colunas nao paginaria sozinho: quem fecha a pagina e o empacotador do GabaFolha,
      com as alturas medidas na largura real da coluna. sem medida, o caminho antigo ainda vale. */
+  /* a coluna do corpo e medida com o cabecalho fino de um aluno só. medindo pelo nome mais
+     comprido do lote, todos cabem: sem isso um estudante de nome extenso perde a ultima linha da
+     coluna porque o primeiro da lista tinha nome curto. */
+  function itemDePiorCaso(batch) {
+    var itens = (batch && batch.itens) || [];
+    var pior = itens[0], maior = -1;
+    itens.forEach(function (it) {
+      var v = it.versao || {};
+      var txt = [((it.aluno || {}).nome || ""), (v.codigo || ""), (v.rotulo || "")].join(" ");
+      if (txt.length > maior) { maior = txt.length; pior = it; }
+    });
+    return pior;
+  }
+
   async function medirCorpo(prova, op, item) {
     if (!global.GabaFolha || !GabaFolha.medirCorpo) return null;
     try {
@@ -552,7 +567,7 @@
     if (!root) throw new Error("Faltou a area de impressao (#print-root).");
     estado.batch = batch;
     var pedido = op.config.questoesPorPagina;
-    var medidas = await medirCorpo(prova, op, batch.itens[0]);
+    var medidas = await medirCorpo(prova, op, itemDePiorCaso(batch));
     var cadernos = [];
     for (var k = 0; k < batch.itens.length; k++) {
       var item = batch.itens[k];
@@ -576,6 +591,8 @@
     root.innerHTML = estado.ultimoHtml;
     root.classList.add("previa");
     await GabaFolha.fontesProntas();
+    /* primeiro tenta caber reduzindo o corpo das caixas fixas; o que sobrar ai sim e corte */
+    estado.compactou = GabaFolha.compactarCaixas(root);
     estado.cortes = GabaFolha.conferirEncaixe(root);
     desenharAvisos(prova);
     var btnImp = $("cad-imprimir");
@@ -595,10 +612,13 @@
       batch.numTipos + " tipo(s) de versao." + encaixe + giantes + " " +
       (impresso ? "O leitor ja conhece estas versoes. " : "") +
       (p.semGabarito.length ? p.semGabarito.length + " questao(oes) sem gabarito: elas nao dao ponto para ninguem. " : "") +
-      "Revise a previa e clique em Imprimir lote.";
+      "Revise a previa e clique em Imprimir lote. " +
+      "No dialogo do navegador: papel A4, margens \"Nenhuma\", escala 100% e \"Cabecalhos e margens\" desligado.";
+    var aperto = estado.compactou ? " Reduzi o corpo de " + estado.compactou +
+      " caixa(s) do cabecalho para que o texto coubesse no papel." : "";
     var corte = estado.cortes.length ? " ATENCAO: " + estado.cortes.length +
-      " linha(s) nao caberiam na coluna e sairiam cortadas no papel (lista abaixo)." : "";
-    status(msg + corte, estado.cortes.length > 0);
+      " linha(s) nao caberiam no papel e sairiam cortadas (lista abaixo)." : "";
+    status(msg + aperto + corte, estado.cortes.length > 0);
     sincronizarLote(prova, impresso, msg);
     return { folhas: folhas, batch: batch, impresso: impresso, medidas: medidas, porPagina: porPagina };
   }

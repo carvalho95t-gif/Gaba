@@ -593,20 +593,64 @@
   /* o empacotador fecha a coluna pela medida; isto confere se o papel desenhado bateu com a
      medida. sobra de coluna nao e problema — corte de linha alternativa, sim. */
   var TOLERANCIA_MM = 0.6;
+
+  /* estas caixas tem altura propria e overflow hidden: o texto que passa delas nao empurra nada,
+     ele simplesmente nao sai no papel. por isso a area de colunas nunca fica menor por causa
+     delas e o gate das colunas sozinho deixaria o nome do aluno fora do PDF sem um aviso. */
+  var CAIXAS_FIXAS = ".folha-cabecalho:not(.folha-cabecalho-fino), .folha-instrucoes, " +
+    ".folha-rodape, .folha-resultado";
+  var NOMES_CAIXA = {
+    "folha-cabecalho": "cabecalho de identificacao",
+    "folha-instrucoes": "bloco de instrucoes",
+    "folha-rodape": "rodape da folha",
+    "folha-resultado": "faixa do professor"
+  };
+  function nomeDaCaixa(el) {
+    var chaves = Object.keys(NOMES_CAIXA);
+    for (var i = 0; i < chaves.length; i++) {
+      if (el.classList && el.classList.contains(chaves[i])) return NOMES_CAIXA[chaves[i]];
+    }
+    return "caixa de texto do papel";
+  }
+  function sobraDaCaixa(caixa) {
+    return mmDePx(caixa.scrollHeight - caixa.clientHeight);
+  }
+
+  /* degraus de compactacao: a --cab reduz corpo e espaco das caixas fixas (ver style.css). o
+     primeiro degrau que fecha a caixa ganha; se nenhum fecha, fica o menor e o gate denuncia. */
+  var DEGRAUS_COMPACTAR = [1, 0.86, 0.76, 0.66];
+  function compactarCaixas(root) {
+    var ajustadas = 0;
+    [].slice.call((root || document).querySelectorAll(CAIXAS_FIXAS)).forEach(function (caixa) {
+      if (sobraDaCaixa(caixa) <= TOLERANCIA_MM) return;
+      for (var d = 1; d < DEGRAUS_COMPACTAR.length; d++) {
+        caixa.classList.remove("folha-compacta-" + (d - 1));
+        caixa.classList.add("folha-compacta-" + d);
+        if (sobraDaCaixa(caixa) <= TOLERANCIA_MM) { ajustadas++; return; }
+      }
+    });
+    return ajustadas;
+  }
+
+  function ondeDaFolha(folha, ai) {
+    var rotulos = [];
+    if (folha) {
+      var versao = folha.getAttribute("data-versao");
+      var pagina = folha.getAttribute("data-pagina");
+      if (versao) rotulos.push("tipo " + versao);
+      if (pagina) rotulos.push("pag " + pagina);
+    }
+    return rotulos.length ? rotulos.join(" ") : "folha " + (ai + 1);
+  }
+
   function conferirEncaixe(root) {
-    var areas = [].slice.call((root || document).querySelectorAll(".folha-a4 .folha-area"));
+    var raiz = root || document;
     var problemas = [];
+    var areas = [].slice.call(raiz.querySelectorAll(".folha-a4 .folha-area"));
     areas.forEach(function (area, ai) {
       var folha = area.closest(".folha-a4");
       var caixa = area.getBoundingClientRect();
-      var rotulos = [];
-      if (folha) {
-        var versao = folha.getAttribute("data-versao");
-        var pagina = folha.getAttribute("data-pagina");
-        if (versao) rotulos.push("tipo " + versao);
-        if (pagina) rotulos.push("pag " + pagina);
-      }
-      var onde = rotulos.length ? rotulos.join(" ") : "area " + (ai + 1);
+      var onde = ondeDaFolha(folha, ai);
       var num = function (el) {
         var q = el.closest(".folha-questao");
         return q ? (q.getAttribute("data-num") || "?") : "?";
@@ -614,19 +658,46 @@
       [].slice.call(area.querySelectorAll(".folha-enunciado, .folha-comando, .folha-alt li, .folha-rotulo, .folha-desc")).forEach(function (el) {
         var r = el.getBoundingClientRect();
         if (!r.height) return;
-        if (r.bottom > caixa.bottom + TOLERANCIA_MM * 96 / 25.4) {
+        var folga = TOLERANCIA_MM * 96 / 25.4;
+        if (r.bottom > caixa.bottom + folga) {
           problemas.push(onde + ": linha da questao " + num(el) + " passa " +
             mmDePx(r.bottom - caixa.bottom).toFixed(1) + " mm do fundo da coluna");
         }
-        if (r.right > caixa.right + TOLERANCIA_MM * 96 / 25.4) {
-          problemas.push(onde + ": texto da questao " + num(el) + " passa " +
-            mmDePx(r.right - caixa.right).toFixed(1) + " mm da borda direita da pagina");
+        /* um <p> de bloco nunca alarga o proprio retangulo: a palavra que nao quebra vaza para
+           fora sem mexer no right. o que denuncia o vazamento e o scrollWidth, nao o rect. */
+        var vaza = Math.max(r.right - caixa.right, el.scrollWidth - el.clientWidth);
+        if (vaza > folga) {
+          problemas.push(onde + ": texto da questao " + num(el) + " passa " + mmDePx(vaza).toFixed(1) +
+            " mm da borda direita da coluna" + (/(https?:|https:|www\.|[A-Za-z0-9+/=]{24,})/.test(el.textContent || "") ?
+              " (palavra longa sem espaco: quebre com espaco ou barra)" : ""));
         }
       });
       if (area.scrollHeight * 25.4 / 96 > mmDePx(area.clientHeight) + TOLERANCIA_MM) {
         problemas.push(onde + ": sobra " + mmDePx(area.scrollHeight - area.clientHeight).toFixed(1) +
           " mm de texto cortado pelo limite da area");
       }
+    });
+
+    /* as caixas fixas: depois de compactar, o que ainda passa do buraco da caixa esta perdido */
+    [].slice.call(raiz.querySelectorAll(".folha-a4")).forEach(function (folha, fi) {
+      var onde = ondeDaFolha(folha, fi);
+      [].slice.call(folha.querySelectorAll(CAIXAS_FIXAS)).forEach(function (caixa) {
+        var sobra = sobraDaCaixa(caixa);
+        if (sobra <= TOLERANCIA_MM) return;
+        var fundo = caixa.getBoundingClientRect().bottom;
+        var perdida = "";
+        [].slice.call(caixa.querySelectorAll("p, h1, h2, li")).some(function (linha) {
+          var r = linha.getBoundingClientRect();
+          if (r.height && r.bottom > fundo + TOLERANCIA_MM * 96 / 25.4) {
+            perdida = (linha.textContent || "").replace(/\s+/g, " ").trim().substring(0, 48);
+            return true;
+          }
+          return false;
+        });
+        problemas.push(onde + ": " + nomeDaCaixa(caixa) + " corta " + sobra.toFixed(1) +
+          " mm do proprio texto" + (perdida ? ' — perde-se "' + perdida + '"' : "") +
+          ". Encurte o que foi digitado nos campos do cabecalho.");
+      });
     });
     return problemas;
   }
@@ -696,12 +767,22 @@
     };
   }
 
+  /* quatro modulos de folga em volta: sem zona de silencio o leitor emenda o codigo no que
+     estiver ao lado, e a largura exata do modulo evita a linha escura que o redesenho puxa */
+  var ZONA_SILENCIO = 4;
+
   function qrDataUrl(text) {
     var Q = global.QRCode;
     if (!Q || typeof Q.toDataURL !== "function") {
       return Promise.reject(new Error("Biblioteca QRCode nao carregou."));
     }
-    return Q.toDataURL(text, { width: 512, margin: 0, errorCorrectionLevel: "M" });
+    var opt = { margin: ZONA_SILENCIO, errorCorrectionLevel: "M" };
+    var modulos = 0;
+    if (typeof Q.create === "function") {
+      try { modulos = Q.create(text, opt).modules.size + ZONA_SILENCIO * 2; } catch (err) { modulos = 0; }
+    }
+    opt.width = modulos ? modulos * 16 : 512;
+    return Q.toDataURL(text, opt);
   }
 
   function versaoDo(prova, aluno, opts) {
@@ -758,6 +839,7 @@
     empacotar: empacotar,
     medirCorpo: medirCorpo,
     conferirEncaixe: conferirEncaixe,
+    compactarCaixas: compactarCaixas,
     fontesProntas: fontesProntas,
     assinaturaDa: assinaturaDa,
     MARGEM_QUESTAO_MM: MARGEM_QUESTAO_MM,

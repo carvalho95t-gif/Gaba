@@ -108,7 +108,50 @@ async function lerCampos() {
       if (!cab || getComputedStyle(cab).display === "none" || !cab.getBoundingClientRect().height) semCab.push(i);
       if (!pe || getComputedStyle(pe).display === "none" || !pe.getBoundingClientRect().height) semPe.push(i);
     });
+    var folha = raiz.querySelector(".folha-resposta");
+    var cab = folha.querySelector(".folha-cabecalho");
+    var limites = folha.getBoundingClientRect();
+    /* o QR e as quatro marcas sao o que o leitor mede: nada pintado pode encostar neles,
+       encostados ou nao, e nenhuma marca pode cair na faixa que a impressora corta */
+    var zonas = [].slice.call(folha.querySelectorAll(".folha-qr, .fiducial")).map(function (el) {
+      return {
+        nome: el.classList.contains("fiducial") ? "marca " + el.className.replace(/fiducial fid-?/, "") : "qr",
+        el: el, r: el.getBoundingClientRect(), marca: el.classList.contains("fiducial")
+      };
+    });
+    var pinta = function (el) {
+      if (el.tagName === "IMG") return true;
+      var st = getComputedStyle(el);
+      return ["Top", "Right", "Bottom", "Left"].some(function (lado) {
+        return parseFloat(st["border" + lado + "Width"]) > 0 && st["border" + lado + "Style"] !== "none";
+      }) || st.backgroundImage !== "none" || (st.backgroundColor && st.backgroundColor !== "rgba(0, 0, 0, 0)");
+    };
+    var encosta = [], folgaZona = {}, foraBorda = [];
+    zonas.forEach(function (z) {
+      var menor = -1;
+      [].slice.call(folha.querySelectorAll("*")).forEach(function (el) {
+        if (el === z.el || z.el.contains(el) || el.contains(z.el)) return;
+        var r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || !pinta(el)) return;
+        var dx = Math.max(0, Math.max(r.left - z.r.right, z.r.left - r.right));
+        var dy = Math.max(0, Math.max(r.top - z.r.bottom, z.r.top - r.bottom));
+        var gap = mm(Math.sqrt(dx * dx + dy * dy));
+        if (!dx && !dy) { encosta.push(z.nome + " x " + el.className); return; }
+        /* a grade de bolhas tem a propria guarda de fundo no layout, nao entra como vizinho */
+        if (el.closest(".folha-cartao")) return;
+        if (menor < 0 || gap < menor) menor = gap;
+      });
+      folgaZona[z.nome] = menor;
+      if (z.marca) {
+        var b = Math.min(mm(z.r.left - limites.left), mm(limites.right - z.r.right),
+          mm(z.r.top - limites.top), mm(limites.bottom - z.r.bottom));
+        if (b < 10) foraBorda.push(z.nome + ":" + b + "mm");
+      }
+    });
+    var qrZona = zonas.filter(function (z) { return z.nome === "qr"; })[0];
     return { folhas: folhas.length, fundo: cs.backgroundColor, padding: cs.paddingTop,
+      encosta: encosta.slice(0, 4), folgaZona: folgaZona, foraBorda: foraBorda,
+      folgaQr: cab && qrZona ? mm(cab.getBoundingClientRect().left - qrZona.r.right) : -1,
       deslocadas: deslocadas.slice(0, 4), semCab: semCab.slice(0, 4), semPe: semPe.slice(0, 4) };
   }, []);
   await c.chama("Emulation.setEmulatedMedia", { media: "" });
@@ -118,6 +161,16 @@ async function lerCampos() {
     noPapel.semCab.length === 0 && noPapel.semPe.length === 0, noPapel);
   check("no papel a previa nao pinta fundo cinza nem empurra as folhas",
     noPapel.fundo === "rgb(255, 255, 255)" && noPapel.padding === "0px", noPapel);
+  check("no papel nenhuma linha ou faixa passa por cima do QR ou das marcas de leitura",
+    noPapel.encosta.length === 0, noPapel.encosta);
+  check("no papel as quatro marcas de leitura ficam a 10mm da borda da folha",
+    noPapel.foraBorda.length === 0, noPapel.foraBorda);
+  var folgasZona = Object.keys(noPapel.folgaZona || {}).map(function (k) { return noPapel.folgaZona[k]; })
+    .filter(function (v) { return v >= 0; });
+  check("no papel todo vizinho pintado deixa folga em torno das zonas de leitura",
+    folgasZona.length === 5 && Math.min.apply(null, folgasZona) >= 3.5, noPapel.folgaZona);
+  check("no papel o cabecalho deixa folga de silencio ate o QR",
+    noPapel.folgaQr >= 4, noPapel.folgaQr);
 
   await c.chama("Page.navigate", { url: BASE + "/index.html" });
   await c.espera("typeof GabaCaderno !== 'undefined' && document.getElementById('cad-modelo').options.length > 1", 60000);

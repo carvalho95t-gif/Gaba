@@ -138,6 +138,10 @@ button:not(:disabled) { cursor: pointer; }
 .data-table th, .data-table td { padding: 12px; border-bottom: 1px solid var(--linha); }
 .text-muted { color: var(--tinta-3); }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; background: #E2E8F0; color: var(--grafite); padding: 1px 5px; border-radius: 6px; }
+/* o degrau da escada: primeiro a escola, depois as turmas, depois o resto */
+.passo { margin: var(--e6) 0 0; font-size: .74rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--tinta-3); }
+.passo + .form-container { margin-top: var(--e3); }
+#lista-escolas-cad:empty { display: none; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
@@ -290,12 +294,14 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     height: var(--qr-h);
     image-rendering: pixelated;
 }
-/* folha de resposta: o cabecalho divide o topo com o QR e para antes da marca de canto direita */
+/* folha de resposta: o cabecalho comeca 6mm depois do QR e para 4mm antes da marca de canto
+   direita. o QR saiu de 14mm para 32mm porque a marca recuada a 12mm entraria na zona de
+   silencio dele, entao o cabecalho acompanha: 78..182mm em vez de 60..191mm. */
 .folha-a4.folha-resposta > .folha-cabecalho {
     position: absolute;
-    left: 60mm;
+    left: 78mm;
     top: 8mm;
-    right: 19mm;
+    right: 28mm;
     max-height: 58mm;
     overflow: hidden;
 }
@@ -303,32 +309,39 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
     text-align: left;
 }
+/* corpo das caixas de tamanho fixo: GabaFolha.compactarCaixas() desce os degraus quando a caixa
+   nao cabe no buraco que lhe deram. letra um pouco menor e melhor que o nome do aluno fora do papel. */
+.folha-a4 .folha-cabecalho, .folha-a4 .folha-instrucoes,
+.folha-a4 .folha-rodape, .folha-a4 .folha-resultado { --cab: 1; }
+.folha-a4 .folha-compacta-1 { --cab: 0.86; }
+.folha-a4 .folha-compacta-2 { --cab: 0.76; }
+.folha-a4 .folha-compacta-3 { --cab: 0.66; }
 .folha-a4 .folha-cabecalho h1 {
-    margin: 0 0 0.8mm;
-    font-size: 11pt;
+    margin: 0 0 calc(0.8mm * var(--cab, 1));
+    font-size: calc(11pt * var(--cab, 1));
     text-transform: uppercase;
     letter-spacing: 0.02em;
 }
 .folha-a4 .folha-cabecalho p {
-    margin: 0 0 0.7mm;
-    font-size: 9pt;
+    margin: 0 0 calc(0.7mm * var(--cab, 1));
+    font-size: calc(9pt * var(--cab, 1));
 }
 .folha-a4 .folha-rede {
-    font-size: 7.5pt;
+    font-size: calc(7.5pt * var(--cab, 1));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #333;
 }
 .folha-a4 .folha-meta {
-    font-size: 7.6pt;
+    font-size: calc(7.6pt * var(--cab, 1));
 }
 .folha-a4 .folha-aluno {
     border-bottom: 0.5mm solid #1c9f4e;
-    padding-bottom: 1mm;
-    font-size: 9pt;
+    padding-bottom: calc(1mm * var(--cab, 1));
+    font-size: calc(9pt * var(--cab, 1));
 }
 .folha-a4 .folha-assina {
-    font-size: 8pt;
+    font-size: calc(8pt * var(--cab, 1));
 }
 .folha-a4 .folha-linha {
     display: inline-block;
@@ -339,11 +352,11 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     width: 15mm;
 }
 .folha-a4 .folha-tipo {
-    font-size: 8pt;
+    font-size: calc(8pt * var(--cab, 1));
     color: #333;
 }
 .folha-a4 .folha-hint {
-    font-size: 6.5pt;
+    font-size: calc(6.5pt * var(--cab, 1));
     line-height: 1.2;
     color: #555;
 }
@@ -372,24 +385,24 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-instrucoes {
     border: 0.35mm solid #222;
     border-radius: 0.8mm;
-    padding: 3mm 4mm;
-    margin: 0 0 5mm;
+    padding: calc(3mm * var(--cab, 1)) calc(4mm * var(--cab, 1));
+    margin: 0 0 calc(5mm * var(--cab, 1));
     break-inside: avoid;
     page-break-inside: avoid;
     background: #f8f9fa;
     text-align: left;
 }
 .folha-a4 .folha-instrucoes h2 {
-    margin: 0 0 1.5mm;
+    margin: 0 0 calc(1.5mm * var(--cab, 1));
     font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
-    font-size: 8.5pt;
+    font-size: calc(8.5pt * var(--cab, 1));
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 .folha-a4 .folha-instrucoes p {
-    margin: 0 0 1mm;
-    font-size: 8pt;
+    margin: 0 0 calc(1mm * var(--cab, 1));
+    font-size: calc(8pt * var(--cab, 1));
     line-height: 1.35;
 }
 /* na folha de resposta as instrucoes vao para a faixa livre abaixo do cartao, fora do cabecalho */
@@ -400,29 +413,30 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     margin: 0;
     overflow: hidden;
 }
-/* faixa de correcao no pe da folha de respostas */
+/* faixa de correcao no pe da folha de respostas: para 8mm acima das marcas de canto, que
+   comecam em 273mm. a borda preta da faixa colada na marca vira extensao dela no leitor. */
 .folha-a4 .folha-resultado {
     position: absolute;
     left: 14mm;
     right: 14mm;
-    bottom: 22mm;
+    bottom: 32mm;
     border: 0.35mm solid #222;
     border-radius: 0.8mm;
-    padding: 3mm 4mm;
+    padding: calc(3mm * var(--cab, 1)) calc(4mm * var(--cab, 1));
     background: #f8f9fa;
     text-align: left;
     font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 }
 .folha-a4 .folha-resultado h2 {
-    margin: 0 0 2mm;
-    font-size: 8.5pt;
+    margin: 0 0 calc(2mm * var(--cab, 1));
+    font-size: calc(8.5pt * var(--cab, 1));
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 .folha-a4 .folha-resultado p {
-    margin: 0 0 2.5mm;
-    font-size: 8.5pt;
+    margin: 0 0 calc(2.5mm * var(--cab, 1));
+    font-size: calc(8.5pt * var(--cab, 1));
 }
 .folha-a4 .folha-resultado p:last-child {
     margin-bottom: 0;
@@ -506,6 +520,13 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     text-transform: uppercase;
     letter-spacing: 0.02em;
     text-align: left;
+}
+/* a palavra sem onde quebrar nao pode sair da coluna: ela vaza por cima da margem e a parte que
+   passa do papel nao existe. o hifen automatico nao alcanca URL, codigo de matricula nem sequencia
+   sem espaco, entao aqui ela quebra no meio mesmo. */
+.folha-a4 .folha-desc, .folha-a4 .folha-enunciado, .folha-a4 .folha-comando,
+.folha-a4 .folha-alt li, .folha-a4 .folha-rotulo {
+    overflow-wrap: anywhere;
 }
 .folha-a4 .folha-enunciado {
     margin: 0 0 1.2mm;
@@ -606,19 +627,22 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-texto-base .folha-enunciado {
     margin: 0;
 }
+/* o filete do rodape hoje atravessa as duas marcas de baixo: a caixa comeca em 14mm e a marca
+   vai de 12 a 24mm. recuada para 28mm a linha passa entre as marcas e sobe para fora da faixa
+   que a impressora corta. */
 .folha-a4 .folha-rodape {
     position: absolute;
-    left: 14mm;
-    right: 14mm;
-    bottom: 6mm;
+    left: 28mm;
+    right: 28mm;
+    bottom: 10mm;
     margin: 0;
     font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
-    font-size: 6.5pt;
+    font-size: calc(6.5pt * var(--cab, 1));
     color: #777;
     text-align: center;
     letter-spacing: 0.02em;
     border-top: 0.15mm solid #ddd;
-    padding-top: 1.5mm;
+    padding-top: calc(1.5mm * var(--cab, 1));
 }
 
 @media print {

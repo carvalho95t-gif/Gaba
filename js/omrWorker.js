@@ -156,6 +156,7 @@ function findFiducials(src, layout) {
     var qrY0 = (layout.qr.yMm - 3) * px;
     var qrY1 = (layout.qr.yMm + layout.qr.hMm + 3) * px;
     var candidates = [];
+    var noQr = [];
     for (var i = 0; i < contours.size(); i++) {
       var cnt = contours.get(i);
       var area = cv.contourArea(cnt);
@@ -163,9 +164,13 @@ function findFiducials(src, layout) {
       if (!isSquare(cnt, minArea)) continue;
       var c = contourCenter(cnt);
       if (!c) continue;
-      if (c.x > qrX0 && c.x < qrX1 && c.y > qrY0 && c.y < qrY1) continue;
-      candidates.push({ x: c.x, y: c.y, area: area });
+      /* a caixa do QR sai da pagina ereta: com a folha torta a marca do canto de cima a
+         esquerda escorrega para dentro dela. entao a caixa rebaixa o candidato, nao o
+         descarta — sem quatro marcas de fora, as de dentro voltam para a disputa. */
+      var dentro = c.x > qrX0 && c.x < qrX1 && c.y > qrY0 && c.y < qrY1;
+      (dentro ? noQr : candidates).push({ x: c.x, y: c.y, area: area });
     }
+    if (candidates.length < 4) candidates = candidates.concat(noQr);
     if (candidates.length < 4) return null;
     candidates.sort(function (a, b) {
       return b.area - a.area;
@@ -257,16 +262,13 @@ function matToImageData(mat) {
 function decodeQr(warpedRgba, layout) {
   if (typeof jsQR !== "function") return null;
   /* zona de silencio para os quatro lados: sem folga acima e a esquerda o jsQR
-     perde o padrao de iniciacao quando a folha esta um pouco girada */
-  var folga = 6;
-  var x0 = Math.max(0, layout.qr.xMm - folga);
-  var y0 = Math.max(0, layout.qr.yMm - folga);
-  var x1 = Math.min(layout.pageWmm, layout.qr.xMm + layout.qr.wMm + folga);
-  var y1 = Math.min(layout.pageHmm, layout.qr.yMm + layout.qr.hMm + folga);
-  var x = mm(x0);
-  var y = mm(y0);
-  var w = Math.min(mm(x1 - x0), warpedRgba.cols - x);
-  var h = Math.min(mm(y1 - y0), warpedRgba.rows - y);
+     perde o padrao de iniciacao quando a folha esta um pouco girada. a folga e do
+     layout porque a guarda dele impoe que nenhuma marca de canto entre nesse recorte. */
+  var roiMm = layout.qrRoiMm();
+  var x = mm(roiMm.x0);
+  var y = mm(roiMm.y0);
+  var w = Math.min(mm(roiMm.x1 - roiMm.x0), warpedRgba.cols - x);
+  var h = Math.min(mm(roiMm.y1 - roiMm.y0), warpedRgba.rows - y);
   var roi = warpedRgba.roi(new cv.Rect(x, y, w, h));
   var imageData = matToImageData(roi);
   roi.delete();

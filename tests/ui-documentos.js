@@ -1,4 +1,4 @@
-/* As duas portas novas do app no navegador de verdade: um PDF de 176 paginas e um .doc de Word 97
+/* As duas portas novas do app no navegador de verdade: um PDF de 182 paginas e um .doc de Word 97
    viram a mesma prova e saem no papel em duas colunas. Precisa do servidor local:
      node tests/serve.js 8789   ->   node tests/ui-documentos.js 8789                      */
 "use strict";
@@ -172,7 +172,7 @@ async function limpar() {
   }, []);
   await c.naPagina(limpar, []);
 
-  console.log("\n== o PDF de 176 paginas na aba Cadernos ==");
+  console.log("\n== o PDF de 182 paginas na aba Cadernos ==");
   var pdf = await c.naPagina(importar, ["/_prova.pdf", "PROVA_UI.pdf"]);
   console.log("  " + pdf.ms + " ms, status: " + pdf.status);
   check("o PDF importou as dez questoes do banco", pdf.questoes === 10, pdf);
