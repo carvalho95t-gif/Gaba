@@ -51,6 +51,7 @@ function makeFakeCv(script) {
     ADAPTIVE_THRESH_GAUSSIAN_C: 10,
     ADAPTIVE_THRESH_MEAN_C: 11,
     RETR_EXTERNAL: 0,
+    RETR_LIST: 1,
     CHAIN_APPROX_SIMPLE: 2,
     INTER_LINEAR: 1,
     BORDER_CONSTANT: 0,
@@ -274,15 +275,60 @@ function principal() {
   var casoQr = montar(total, 5, alvos, { incluirQrFinder: true });
   var rQr = ler(casoQr.script, makeFakeCv(casoQr.script), { totalQuestoes: total, alternativas: 5 });
   var cantos = rQr.corners || [];
-  check("achado de canto ignora o padrao do QR", cantos.length === 4 &&
+  check("achado das marcas ignora o padrao do QR", cantos.length === 4 &&
     cantos.every(function (c) { return !(c.x > (casoQr.layout.qr.xMm - 3) * PX && c.x < (casoQr.layout.qr.xMm + casoQr.layout.qr.wMm + 3) * PX && c.y < (casoQr.layout.qr.yMm + casoQr.layout.qr.hMm + 3) * PX && c.y > (casoQr.layout.qr.yMm - 3) * PX); }),
     JSON.stringify(cantos));
+
+  // 5b. folha fora do centro: um padrao do QR escapa da caixa e fica acima das marcas do cartao
+  var desloc = 12;
+  var casoFora = montar(total, 5, alvos, { deslocarPx: desloc * PX });
+  var g = casoFora.layout.qr;
+  casoFora.script.contours = casoFora.script.contours.concat([{
+    x: Math.round((g.xMm + g.wMm - 7.5 + desloc) * PX), y: Math.round((g.yMm + 7.5) * PX),
+    area: Math.pow(7 * PX, 2), lado: 7 * PX
+  }]);
+  var simbolo = function (x, y) { return { x: (x + desloc) * PX, y: y * PX }; };
+  var qrCru = {
+    data: QR.encode({ id: "prova-1" }, { id: "aluno-9", numero: 9 }, { versao: 2, codigo: "ABCD" }),
+    location: {
+      topLeftCorner: simbolo(g.xMm + 4, g.yMm + 4), topRightCorner: simbolo(g.xMm + g.wMm - 4, g.yMm + 4),
+      bottomRightCorner: simbolo(g.xMm + g.wMm - 4, g.yMm + g.hMm - 4), bottomLeftCorner: simbolo(g.xMm + 4, g.yMm + g.hMm - 4)
+    }
+  };
+  var rFora = ler(casoFora.script, makeFakeCv(casoFora.script), { totalQuestoes: total, alternativas: 5 },
+    function (data, w, h) { return w === casoFora.page.w && h === casoFora.page.h ? qrCru : null; });
+  var marcasFora = casoFora.layout.fiducialCenters().map(function (c) {
+    return { x: Math.round((c.x + desloc) * PX), y: Math.round(c.y * PX) };
+  });
+  var warpFora = casoFora.script.ultimoWarp || {};
+  check("padrao do QR fora da caixa nao vira canto: as marcas saem do QR achado no quadro",
+    (rFora.corners || []).length === 4 && rFora.qr_texto === qrCru.data && marcasFora.every(function (m, i) {
+      return Math.abs(rFora.corners[i].x - m.x) <= 1 && Math.abs(rFora.corners[i].y - m.y) <= 1 &&
+        Math.abs(warpFora.src[i * 2] - m.x) <= 1 && Math.abs(warpFora.src[i * 2 + 1] - m.y) <= 1;
+    }), JSON.stringify(rFora.corners) + " vs " + JSON.stringify(marcasFora));
 
   // 6. sem fiduciais: mensagem clara, sem excecao
   var casoVazio = montar(total, 5, alvos);
   casoVazio.script.contours = [];
   var rVazio = ler(casoVazio.script, makeFakeCv(casoVazio.script), { totalQuestoes: total });
-  check("sem folha devolve aviso", rVazio.ok === false && /cantos/.test(rVazio.message), rVazio.message);
+  check("sem folha devolve aviso", rVazio.ok === false && /marcas pretas em volta do cartao/.test(rVazio.message), rVazio.message);
+
+  // 6b. com RETR_LIST o furo que o limiar abre em cada marca volta como outro quadrado no mesmo centro
+  function comFuros(lista) {
+    return lista.concat(lista.map(function (c) {
+      return { x: c.x + 1, y: c.y - 1, area: c.area * 0.45, lado: c.lado * 0.67 };
+    }));
+  }
+  var casoFuro = montar(total, 5, alvos);
+  casoFuro.script.contours = comFuros(casoFuro.script.contours);
+  var rFuro = ler(casoFuro.script, makeFakeCv(casoFuro.script), { totalQuestoes: total, alternativas: 5 });
+  check("furo das marcas nao atrapalha a leitura", rFuro.ok && rFuro.corners.length === 4 &&
+    JSON.stringify(rFuro.answers) === JSON.stringify(esperadoLetras), JSON.stringify(rFuro.answers));
+  var casoMeia = montar(total, 5, alvos);
+  casoMeia.script.contours = comFuros(casoMeia.script.contours.slice(0, 2));
+  var rMeia = ler(casoMeia.script, makeFakeCv(casoMeia.script), { totalQuestoes: total, alternativas: 5 });
+  check("duas marcas e seus furos nao viram quatro cantos", rMeia.ok === false && /marcas pretas/.test(rMeia.message),
+    rMeia.message + " " + JSON.stringify(rMeia.corners));
 
   // 7. 90 questões: mesmo código, grade de 3 colunas
   var total90 = 90;

@@ -132,6 +132,10 @@ async function lerFolha(cfg) {
   }
 
   var r = await ler(quadro(marcas));
+  if (cfg.prefixo) {
+    r.qr_texto = r.qr_texto.replace(/^GABA\d+/, cfg.prefixo);
+    r.qr = GabaQR.decode(r.qr_texto);
+  }
   var filaAntes = (await GabaSync.listResults()).length;
   var antes = E.resultados.length;
   var deltas = [];
@@ -224,6 +228,8 @@ function urlFolha(rec, indice, cod, salt) {
 
     var A = await c.naPagina(lerFolha, [{ pid: rec.pid, indice: 2, png: "tests/e2e-cheia.png", tipo: "cheia" }]);
     check("a folha impressa reproduz o codigo do lote", A.leitura.payload.indexOf(alvo.codigo) > 0, A.leitura.payload);
+    check("o QR impresso carrega a geometria atual das marcas",
+      A.leitura.payload.indexOf("GABA" + require("../js/omrLayout.js").GEOMETRIA + "|") === 0, A.leitura.payload);
     check("todas as bolhas da folha lidas pelo motor", A.leitura.lidas === rec.questoes, A.leitura.lidas + "/" + rec.questoes);
     check("atribuida ao aluno da folha", A.registro && A.registro.nome === alvo.nome && A.registro.numero === alvo.numero,
       JSON.stringify(A.registro && [A.registro.nome, A.registro.numero]));
@@ -268,6 +274,14 @@ function urlFolha(rec, indice, cod, salt) {
       JSON.stringify([E2.registros, E2.fila]));
     check("o aviso diz que a folha e de outro lote", /outra impressao/.test(E2.status), E2.status);
     check("mesmo assim o motor leu tudo dela", E2.leitura.lidas === rec.questoes && E2.leitura.gabOk, JSON.stringify(E2.leitura));
+
+    var G = await c.naPagina(lerFolha, [{ pid: rec.pid, indice: 2, png: "tests/e2e-cheia.png", tipo: "cheia", prefixo: "GABA9" }]);
+    check("folha de outra geometria de marcas nao entra na fila", G.registros === 0 && G.fila === 0,
+      JSON.stringify([G.registros, G.fila]));
+    check("o aviso manda reimprimir pela posicao das marcas", /outra posicao de marcas \(G9/.test(G.status), G.status);
+    var G1 = await c.naPagina(lerFolha, [{ pid: rec.pid, indice: 2, png: "tests/e2e-cheia.png", tipo: "cheia", prefixo: "GABA1" }]);
+    check("folha GABA1 (marcas nos cantos da pagina) tambem e recusada", G1.registros === 0 && G1.fila === 0 &&
+      /outra posicao de marcas \(modelo antigo/.test(G1.status), JSON.stringify([G1.registros, G1.fila, G1.status]));
 
     var pendentes = await c.naPagina(function () { return GabaSync.countPending(); });
     console.log("\n  folhas guardadas no aparelho sem subir para o banco: " + pendentes);

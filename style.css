@@ -320,15 +320,14 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     height: var(--qr-h);
     image-rendering: pixelated;
 }
-/* folha de resposta: o cabecalho comeca 6mm depois do QR e para 4mm antes da marca de canto
-   direita. o QR saiu de 14mm para 32mm porque a marca recuada a 12mm entraria na zona de
-   silencio dele, entao o cabecalho acompanha: 78..182mm em vez de 60..191mm. */
+/* folha de resposta: o QR fica no canto de cima a esquerda (14mm) e o cabecalho e uma ficha que
+   ocupa toda a largura a direita dele, 61..196mm — a mesma borda direita da moldura do cartao. */
 .folha-a4.folha-resposta > .folha-cabecalho {
     position: absolute;
-    left: 78mm;
-    top: 8mm;
-    right: 28mm;
-    max-height: 58mm;
+    left: 61mm;
+    top: 10mm;
+    right: 14mm;
+    max-height: 48mm;
     overflow: hidden;
 }
 .folha-a4 .folha-cabecalho {
@@ -358,17 +357,6 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     text-transform: uppercase;
     color: #333;
 }
-.folha-a4 .folha-meta {
-    font-size: calc(7.6pt * var(--cab, 1));
-}
-.folha-a4 .folha-aluno {
-    border-bottom: 0.5mm solid #1c9f4e;
-    padding-bottom: calc(1mm * var(--cab, 1));
-    font-size: calc(9pt * var(--cab, 1));
-}
-.folha-a4 .folha-assina {
-    font-size: calc(8pt * var(--cab, 1));
-}
 .folha-a4 .folha-linha {
     display: inline-block;
     width: 58mm;
@@ -377,47 +365,88 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-linha-nota {
     width: 15mm;
 }
-/* a caixa de Nota do modelo: um quadro no fim da linha da assinatura, com a palavra em cima e
-   a regua de preenchimento la embaixo — nao "Nota: ___" solto no texto. assinatura e nota sao dois
-   <p> lado a lado de proposito: juntos numa linha so, o conferidor do PDF procura no papel um
-   texto que la sai como dois blocos separados e denuncia perda que nao houve */
-.folha-a4 .folha-assina-linha {
-    display: flex;
-    align-items: flex-end;
-    gap: 3mm;
+/* a identificacao e uma ficha de grade fixa, como nas avaliacoes da rede: rotulo miudo em cima,
+   valor embaixo, e a caixa de Nota fechando a linha da assinatura */
+.folha-a4 .folha-ficha {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border: 0.4mm solid #14181f;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 }
-.folha-a4 .folha-assina-linha .folha-assina { flex: 1 1 auto; min-width: 0; }
-.folha-a4 .folha-nota {
-    position: relative;
-    flex: 0 0 26mm;
-    height: 9mm;
-    border: 0.3mm solid #14181f;
-    text-align: center;
+.folha-a4 .folha-ficha td, .folha-a4 .folha-ficha th {
+    border: 0.2mm solid #14181f;
+    padding: calc(0.6mm * var(--cab, 1)) 1.6mm calc(0.8mm * var(--cab, 1));
+    vertical-align: top;
+    text-align: left;
+    overflow: hidden;
 }
-.folha-a4 .folha-nota em {
-    display: block;
-    font-style: normal;
-    font-weight: 700;
+.folha-a4 .folha-ficha-escola {
+    background: #eef1f4;
+    text-align: center !important;
+    padding: calc(1.1mm * var(--cab, 1)) 2mm !important;
+}
+.folha-a4 .folha-ficha-escola .folha-rede {
+    margin: 0;
+    font-size: calc(6.4pt * var(--cab, 1));
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    color: #3a4048;
+}
+.folha-a4 .folha-ficha-escola h1 {
+    margin: calc(0.3mm * var(--cab, 1)) 0;
+    font-size: calc(11pt * var(--cab, 1));
+    line-height: 1.15;
+    letter-spacing: 0.03em;
+}
+.folha-a4 .folha-ficha-escola .folha-titulo {
+    margin: 0;
     font-size: calc(8.4pt * var(--cab, 1));
-    padding-top: 0.6mm;
+    font-weight: 700;
+    color: #14181f;
 }
-.folha-a4 .folha-nota .folha-linha-nota {
-    position: absolute;
-    left: 2mm;
-    right: 2mm;
-    bottom: 1.4mm;
-    width: auto;
+.folha-a4 .folha-ficha-rotulo {
+    display: block;
+    font-size: calc(5.4pt * var(--cab, 1));
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5a616b;
 }
-.folha-a4 .folha-tipo {
-    font-size: calc(8pt * var(--cab, 1));
-    color: #333;
-}
-.folha-a4 .folha-hint {
-    font-size: calc(6.5pt * var(--cab, 1));
+.folha-a4 .folha-cabecalho .folha-ficha-valor {
+    margin: 0;
+    min-height: calc(3.4mm * var(--cab, 1));
+    font-size: calc(8.6pt * var(--cab, 1));
     line-height: 1.2;
-    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-/* paginas de corpo: sem QR e sem marca de canto, entao o texto comeca no topo e flui em colunas */
+.folha-a4 .folha-ficha-aluno .folha-ficha-valor {
+    font-weight: 700;
+}
+.folha-a4 .folha-ficha-assina td {
+    height: calc(7.5mm * var(--cab, 1));
+}
+.folha-a4 .folha-ficha-nota {
+    position: relative;
+    text-align: center !important;
+    background: #f6f7f9;
+}
+.folha-a4 .folha-ficha-nota .folha-ficha-rotulo {
+    font-size: calc(6.4pt * var(--cab, 1));
+    color: #14181f;
+}
+.folha-a4 .folha-ficha-nota .folha-linha-nota {
+    position: absolute;
+    left: 3mm;
+    right: 3mm;
+    bottom: 1.6mm;
+    width: auto;
+    border-bottom-width: 0.2mm;
+}
+/* paginas de corpo: sem QR e sem marcas, entao o texto comeca no topo e flui em colunas */
 .folha-a4.folha-questoes {
     display: flex;
     flex-direction: column;
@@ -462,16 +491,50 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     font-size: calc(8pt * var(--cab, 1));
     line-height: 1.35;
 }
-/* na folha de resposta as instrucoes vao para a faixa livre abaixo do cartao, fora do cabecalho */
+/* na folha de resposta as instrucoes ficam numa faixa entre o cabecalho e o cartao: o aluno le
+   antes de marcar. a altura vem do GabaLayout, que a reserva so pelo numero de questoes */
 .folha-a4.folha-resposta .folha-instrucoes-capa {
     position: absolute;
     left: 14mm;
     right: 14mm;
     margin: 0;
     overflow: hidden;
+    display: flex;
+    gap: 3.5mm;
+    padding: calc(2.2mm * var(--cab, 1)) 3.5mm;
+    border: 0.3mm solid #14181f;
+    border-radius: 0;
+    background: #fff;
 }
-/* faixa de correcao no pe da folha de respostas: para 8mm acima das marcas de canto, que
-   comecam em 273mm. a borda preta da faixa colada na marca vira extensao dela no leitor. */
+.folha-a4.folha-resposta .folha-instrucoes-capa h2 {
+    display: flex;
+    align-items: center;
+    flex: 0 0 23mm;
+    margin: 0;
+    padding-right: 3mm;
+    border-right: 0.2mm solid #14181f;
+    font-size: calc(7.6pt * var(--cab, 1));
+    line-height: 1.25;
+}
+.folha-a4.folha-resposta .folha-instrucoes-capa ol {
+    flex: 1 1 auto;
+    align-self: center;
+    margin: 0;
+    padding: 0 0 0 4.2mm;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+}
+.folha-a4.folha-resposta .folha-instrucoes-capa li {
+    margin: 0 0 calc(0.6mm * var(--cab, 1));
+    padding-left: 0.6mm;
+    font-size: calc(7.8pt * var(--cab, 1));
+    line-height: 1.3;
+    text-align: justify;
+}
+.folha-a4.folha-resposta .folha-instrucoes-capa li::marker {
+    font-weight: 700;
+}
+/* faixa de correcao no pe da folha de respostas, abaixo da moldura do cartao: GabaFolha so a poe
+   quando o cartao termina cedo o bastante para ela nao encostar nas marcas de baixo. */
 .folha-a4 .folha-resultado {
     position: absolute;
     left: 14mm;
@@ -638,44 +701,41 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     width: 100%;
     height: 100%;
 }
-.folha-a4 .folha-cartao-titulo {
-    position: absolute;
-    margin: 0;
-    font-size: 8.6pt;
-    font-weight: 400;
-    text-align: center;
-    /* a frase do modelo vem em serifa, como o resto da folha de gabarito dele */
-    font-family: Georgia, "Times New Roman", "Helvetica Neue", Arial, sans-serif;
-}
-/* moldura do cartao no estilo do modelo: dois filetes e a faixa "Prova:" colada no fundo.
-   e so tinta: fica por fora da grade, que continua nos mm do GabaLayout. */
+/* moldura do cartao: um filete so, na largura do cabecalho. as marcas ficam 1,5mm por dentro
+   dela e o titulo e o codigo moram na faixa entre as marcas, que ja e espaco perdido para as bolhas */
 .folha-a4 .folha-cartao-moldura {
     position: absolute;
-    border: 0.3mm solid #14181f;
-    padding: 0.5mm;
+    border: 0.4mm solid #14181f;
     pointer-events: none;
 }
-.folha-a4 .folha-cartao-moldura::after {
-    content: "";
+.folha-a4 .folha-cartao-titulo, .folha-a4 .folha-cartao-prova {
     position: absolute;
-    left: 0.9mm;
-    right: 0.9mm;
-    top: 0.9mm;
-    bottom: 0.9mm;
-    border: 0.2mm solid #14181f;
-    pointer-events: none;
-}
-.folha-a4 .folha-cartao-prova {
-    position: absolute;
-    left: 2.5mm;
-    right: 2.5mm;
-    bottom: 1.2mm;
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
-    font-size: 8.4pt;
-    font-family: Georgia, "Times New Roman", "Helvetica Neue", Arial, sans-serif;
-    border-top: 0.2mm solid #14181f;
-    padding-top: 0.8mm;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    line-height: 1.2;
+}
+.folha-a4 .folha-cartao-titulo p, .folha-a4 .folha-cartao-prova p {
+    margin: 0;
+}
+.folha-a4 .folha-cartao-titulo p:first-child {
+    font-size: 9pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.folha-a4 .folha-cartao-titulo p + p {
+    margin-top: 0.6mm;
+    font-size: 6.6pt;
+    color: #3a4048;
+}
+.folha-a4 .folha-cartao-prova p {
+    font-size: 7.6pt;
+    letter-spacing: 0.04em;
+    color: #14181f;
 }
 .folha-a4 .folha-q {
     position: absolute;
@@ -687,8 +747,10 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     top: 0;
     height: 100%;
     padding-right: 2mm;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
     font-size: 7.4pt;
     font-weight: 700;
+    color: #14181f;
     text-align: right;
     line-height: var(--bubble);
 }
@@ -700,12 +762,24 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
     box-sizing: border-box;
     background: #fff;
 }
-.folha-a4 .folha-bubble-letra {
+/* as letras saem uma vez por coluna, acima da primeira linha, e os filetes cinza separam as
+   linhas de cinco em cinco: nenhum dos dois entra na amostra que o leitor tira de cada bolha */
+.folha-a4 .folha-cartao-letra {
     position: absolute;
     text-align: center;
-    font-size: 6pt;
-    line-height: 3mm;
-    color: #333;
+    font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+    font-size: 6.4pt;
+    font-weight: 700;
+    line-height: 2.6mm;
+    color: #3a4048;
+}
+.folha-a4 .folha-cartao-filete {
+    position: absolute;
+    border-top: 0.15mm solid #9aa1aa;
+}
+.folha-a4 .folha-cartao-divisa {
+    position: absolute;
+    border-left: 0.15mm solid #9aa1aa;
 }
 .folha-a4 .folha-texto-base {
     margin: 0.8mm 0 1.5mm;
@@ -718,9 +792,7 @@ button.pequeno { padding: 4px 9px; font-size: .75rem; border-radius: var(--raio-
 .folha-a4 .folha-texto-base .folha-enunciado {
     margin: 0;
 }
-/* o filete do rodape hoje atravessa as duas marcas de baixo: a caixa comeca em 14mm e a marca
-   vai de 12 a 24mm. recuada para 28mm a linha passa entre as marcas e sobe para fora da faixa
-   que a impressora corta. */
+/* o rodape mora abaixo da moldura do cartao: o GabaLayout para a moldura antes dele (RODAPE_MM) */
 .folha-a4 .folha-rodape {
     position: absolute;
     left: 28mm;

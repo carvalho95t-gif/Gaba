@@ -133,6 +133,17 @@ async function lerCampos() {
         if (el === z.el || z.el.contains(el) || el.contains(z.el)) return;
         var r = el.getBoundingClientRect();
         if (r.width <= 0 || r.height <= 0 || !pinta(el)) return;
+        var st = getComputedStyle(el);
+        var envolve = r.left <= z.r.left && r.right >= z.r.right && r.top <= z.r.top && r.bottom >= z.r.bottom;
+        if (envolve) {
+          /* a moldura do cartao fecha em volta das marcas: o que conta e o branco entre a marca
+             e a linha, por dentro; um fundo pintado embaixo da marca encosta de qualquer jeito */
+          var cheio = st.backgroundImage !== "none" || (st.backgroundColor && st.backgroundColor !== "rgba(0, 0, 0, 0)");
+          var vao = mm(Math.min(z.r.left - r.left - parseFloat(st.borderLeftWidth), r.right - z.r.right - parseFloat(st.borderRightWidth),
+            z.r.top - r.top - parseFloat(st.borderTopWidth), r.bottom - z.r.bottom - parseFloat(st.borderBottomWidth)));
+          if (cheio || vao < 1) encosta.push(z.nome + " dentro de " + el.className + " a " + vao + "mm da linha");
+          return;
+        }
         var dx = Math.max(0, Math.max(r.left - z.r.right, z.r.left - r.right));
         var dy = Math.max(0, Math.max(r.top - z.r.bottom, z.r.top - r.bottom));
         var gap = mm(Math.sqrt(dx * dx + dy * dy));

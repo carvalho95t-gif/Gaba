@@ -136,7 +136,46 @@ function isSquare(contour, minArea) {
   return ok;
 }
 
-function findFiducials(src, layout) {
+/* o furo do limiar no meio de uma marca volta como outro quadrado no mesmo centro:
+   sem fundir, duas marcas na foto virariam quatro cantos e um warp degenerado */
+function semRepetidos(lista, raio) {
+  var unicos = [];
+  lista.slice().sort(function (a, b) {
+    return b.area - a.area;
+  }).forEach(function (c) {
+    var perto = unicos.some(function (u) {
+      return (u.x - c.x) * (u.x - c.x) + (u.y - c.y) * (u.y - c.y) < raio * raio;
+    });
+    if (!perto) unicos.push(c);
+  });
+  return unicos;
+}
+
+/* o simbolo achado pelo jsQR, inflado ate passar da zona de silencio: tudo que cai ali
+   dentro e quadrado do proprio QR. a guarda do layout deixa toda marca bem mais longe */
+function quadDoQr(loc) {
+  var q = [loc.topLeftCorner, loc.topRightCorner, loc.bottomRightCorner, loc.bottomLeftCorner];
+  var cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
+  var cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+  return q.map(function (p) {
+    return { x: cx + (p.x - cx) * 1.3, y: cy + (p.y - cy) * 1.3 };
+  });
+}
+
+function dentroDoQuad(p, quad) {
+  var lado = 0;
+  for (var i = 0; i < 4; i++) {
+    var a = quad[i];
+    var b = quad[(i + 1) % 4];
+    var giro = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    if (!giro) continue;
+    if (!lado) lado = giro > 0 ? 1 : -1;
+    else if ((giro > 0 ? 1 : -1) !== lado) return false;
+  }
+  return true;
+}
+
+function findFiducials(src, layout, qrLocation) {
   var gray = new cv.Mat();
   var blur = new cv.Mat();
   var thresh = new cv.Mat();
@@ -146,7 +185,9 @@ function findFiducials(src, layout) {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
     cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 8);
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    /* LIST, nao EXTERNAL: a moldura do cartao fecha em volta das marcas e so ela sairia.
+       a moldura passa do teto de area; o furo que o limiar abre numa marca e fundido abaixo */
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
     var px = src.cols / layout.pageWmm;
     var lado = layout.fiducialMm * px;
     var minArea = lado * lado * 0.35;
@@ -155,6 +196,7 @@ function findFiducials(src, layout) {
     var qrX1 = (layout.qr.xMm + layout.qr.wMm + 3) * px;
     var qrY0 = (layout.qr.yMm - 3) * px;
     var qrY1 = (layout.qr.yMm + layout.qr.hMm + 3) * px;
+    var quadQr = qrLocation ? quadDoQr(qrLocation) : null;
     var candidates = [];
     var noQr = [];
     for (var i = 0; i < contours.size(); i++) {
@@ -164,13 +206,18 @@ function findFiducials(src, layout) {
       if (!isSquare(cnt, minArea)) continue;
       var c = contourCenter(cnt);
       if (!c) continue;
-      /* a caixa do QR sai da pagina ereta: com a folha torta a marca do canto de cima a
-         esquerda escorrega para dentro dela. entao a caixa rebaixa o candidato, nao o
+      if (quadQr) {
+        if (!dentroDoQuad(c, quadQr)) candidates.push({ x: c.x, y: c.y, area: area });
+        continue;
+      }
+      /* a caixa do QR sai da pagina ereta: com a folha torta ou mal enquadrada uma marca
+         de verdade pode cair dentro dela. entao a caixa rebaixa o candidato, nao o
          descarta — sem quatro marcas de fora, as de dentro voltam para a disputa. */
       var dentro = c.x > qrX0 && c.x < qrX1 && c.y > qrY0 && c.y < qrY1;
       (dentro ? noQr : candidates).push({ x: c.x, y: c.y, area: area });
     }
-    if (candidates.length < 4) candidates = candidates.concat(noQr);
+    candidates = semRepetidos(candidates, lado / 2);
+    if (candidates.length < 4) candidates = semRepetidos(candidates.concat(noQr), lado / 2);
     if (candidates.length < 4) return null;
     candidates.sort(function (a, b) {
       return b.area - a.area;
@@ -225,8 +272,8 @@ function warpPage(src, corners, layout) {
     corners[2].x, corners[2].y,
     corners[3].x, corners[3].y
   ]);
-  /* as marcas ficam 12mm para dentro da folha: mapear para os cantos da pagina
-     encolheria tudo e deslocaria a grade uns 4mm para fora das bolhas impressas */
+  /* as marcas abracam o cartao, longe dos cantos da pagina: o alvo e o centro de cada uma
+     no layout, e o resto da pagina (QR incluido) sai por extrapolacao */
   var alvos = layout.fiducialCenters();
   var dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
     mm(alvos[0].x), mm(alvos[0].y),
@@ -263,7 +310,7 @@ function decodeQr(warpedRgba, layout) {
   if (typeof jsQR !== "function") return null;
   /* zona de silencio para os quatro lados: sem folga acima e a esquerda o jsQR
      perde o padrao de iniciacao quando a folha esta um pouco girada. a folga e do
-     layout porque a guarda dele impoe que nenhuma marca de canto entre nesse recorte. */
+     layout porque a guarda dele impoe que nenhuma marca entre nesse recorte. */
   var roiMm = layout.qrRoiMm();
   var x = mm(roiMm.x0);
   var y = mm(roiMm.y0);
@@ -273,9 +320,8 @@ function decodeQr(warpedRgba, layout) {
   var imageData = matToImageData(roi);
   roi.delete();
   var result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-  if (result && result.data) return result.data;
-  var full = matToImageData(warpedRgba);
-  result = jsQR(full.data, full.width, full.height, { inversionAttempts: "attemptBoth" });
+  /* so o recorte: um QR achado longe dele no quadro desentortado quer dizer warp errado,
+     e as bolhas lidas desse warp dariam nota errada com QR valido */
   return result && result.data ? result.data : null;
 }
 
@@ -429,15 +475,33 @@ function processFrame(imageData, opts) {
     return fallbackProcess(imageData);
   }
   var layout = layoutPara(opts.totalQuestoes, opts.alternativas);
+  var semMarcas = "Enquadre a folha inteira: as 4 marcas pretas em volta do cartao-resposta precisam aparecer.";
   var src = matFromImageData(imageData);
   var warped = null;
   try {
     var corners = findFiducials(src, layout);
     if (!corners) {
-      return resultadoErro("opencv", "Enquadre a folha: as 4 marcas pretas dos cantos precisam aparecer por inteiro.", { layout: layout.grid });
+      return resultadoErro("opencv", semMarcas, { layout: layout.grid });
     }
     warped = warpPage(src, corners, layout);
     var qrTexto = decodeQr(warped, layout);
+    if (!qrTexto && typeof jsQR === "function") {
+      /* QR fora do recorte: ou um quadrado dele escapou da caixa (folha girada, fora do centro)
+         e virou canto, ou a folha curvada entortou o QR extrapolado. o quadro cru mostra onde
+         ele esta de verdade, e as marcas sao escolhidas de novo sem nada dele */
+      var cru = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+      if (cru && cru.data) {
+        qrTexto = cru.data;
+        var semQr = findFiducials(src, layout, cru.location);
+        if (!semQr) return resultadoErro("opencv", semMarcas, { layout: layout.grid });
+        if (JSON.stringify(semQr) !== JSON.stringify(corners)) {
+          corners = semQr;
+          warped.delete();
+          warped = null;
+          warped = warpPage(src, corners, layout);
+        }
+      }
+    }
     var meta = null;
     if (qrTexto && qrApi()) {
       try {

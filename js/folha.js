@@ -10,7 +10,7 @@
 
   /* o aviso miudo da folha de respostas: cabe no cabecalho, as instrucoes longas nao */
   var HINT_PADRAO = "Preencha a bolha inteira com caneta preta ou azul e não rasure. " +
-    "Não cubra as marcas dos cantos nem o QR code.";
+    "Não cubra as marcas pretas do cartão nem o QR code.";
 
   /* modelos vistos em provas grandes: mudam o rotulo da questao, o numero de colunas e o texto de instrucoes */
   var MODELOS = {
@@ -40,7 +40,7 @@
       hint: "Não destaque esta folha de respostas. " + HINT_PADRAO,
       instrucoes: "Não destaque a folha de respostas deste caderno de teste.\n" +
         "Leia a questão com atenção e marque uma única alternativa: A, B, C ou D.\n" +
-        "Use caneta preta ou azul e não rasure. As marcas dos cantos e o QR code não podem ser cobertos."
+        "Use caneta preta ou azul e não rasure. As marcas pretas do cartão e o QR code não podem ser cobertos."
     },
     ama: {
       nome: "AMA / SEDU-ES (folha de respostas na capa)",
@@ -99,7 +99,9 @@
     }).join("");
   }
 
-  function cartaoHtml(layout, versao) {
+  function r1(v) { return Math.round(v * 10) / 10; }
+
+  function cartaoHtml(layout, versao, aviso) {
     var g = layout.grid;
     var largura = (g.cols - 1) * g.colGapMm + g.colContentMm;
     var altura = (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm;
@@ -108,37 +110,57 @@
       var cr = layout.colRow(q);
       linhas += '<div class="folha-q" style="left:' + (g.xMm + cr.col * g.colGapMm) + "mm;top:" +
         (g.yMm + cr.row * g.rowGapMm) + "mm;height:" + g.rowGapMm + 'mm">';
-      linhas += '<span class="folha-q-n" style="width:' + g.numberWidthMm + 'mm">' + (q + 1) + "</span>";
+      linhas += '<span class="folha-q-n" style="width:' + g.numberWidthMm + 'mm">' + dois(q + 1) + "</span>";
       for (var o = 0; o < layout.options; o++) {
         var left = g.numberWidthMm + o * g.optionGapMm;
         linhas += '<span class="folha-bubble" style="left:' + left + "mm;width:" + g.bubbleMm + "mm;height:" + g.bubbleMm + 'mm"></span>';
-        linhas += '<span class="folha-bubble-letra" style="left:' + left + "mm;top:" + g.bubbleMm +
-          "mm;width:" + g.bubbleMm + 'mm">' + layout.optionLetters[o] + "</span>";
       }
       linhas += "</div>";
     }
-    /* acima da primeira bolha so sobra um fiapo: 6 mm de silencio em volta do QR, e a grade comeca
-       nos 70 mm. por isso a instrucao do cartao e uma linha centrada sobre a moldura, nao uma faixa
-       dentro dela. a moldura e so tinta — as bolhas continuam nos mesmos mm de sempre. */
-    var topoMoldura = Math.max(layout.qr.yMm + layout.qr.hMm + layout.qrFolgaRecorteMm + 0.5, g.yMm - 8.5);
-    var tituloTopo = Math.max(layout.qr.yMm + layout.qr.hMm + 1, g.yMm - 7);
-    var fundoMoldura = g.yMm + g.questionsPerCol * g.rowGapMm + 1;
-    var larguraMoldura = largura + 10;
-    var codigo = versao && versao.codigo ? "Prova: " + versao.codigo : "";
-    /* a faixa do pe so entra se sobrar 4,5 mm limpos abaixo das letras da ultima linha; sem isso
-       ela assentaria em cima do "A B C D E" miudo, que ja cola no fundo da grade */
-    var folgaPe = fundoMoldura - (g.yMm + (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm + 3.4);
-    var pe = '<p class="folha-cartao-prova">' + esc(codigo) + "</p>";
-    var instrucao = "Marque o gabarito preenchendo completamente a regi&#227;o de cada alternativa." +
-      (codigo && folgaPe < 4.5 ? " &#183; " + esc(codigo) : "");
-    var moldura = '<div class="folha-cartao-moldura" style="left:' + (g.xMm - 5) + "mm;top:" +
-      Math.round(topoMoldura * 10) / 10 + "mm;width:" + larguraMoldura + "mm;height:" +
-      Math.round((fundoMoldura - topoMoldura) * 10) / 10 + 'mm">' +
-      (codigo && folgaPe >= 4.5 ? pe : "") + "</div>";
-    return '<section class="folha-cartao" style="width:' + largura + "mm;height:" + (altura + g.rowGapMm * 2) + 'mm">' +
-      '<p class="folha-cartao-titulo" style="left:' + (g.xMm - 5) + "mm;top:" + tituloTopo +
-      "mm;width:" + larguraMoldura + 'mm">' + instrucao + "</p>" +
-      moldura + '<div class="folha-cartao-area">' + linhas + "</div></section>";
+    /* as letras saem uma vez por coluna, no alto, e os filetes agrupam de cinco em cinco: o olho
+       acha a linha sem que nenhuma tinta entre na amostra das bolhas */
+    var guias = "";
+    var vao = g.rowGapMm - g.bubbleMm;
+    for (var c = 0; c < g.cols; c++) {
+      var x = g.xMm + c * g.colGapMm;
+      var naColuna = Math.min(g.questionsPerCol, layout.total - c * g.questionsPerCol);
+      for (o = 0; o < layout.options; o++) {
+        guias += '<span class="folha-cartao-letra" style="left:' + r1(x + g.numberWidthMm + o * g.optionGapMm) +
+          "mm;top:" + r1(g.yMm - 3.3) + "mm;width:" + g.bubbleMm + 'mm">' + layout.optionLetters[o] + "</span>";
+      }
+      for (var k = 5; k < naColuna; k += 5) {
+        guias += '<span class="folha-cartao-filete" style="left:' + r1(x + 1) + "mm;top:" +
+          r1(g.yMm + k * g.rowGapMm - vao / 2) + "mm;width:" + r1(g.colContentMm - 1) + 'mm"></span>';
+      }
+      if (c > 0) {
+        var meio = x - (g.colGapMm - g.colContentMm) / 2;
+        guias += '<span class="folha-cartao-divisa" style="left:' + r1(meio) + "mm;top:" + r1(g.yMm - 3.3) +
+          "mm;height:" + r1(altura + 3.3) + 'mm"></span>';
+      }
+    }
+    var fid = layout.fiducialCenters();
+    var s = layout.fiducialMm;
+    var topoMoldura = layout.cartaoTopoMm;
+    var fundoMoldura = layout.cartaoFundoMm();
+    var codigo = versao && versao.codigo ? "Prova " + esc(versao.codigo) +
+      (versao.rotulo ? " &#183; Caderno " + esc(versao.rotulo) : "") : "";
+    /* entre as duas marcas de cima e entre as duas de baixo: o titulo e o codigo moram na
+       faixa das marcas, que ja e espaco perdido para as bolhas */
+    function faixa(classe, y, html) {
+      return '<div class="' + classe + '" style="left:' + r1(fid[0].x + s / 2 + 3) + "mm;width:" +
+        r1(fid[1].x - fid[0].x - s - 6) + "mm;top:" + r1(y - s / 2) + "mm;height:" + s + 'mm">' + html + "</div>";
+    }
+    /* a moldura acompanha a largura do cabecalho e das instrucoes; so passa dela quando a grade
+       de tres colunas pede */
+    var esquerda = Math.min(14, g.xMm - 3);
+    var direita = Math.max(layout.pageWmm - 14, g.xMm + largura + 3);
+    var moldura = '<div class="folha-cartao-moldura" style="left:' + r1(esquerda) + "mm;top:" +
+      r1(topoMoldura) + "mm;width:" + r1(direita - esquerda) + "mm;height:" + r1(fundoMoldura - topoMoldura) + 'mm"></div>';
+    return '<section class="folha-cartao">' + moldura +
+      faixa("folha-cartao-titulo", fid[0].y, "<p><strong>Cart&#227;o-resposta</strong></p>" +
+        "<p>" + esc(aviso || "Preencha completamente a bolha da alternativa escolhida.") + "</p>") +
+      (codigo ? faixa("folha-cartao-prova", fid[3].y, "<p>" + codigo + "</p>") : "") +
+      '<div class="folha-cartao-area">' + guias + linhas + "</div></section>";
   }
 
   function estiloDe(cfg) {
@@ -247,54 +269,55 @@
       linhas.map(function (s) { return "<p>" + esc(s) + "</p>"; }).join(NL) + "</section>";
   }
 
-  /* o cartao so usa a faixa das proprias linhas: o que sobra entre ele e as marcas de canto e espaco livre */
+  /* o cartao so usa a faixa das proprias linhas: o que sobra abaixo da moldura dele e espaco livre */
   function espacoLivreAbaixoDoCartaoMm(layout) {
-    var g = layout.grid;
-    var fundo = g.yMm + g.questionsPerCol * g.rowGapMm;
-    var limite = layout.pageHmm - layout.fiducialInsetMm - layout.fiducialMm - 6;
+    var fundo = layout.cartaoFundoMm();
+    var limite = layout.pageHmm - 30;
     return Math.round((limite - fundo) * 10) / 10;
   }
 
-  /* nas provas curtas as instrucoes vao na capa, como no PAEBES e no AMA; nas longas elas ficam no corpo */
+  /* a faixa entre o cabecalho e o cartao: as instrucoes sao lidas antes de marcar. o GabaLayout
+     decide se ela existe so pelo numero de questoes; nas provas longas elas ficam no corpo */
   function instrucoesDaCapa(c, layout) {
-    var livre = espacoLivreAbaixoDoCartaoMm(layout);
-    if (livre < 32) return "";
-    var g = layout.grid;
-    /* deixa a faixa do resultado do professor livre no pe da folha */
-    var altura = Math.max(20, livre - 34);
-    return instrucoesHtml(c, 'class="folha-instrucoes folha-instrucoes-capa" style="top:' +
-      (g.yMm + g.questionsPerCol * g.rowGapMm + 4) + "mm;max-height:" + altura + 'mm"');
+    var faixa = layout.instrucoes;
+    if (!faixa) return "";
+    var linhas = String(c.instrucoes || "").split(LB).map(function (s) { return s.trim(); }).filter(Boolean);
+    /* o modelo ja manda preencher a bolha; da dica so falta o que protege a leitura */
+    if (!/marcas/i.test(c.instrucoes || "")) linhas.push("Não cubra as marcas pretas do cartão nem o QR code.");
+    if (!linhas.length) return "";
+    return '<section class="folha-instrucoes folha-instrucoes-capa" style="top:' + r1(faixa.yMm) + "mm;height:" +
+      r1(faixa.hMm) + 'mm"><h2>' + esc(c.rotuloInstrucoes) + "</h2><ol>" +
+      linhas.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join(NL) + "</ol></section>";
   }
 
-  /* capa: quem aplicou, para quem, caderno de qual tipo e o aviso de marcacao */
+  function celula(rotulo, valor, attrs) {
+    return "<td" + (attrs || "") + '><span class="folha-ficha-rotulo">' + rotulo + "</span>" +
+      '<p class="folha-ficha-valor">' + (valor ? esc(valor) : "&#160;") + "</p></td>";
+  }
+
+  /* capa: a escola no alto e a identificacao numa ficha de grade fixa, como nas avaliacoes da rede */
   function cabecalhoHtml(cfg, prova, aluno, turmaNome, versao) {
     var c = cabecalhoCfg(cfg, prova);
-    var l = [];
-    if (c.rede) l.push('<p class="folha-rede">' + esc(c.rede) + "</p>");
-    if (c.escola) l.push("<h1>" + esc(c.escola) + "</h1>");
-    if (c.mantida) l.push('<p class="folha-rede">' + esc(c.mantida) + "</p>");
-    l.push('<p class="folha-titulo"><strong>' + esc([c.titulo, c.disciplina].filter(Boolean).join(" — ")) + "</strong></p>");
-    l.push('<p class="folha-meta">' + [
-      c.ano ? "Ano/Série: " + esc(c.ano) : "",
-      (c.turma || turmaNome) ? "Turma: " + esc(c.turma || turmaNome) : "",
-      "Turno: " + (c.turno ? esc(c.turno) : "________"),
-      c.bimestre ? esc(c.bimestre) : "",
-      c.data ? "Data: " + esc(c.data) : "",
-      c.professor ? "Professor(a): " + esc(c.professor) : ""
-    ].filter(Boolean).join("  ·  ") + "</p>");
-    l.push('<p class="folha-aluno">Aluno(a): <strong>' + esc(aluno.nome || "") + "</strong>" +
-      (aluno.numero != null && aluno.numero !== "" ? "  ·  nº " + esc(aluno.numero) : "") +
-      (aluno.matricula ? "  ·  matrícula " + esc(aluno.matricula) : "") + "</p>");
-    l.push('<div class="folha-assina-linha">' +
-      '<p class="folha-assina">Assinatura do(a) estudante: <span class="folha-linha"></span></p>' +
-      '<p class="folha-nota"><em>Nota</em><span class="folha-linha folha-linha-nota"></span></p></div>');
-    l.push('<p class="folha-tipo">Caderno <strong>' + esc(versao.rotulo || "UNICO") + "</strong>" +
-      "  ·  código " + esc(versao.codigo || "") + "  ·  " +
-      (versao.embaralhouQuestoes ? "questões embaralhadas" : "ordem original") +
-      (versao.embaralhouAlternativas ? " e alternativas" : "") +
-      "  ·  " + (versao.gabarito || []).length + " questões</p>");
-    l.push('<p class="folha-hint">' + esc(c.hint) + "</p>");
-    return '<header class="folha-cabecalho">' + l.join(NL) + "</header>";
+    var topo = "";
+    if (c.rede) topo += '<p class="folha-rede">' + esc(c.rede) + "</p>";
+    if (c.escola) topo += "<h1>" + esc(c.escola) + "</h1>";
+    if (c.mantida) topo += '<p class="folha-rede">' + esc(c.mantida) + "</p>";
+    topo += '<p class="folha-titulo">' + esc([c.titulo, c.disciplina].filter(Boolean).join(" — ")) + "</p>";
+    var numero = aluno.numero != null && aluno.numero !== "" ? String(aluno.numero) : "";
+    var linhas = [
+      '<tr><th colspan="5" class="folha-ficha-escola">' + topo + "</th></tr>",
+      "<tr>" + celula("Aluno(a)", aluno.nome, ' colspan="3" class="folha-ficha-aluno"') +
+        celula("Matr&#237;cula", aluno.matricula) + celula("N&#186;", numero) + "</tr>",
+      "<tr>" + celula("Ano/S&#233;rie", c.ano) + celula("Turma", c.turma || turmaNome) +
+        celula("Turno", c.turno) + celula("Bimestre", c.bimestre) + celula("Data", c.data) + "</tr>",
+      "<tr>" + celula("Professor(a)", c.professor, ' colspan="2"') + celula("Caderno", versao.rotulo || "UNICO") +
+        celula("C&#243;digo", versao.codigo) + celula("Quest&#245;es", String((versao.gabarito || []).length)) + "</tr>",
+      '<tr class="folha-ficha-assina">' + celula("Assinatura do(a) estudante", "", ' colspan="4"') +
+        '<td class="folha-ficha-nota"><span class="folha-ficha-rotulo">Nota</span>' +
+        '<span class="folha-linha folha-linha-nota"></span></td></tr>'
+    ];
+    return '<header class="folha-cabecalho"><table class="folha-ficha"><colgroup>' +
+      "<col><col><col><col><col></colgroup><tbody>" + linhas.join(NL) + "</tbody></table></header>";
   }
 
   /* cabecalho fino das paginas de questoes: nao repete a escola, so amarra a folha ao aluno */
@@ -448,8 +471,7 @@
   /* a faixa de resultado mora no pe da folha; no cartao de 90 questoes ela cobriria as ultimas
      bolhas, entao so entra quando a grade termina acima dela */
   function resultadoCabe(layout) {
-    var g = layout && layout.grid;
-    return Boolean(g) && Number(g.yMm) + Number(g.questionsPerCol) * Number(g.rowGapMm) <= 248;
+    return Boolean(layout && layout.grid) && layout.cartaoFundoMm() <= 237;
   }
 
   /* faixa de uso do professor no pe da folha de respostas, no lugar do vazio que sobrava */
@@ -464,20 +486,20 @@
       "</section>";
   }
 
-  /* pagina 1: marcas de canto + QR + cabecalho completo + cartao OMR. So ela e legivel pelo scanner. */
+  /* pagina 1: QR + cabecalho completo + cartao OMR com as marcas em volta. So ela e legivel pelo scanner. */
   function paginaRespostaHtml(prova, aluno, ctx) {
     return abrirFolha("resposta", aluno, ctx.versao, ctx, ctx.cfg, ctx.layout) +
       fiduciaisHtml(ctx.layout) +
       '<img class="folha-qr" src="' + ctx.qr + '" alt="QR ' + esc(ctx.payload) + '">' +
       cabecalhoHtml(ctx.cfg, prova, aluno, ctx.turmaNome, ctx.versao) +
-      cartaoHtml(ctx.layout, ctx.versao) +
+      cartaoHtml(ctx.layout, ctx.versao, ctx.layout.instrucoes ? "" : cabecalhoCfg(ctx.cfg, prova).hint) +
       (ctx.instrucoesDaCapa || "") +
       (resultadoCabe(ctx.layout) ? resultadoCapaHtml(ctx.versao) : "") +
       rodapeHtml(aluno, ctx.versao, ctx) +
       "</article>";
   }
 
-  /* pagina de corpo: sem marca de canto e sem QR, para o leitor nunca confundir com a folha de respostas */
+  /* pagina de corpo: sem marcas e sem QR, para o leitor nunca confundir com a folha de respostas */
   function paginaQuestoesHtml(prova, aluno, ctx) {
     var c = cabecalhoCfg(ctx.cfg, prova);
     var area = ctx.corpo ? colunasDoCorpoHtml(ctx) : '<div class="folha-area"><section class="folha-fluxo">' +

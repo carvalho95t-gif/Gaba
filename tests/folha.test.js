@@ -118,6 +118,13 @@ async function main() {
   check("legado GABA|prova|aluno", leg1.prova_id === "p1" && leg1.aluno_id === "a1" && leg1.numero === "7");
   check("legado Gaba|aluno|prova", leg2.prova_id === "p1" && leg2.aluno_id === "a1");
   check("legado JSON do gerador python", leg3.prova_id === "p1" && leg3.aluno_id === "a1");
+  check("QR leva a geometria das marcas no prefixo", payload.indexOf("GABA" + L.GEOMETRIA + "|") === 0 &&
+    dec.geometria === L.GEOMETRIA && dec.geometria >= 2, payload + " -> " + dec.geometria);
+  var g1 = QR.decode("GABA1|p1|N:7|7|2|ABCD");
+  check("GABA1 continua lido, com geometria desconhecida", g1.prova_id === "p1" && g1.aluno_numero === "7" &&
+    g1.versao === 2 && g1.codigo === "ABCD" && g1.geometria === 0, JSON.stringify(g1));
+  check("legados sem prefixo versionado ficam com geometria desconhecida",
+    leg1.geometria === 0 && leg2.geometria === 0 && leg3.geometria === 0);
 
   // 4. caderno: folha de resposta na pagina 1, questoes a partir da 2, ultimo verso em branco
   var cad = await F.cadernoHtml(prova, aluno, {
@@ -135,8 +142,8 @@ async function main() {
   check("cartao OMR existe numa unica folha e e a primeira",
     fl.filter(function (f) { return f.html.indexOf("folha-cartao") >= 0; }).length === 1 && fl[0].tipo === "resposta");
   check("QR so na folha de resposta", (cad.html.match(/class="folha-qr"/g) || []).length === 1);
-  check("marcas de canto so na folha de resposta", (cad.html.match(/class="fiducial /g) || []).length === 4);
-  check("pagina de questao nao tem bolha nem marca de canto",
+  check("marcas do cartao so na folha de resposta", (cad.html.match(/class="fiducial /g) || []).length === 4);
+  check("pagina de questao nao tem bolha nem marca",
     fl.filter(function (f) { return f.tipo === "questoes"; }).every(function (f) {
       return f.html.indexOf("folha-bubble") < 0 && f.html.indexOf("fiducial") < 0 && f.html.indexOf("folha-qr") < 0;
     }));
@@ -304,13 +311,14 @@ async function main() {
     }).reduce(function (a, b) { return a + b; }, 0)) === 10);
   check("as instrucoes do modelo saem uma unica vez",
     (modelo.html.match(/<section class="folha-instrucoes/g) || []).length === 1);
-  check("prova curta leva as instrucoes na capa, abaixo do cartao",
+  check("prova curta leva as instrucoes na capa, antes do cartao",
     fl3[0].html.indexOf("LEIA ATENTAMENTE") >= 0 && fl3[0].html.indexOf("folha-instrucoes-capa") >= 0 &&
     fl3.filter(function (f) { return f.tipo === "questoes"; })[0].html.indexOf("LEIA ATENTAMENTE") < 0);
-  var caixaCapa = (fl3[0].html.match(/folha-instrucoes-capa" style="top:([\d.]+)mm/) || [])[1];
-  var fundoDoCartao = layout.grid.yMm + layout.grid.questionsPerCol * layout.grid.rowGapMm;
-  check("a caixa da capa comeca abaixo da ultima linha do cartao",
-    Number(caixaCapa) >= fundoDoCartao, caixaCapa + "mm vs cartao ate " + fundoDoCartao + "mm");
+  var faixaCapa = (fl3[0].html.match(/folha-instrucoes-capa" style="top:([\d.]+)mm;height:([\d.]+)mm/) || []).slice(1).map(Number);
+  var layoutCapa = F.layoutDa(prova, {});
+  check("a faixa de instrucoes fica entre o recorte do QR e a moldura do cartao",
+    faixaCapa.length === 2 && faixaCapa[0] >= layoutCapa.qrRoiMm().y1 && faixaCapa[0] + faixaCapa[1] <= layoutCapa.cartaoTopoMm,
+    JSON.stringify(faixaCapa) + " QR ate " + layoutCapa.qrRoiMm().y1 + "mm, cartao de " + layoutCapa.cartaoTopoMm + "mm");
   var provaLonga = fakeProva(90, 5);
   var longa = await F.cadernoHtml(provaLonga, aluno, {
     versao: V.build(provaLonga, { modo: "turma", tipo: 2, turma_id: "t1", prova_id: "p" }),

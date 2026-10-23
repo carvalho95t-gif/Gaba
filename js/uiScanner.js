@@ -246,6 +246,15 @@
     var QR = global.GabaQR;
     var meta = result.qr;
     var prova = estado.prova;
+    var geometria = global.GabaLayout ? GabaLayout.GEOMETRIA : 0;
+    /* geometria 0 (GABA1, legados, gerador python) tem as marcas nos cantos da pagina:
+       nenhuma folha assim cai no lugar da grade em volta do cartao */
+    if (meta.geometria !== geometria) {
+      rejeitar(payload, agora, "Folha impressa com outra posicao de marcas (" +
+        (meta.geometria ? "G" + meta.geometria : "modelo antigo") + ", este leitor e G" + geometria +
+        "): as bolhas cairiam fora do lugar. Reimprima esta folha.");
+      return;
+    }
     var aluno = QR.resolve(meta, estado.alunos);
     if (!aluno) {
       rejeitar(payload, agora, "Folha de fora desta prova (codigo " + (meta.codigo || "?") +
