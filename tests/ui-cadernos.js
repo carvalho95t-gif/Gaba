@@ -36,7 +36,7 @@ async function dirigir() {
   document.getElementById("cad-por-pagina").value = "30";
   document.getElementById("cad-por-pagina").dispatchEvent(new Event("change"));
   var ret = await GabaCaderno.gerarLote();
-  var cfg = JSON.parse(localStorage.getItem("gaba_caderno_cfg"));
+  var cfg = JSON.parse(localStorage.getItem(GabaSync.chaveLocal("gaba_caderno_cfg")));
   return {
     status: document.getElementById("cad-status").textContent.replace(/\s+/g, " "),
     avisos: [].slice.call(document.querySelectorAll("#cad-avisos li")).map(function (li) { return li.textContent; }),
@@ -196,9 +196,9 @@ async function lerCampos() {
     Number(deVolta.porPagina) === Number(r.cfg.questoesPorPagina) && deVolta.branco === true, deVolta);
 
   await c.naPagina(function () {
-    localStorage.removeItem("gaba_caderno_cfg");
-    localStorage.removeItem("gaba_lote_impresso");
-    localStorage.removeItem("gaba_ultimo_lote");
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_caderno_cfg"));
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_lote_impresso"));
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_ultimo_lote"));
     return "limpo";
   }, []);
   c.fecha();

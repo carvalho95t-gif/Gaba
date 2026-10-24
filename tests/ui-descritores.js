@@ -180,9 +180,9 @@ function check(nome, cond, extra) {
   check("nenhum erro de javascript no seletor", erros.length === 0, erros);
 
   await c.naPagina(function () {
-    localStorage.removeItem("gaba_caderno_cfg");
-    localStorage.removeItem("gaba_lote_impresso");
-    localStorage.removeItem("gaba_ultimo_lote");
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_caderno_cfg"));
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_lote_impresso"));
+    localStorage.removeItem(GabaSync.chaveLocal("gaba_ultimo_lote"));
     return "limpo";
   }, []);
   c.fecha();

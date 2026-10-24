@@ -30,6 +30,10 @@
     }
   }
 
+  function chavePerfil(base) {
+    return global.GabaSync ? global.GabaSync.chaveLocal(base) : base + ":sem-conta";
+  }
+
   function readConfig() {
     var digitadaUrl = enderecoBase(localStorage.getItem(STORAGE.url));
     var digitadaKey = (localStorage.getItem(STORAGE.key) || localStorage.getItem(STORAGE.keyAlt) || "").trim();
@@ -42,9 +46,9 @@
       /* o aparelho nao digitou nada e o que conecta vem do pacote: a tela de Ajustes
          diz "embutida" em vez de "guardada neste aparelho" */
       doPacote: Boolean(url && key && !digitadaUrl && !digitadaKey),
-      professorId: localStorage.getItem(STORAGE.professorId) || "",
-      professorNome: localStorage.getItem(STORAGE.professorNome) || "",
-      professorEmail: localStorage.getItem(STORAGE.professorEmail) || ""
+      professorId: localStorage.getItem(chavePerfil(STORAGE.professorId)) || "",
+      professorNome: localStorage.getItem(chavePerfil(STORAGE.professorNome)) || "",
+      professorEmail: localStorage.getItem(chavePerfil(STORAGE.professorEmail)) || ""
     };
   }
 
@@ -62,12 +66,12 @@
   }
 
   function setProfessor(id, nome, email) {
-    if (id) localStorage.setItem(STORAGE.professorId, id);
-    else localStorage.removeItem(STORAGE.professorId);
-    if (nome) localStorage.setItem(STORAGE.professorNome, nome);
-    else localStorage.removeItem(STORAGE.professorNome);
-    if (email) localStorage.setItem(STORAGE.professorEmail, email);
-    else localStorage.removeItem(STORAGE.professorEmail);
+    if (id) localStorage.setItem(chavePerfil(STORAGE.professorId), id);
+    else localStorage.removeItem(chavePerfil(STORAGE.professorId));
+    if (nome) localStorage.setItem(chavePerfil(STORAGE.professorNome), nome);
+    else localStorage.removeItem(chavePerfil(STORAGE.professorNome));
+    if (email) localStorage.setItem(chavePerfil(STORAGE.professorEmail), email);
+    else localStorage.removeItem(chavePerfil(STORAGE.professorEmail));
   }
 
   function getClient() {
@@ -97,6 +101,7 @@
   }
 
   async function upsertProfessor(nome, email) {
+    var chave = chavePerfil(STORAGE.professorId);
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
     var { data, error } = await client
@@ -105,6 +110,7 @@
       .select()
       .single();
     if (error) throw error;
+    if (chave !== chavePerfil(STORAGE.professorId)) throw new Error("A conta mudou durante o login.");
     setProfessor(data.id, data.nome, data.email);
     return data;
   }
@@ -135,13 +141,14 @@
   /* a linha de professores e o que da nome ao login; falar aqui nao desfaz o login,
      porque quem segura o aparelho a partir de agora e a sessao do auth */
   async function vincularProfessor(user) {
+    var chave = chavePerfil(STORAGE.professorId);
     var email = String(user.email || "").trim().toLowerCase();
     if (!email) return null;
     var nome = (user.user_metadata || {}).nome || readConfig().professorNome || email.split("@")[0];
     try {
       return await upsertProfessor(nome, email);
     } catch (err) {
-      setProfessor(readConfig().professorId, nome, email);
+      if (chave === chavePerfil(STORAGE.professorId)) setProfessor(readConfig().professorId, nome, email);
       return null;
     }
   }
@@ -197,7 +204,7 @@
     return data || [];
   }
 
-  async function insertCorrecao(row) {
+  async function insertCorrecao(row, dono) {
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
     if (!eUuid(row.prova_id)) throw erroProvaLocal(row.prova_id);
@@ -219,6 +226,7 @@
       total_questoes: row.total_questoes || 0,
       nota: row.nota || 0
     };
+    if (dono) payload.dono = dono;
     var query = client.from("correcoes");
     var outcome = payload.qr_payload
       ? await query.upsert(payload, { onConflict: "prova_id,qr_payload" }).select().single()
@@ -230,6 +238,7 @@
 
   /* o lote que foi para a impressora: qualquer aparelho pode montar as mesmas versões */
   async function upsertProvaVersoes(provaId, itens, meta) {
+    var verificar = global.GabaSync.verificadorConta();
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
     if (!provaId) throw new Error("Falta o id da prova.");
@@ -253,10 +262,14 @@
         impresso_em: m.em || new Date().toISOString()
       };
     });
+    verificar();
     var apagado = await client.from("prova_versoes").delete().eq("prova_id", provaId);
+    verificar();
     if (apagado.error) throw apagado.error;
     for (var i = 0; i < rows.length; i += 500) {
+      verificar();
       var inserido = await client.from("prova_versoes").insert(rows.slice(i, i + 500));
+      verificar();
       if (inserido.error) throw inserido.error;
     }
     return rows.length;
@@ -485,6 +498,7 @@
   /* a lista de chamada inteira de uma vez: o numero de chamada + turma e a chave,
      entao reimportar a mesma planilha corrige os nomes em vez de duplicar a turma */
   async function salvarAlunosEmLote(turmaId, alunos) {
+    var verificar = global.GabaSync.verificadorConta();
     var client = getClient();
     if (!client) throw new Error("Supabase não configurado.");
     if (!eUuid(turmaId)) throw new Error("Escolha primeiro a turma que vai receber a lista.");
@@ -514,11 +528,15 @@
     var gravados = [];
     for (var i = 0; i < linhas.length; i += 200) {
       var lote = linhas.slice(i, i + 200);
+      verificar();
       var resposta = await client.from("alunos").upsert(lote, { onConflict: "turma_id,numero" }).select();
+      verificar();
       if (resposta.error && faltaColuna(resposta.error, "tipo")) {
         /* o banco do professor ainda pode nao ter rodado a migracao do tipo */
         lote.forEach(function (l) { delete l.tipo; });
+        verificar();
         resposta = await client.from("alunos").upsert(lote, { onConflict: "turma_id,numero" }).select();
+        verificar();
         problemas.push("O banco ainda não tem a coluna \"tipo\" (rode supabase/schema.sql): o tipo de caderno da planilha não foi guardado.");
       }
       if (resposta.error) throw resposta.error;

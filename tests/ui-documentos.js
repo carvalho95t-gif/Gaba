@@ -149,7 +149,7 @@ async function limpar() {
   var ids = (GabaCaderno.estado.provasLocais || []).map(function (p) { return String(p.id); });
   for (var i = 0; i < ids.length; i++) await GabaCaderno.esquecerProvaLocal(ids[i]);
   ["gaba_caderno_cfg", "gaba_lote_impresso", "gaba_ultimo_lote"].forEach(function (k) {
-    localStorage.removeItem(k);
+    localStorage.removeItem(GabaSync.chaveLocal(k));
   });
   document.getElementById("print-root").innerHTML = "";
   return ids.length;

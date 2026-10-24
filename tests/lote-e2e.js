@@ -28,7 +28,7 @@ async function montarLote(sampleUrl) {
   document.getElementById("cad-escola").value = "ESCOLA E2E";
   document.getElementById("cad-data").value = "21/10/2026";
   var r = await GabaCaderno.gerarLote();
-  var rec = JSON.parse(localStorage.getItem("gaba_lote_impresso"));
+  var rec = JSON.parse(localStorage.getItem(GabaSync.chaveLocal("gaba_lote_impresso")));
   return {
     pid: rec.prova_id, modo: rec.modo, numTipos: rec.numTipos, salt: rec.salt, turma: rec.turma_id,
     alt: rec.embaralharAlternativas, questoes: rec.totalQuestoes, alternativas: rec.alternativas,

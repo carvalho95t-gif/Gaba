@@ -20,7 +20,7 @@
   }
 
   async function buscarTudo() {
-    var conta = global.GabaSync.contaAtual();
+    var verificar = global.GabaSync.verificadorConta();
     var client = GabaDB.getClient();
     if (!client) throw new Error("Faça login antes de baixar a cópia.");
     var dados = {};
@@ -28,7 +28,7 @@
       var t = TABELAS[i];
       var limite = t === "correcoes" ? 50000 : 10000;
       var { data, error } = await client.from(t).select("*").limit(limite);
-      if (conta !== global.GabaSync.contaAtual()) throw new Error("A conta mudou durante a cópia. Tente novamente.");
+      verificar();
       if (error) throw new Error("Erro ao ler " + t + ": " + (error.message || error));
       dados[t] = data || [];
     }
@@ -48,9 +48,9 @@
   }
 
   async function exportar() {
-    var conta = global.GabaSync.contaAtual();
+    var verificar = global.GabaSync.verificadorConta();
     var dados = await buscarTudo();
-    if (conta !== global.GabaSync.contaAtual()) throw new Error("A conta mudou durante a cópia. Tente novamente.");
+    verificar();
     var envelope = {
       gaba_backup: VERSAO,
       data: new Date().toISOString(),
@@ -86,7 +86,7 @@
   var ORDEM_RESTAURAR = ["escolas", "professores", "turmas", "provas", "alunos", "prova_versoes", "correcoes"];
 
   async function restaurar(envelope, progresso) {
-    var conta = global.GabaSync.contaAtual();
+    var verificar = global.GabaSync.verificadorConta();
     var client = GabaDB.getClient();
     if (!client) throw new Error("Faça login antes de restaurar.");
     var tabelas = envelope.tabelas;
@@ -100,9 +100,9 @@
       for (var j = 0; j < linhas.length; j += 200) {
         var lote = linhas.slice(j, j + 200);
         lote.forEach(function (l) { delete l.created_at; });
-        if (conta !== global.GabaSync.contaAtual()) throw new Error("A conta mudou durante a restauração. Tente novamente.");
+        verificar();
         var { error } = await client.from(t).upsert(lote, { onConflict: "id" }).select();
-        if (conta !== global.GabaSync.contaAtual()) throw new Error("A conta mudou durante a restauração. Tente novamente.");
+        verificar();
         if (error) throw new Error("Erro ao restaurar " + t + ": " + (error.message || error));
         gravados += lote.length;
       }
