@@ -1970,8 +1970,8 @@
     box.innerHTML = GabaProficiencia.cortes().map(function (c, i) {
       return '<div class="cortes-linha">' +
         '<input type="text" data-campo="nivel" data-i="' + i + '" value="' + esc(c.nivel) + '">' +
-        '<input type="number" step="0.1" min="0" max="10" data-campo="min" data-i="' + i + '" value="' +
-        esc(String(c.min)) + '" title="a partir desta nota">' +
+        '<input type="text" inputmode="decimal" data-campo="min" data-i="' + i + '" value="' +
+        decimal(c.min) + '" title="a partir desta nota">' +
         "</div>";
     }).join("");
   }
@@ -1988,6 +1988,15 @@
     });
     var lista = Object.keys(pares).map(Number).sort(function (a, b) { return a - b; })
       .map(function (i) { return pares[i]; });
+    var ok = lista.every(function (c) {
+      if (!String(c.nivel).trim()) return true;
+      var n = Number(c.min);
+      return String(c.min).trim() !== "" && n >= 0 && n <= 10;
+    });
+    if (!ok) {
+      if (avisoEl) avisoEl.textContent = "Escreva uma nota de 0 a 10 em cada nível (vírgula ou ponto valem).";
+      return;
+    }
     try {
       GabaProficiencia.salvar(lista);
     } catch (e) {

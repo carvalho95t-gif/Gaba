@@ -128,10 +128,20 @@ async function dirigir() {
     .map(texto);
   var campoCorte = document.querySelector('#ana-cortes-lista [data-campo="min"][data-i="2"]');
   if (campoCorte) {
-    campoCorte.value = "4.5";
-    document.getElementById("ana-cortes-salvar").click();
+    var campoMin = function () {
+      return document.querySelector('#ana-cortes-lista [data-campo="min"][data-i="2"]');
+    };
+    var salvar = document.getElementById("ana-cortes-salvar");
+    var aviso = document.getElementById("ana-cortes-aviso");
+    campoMin().value = "4,5";
+    salvar.click();
     out.nivelComCorte = window.GabaProficiencia.rotulo(4.7);
-    out.avisoCortes = texto(document.getElementById("ana-cortes-aviso"));
+    out.avisoCortes = texto(aviso);
+    out.corteNaTela = campoMin().value;
+    campoMin().value = "abc";
+    salvar.click();
+    out.avisoInvalido = texto(aviso);
+    out.corteAposInvalido = window.GabaProficiencia.cortes()[2].min;
     document.getElementById("ana-cortes-padrao").click();
     out.nivelPadrao = window.GabaProficiencia.rotulo(4.7);
   }
@@ -176,8 +186,22 @@ async function dirigir() {
     r.niveisNasNotas.forEach(function (n) { contagem[n] = (contagem[n] || 0) + 1; });
     console.log("\nnivel de cada folha na tabela de notas: " + JSON.stringify(contagem));
     if (r.nivelComCorte !== undefined) {
-      console.log("corte editado: nota 4,7 vira " + r.nivelComCorte + " (" + r.avisoCortes +
-        "); ao voltar ao padrao, " + r.nivelPadrao);
+      console.log("corte editado com virgula: na tela \"" + r.corteNaTela + "\", nota 4,7 vira " +
+        r.nivelComCorte + " (" + r.avisoCortes + ")");
+      console.log("corte invalido: \"" + r.corteAposInvalido + "\" mantido, aviso: " + r.avisoInvalido);
+      console.log("ao voltar ao padrao, nota 4,7 volta a ser " + r.nivelPadrao);
+    }
+    var furos = [];
+    if (r.nivelComCorte !== undefined) {
+      if (r.corteNaTela !== "4,5") furos.push("a virgula nao voltou na tela: \"" + r.corteNaTela + "\"");
+      if (r.nivelComCorte !== "Intermediario" && r.nivelComCorte !== "Intermediário") {
+        furos.push("4,5 com virgula nao mudou o nivel: " + r.nivelComCorte);
+      }
+      if (r.corteAposInvalido !== 4.5) furos.push("o corte foi zerado por um valor invalido: " + r.corteAposInvalido);
+    }
+    if (furos.length) {
+      console.error("FALHA nos cortes: " + furos.join(" | "));
+      process.exitCode = 1;
     }
 
     await c.chama("Page.enable");
