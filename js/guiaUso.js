@@ -710,6 +710,57 @@
       veja: ["ver-notas", "revisar-questoes"]
     },
     {
+      id: "nota-por-parte",
+      tela: "relatorios",
+      titulo: "Nota por parte: a média de cada disciplina",
+      perguntas: [
+        "o que é a nota por parte",
+        "separar matemática de português na mesma prova",
+        "a média de cada parte não aparece",
+        "a prova tem dois blocos e quero ver separado",
+        "onde escrevo a disciplina de cada questão"
+      ],
+      chaves: ["parte", "partes", "por parte", "disciplina", "disciplinas", "bloco", "area", "média", "media", "separado", "separar"],
+      resumo: "Com a parte informada nas questões, Análise › Resumo ganha a tabela \"Nota por parte\", com a média, o nível e a discriminação de cada disciplina.",
+      passos: [
+        "Importe o documento da prova: um título como \"PARTE I – MATEMÁTICA\" ou \"ÁREA: CIÊNCIAS DA NATUREZA\" já chega preenchido para as questões que vêm depois dele.",
+        "Em Bastidor › Cadernos, olhe a grade de revisão: o campo \"parte\" de cada questão pode ser corrigido ali, questão por questão.",
+        "Abra Análise e procure a tabela \"Nota por parte\" na aba Resumo — ela só aparece quando a prova tem duas partes ou mais.",
+        "Na aba \"Por questão\" e no CSV baixado, a coluna \"Parte\" diz de que assunto é cada item."
+      ],
+      notas: [
+        "A nota da folha não muda: a parte só organiza a leitura, e a folha impressa continua a mesma.",
+        "Numa prova com mais de uma disciplina, os grupos que medem a discriminação saem da nota daquela parte. Se a média fosse sempre a geral, o desempenho em Matemática contaminaria a leitura das questões de Português."
+      ],
+      veja: ["ver-notas", "revisar-questoes", "importar-documento", "niveis-proficiencia"]
+    },
+    {
+      id: "niveis-proficiencia",
+      tela: "relatorios",
+      titulo: "Níveis de proficiência: Insuficiente, Básico, Intermediário e Avançado",
+      perguntas: [
+        "o que significa o nível de proficiência",
+        "como mudar a nota em que cada nível começa",
+        "onde mudam os cortes de nível da turma",
+        "quem tirou 6 está em qual nível",
+        "os níveis ficam salvos no celular",
+        "voltar aos níveis padrão"
+      ],
+      chaves: ["nível", "nivel", "níveis", "niveis", "proficiência", "proficiencia", "insuficiente", "básico", "basico", "intermediário", "intermediario", "avançado", "avancado", "escala", "faixa"],
+      resumo: "Toda nota recebe um selo conforme a nota de partida que você definir: Insuficiente desde 0, Básico desde 4, Intermediário desde 6 e Avançado desde 8.",
+      passos: [
+        "Abra Análise › Resumo e desdobre \"Níveis de proficiência: defina os cortes da sua turma\".",
+        "Escreva em \"A partir de\" a nota em que cada nível começa; vírgula e ponto valem, 4,5 é o mesmo que 4.5.",
+        "Toque em \"Salvar cortes\": os selos e a distribuição são recalculados na hora, para todas as provas deste aparelho.",
+        "\"Voltar ao padrão\" devolve a escala 0 / 4 / 6 / 8 quando você quiser recomeçar."
+      ],
+      notas: [
+        "O selo aparece na coluna Nível da tabela \"Correções recentes\", na média de cada parte e ao lado da média no cartão do Resumo.",
+        "A escala fica guardada só no navegador deste aparelho: não sobe para o banco e não muda a nota de ninguém."
+      ],
+      veja: ["ver-notas", "nota-por-parte", "analise-itens"]
+    },
+    {
       id: "excel",
       tela: "relatorios",
       titulo: "Levar as notas para o Excel",
