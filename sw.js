@@ -32,6 +32,7 @@ const PRECACHE = [
 
 const CDN_ALLOW = [
   "cdn.jsdelivr.net",
+  "cdn.sheetjs.com",
   "unpkg.com",
   "docs.opencv.org"
 ];
