@@ -1,9 +1,10 @@
-const CACHE = "gaba-omr-v16";
+const CACHE = "gaba-omr-v17";
 const PRECACHE = [
   "./",
   "./index.html",
   "./app.js",
   "./style.css",
+  "./ajuda.css",
   "./dashboard.html",
   "./manifest.json",
   "./js/omrLayout.js",
@@ -20,6 +21,9 @@ const PRECACHE = [
   "./js/uiCaderno.js",
   "./js/uiScanner.js",
   "./js/dicas.js",
+  "./js/guiaUso.js",
+  "./js/ajudaBusca.js",
+  "./js/ajuda.js",
   "./js/omrWorker.js",
   "./js/supabaseClient.js",
   "./js/credencial.js",

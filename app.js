@@ -140,6 +140,7 @@
     });
     if (window.GabaCaderno) GabaCaderno.reiniciarConta();
     if (window.GabaScanner) GabaScanner.reiniciarConta();
+    if (window.GabaAjuda) GabaAjuda.reiniciarConta();
     desenharTudo();
     badge();
     desenharAjustes();
@@ -2158,6 +2159,7 @@
     });
     var faixa = $("tabs-bastidor");
     if (faixa) faixa.hidden = BASTIDOR.indexOf(tabId) < 0;
+    if (window.GabaAjuda) GabaAjuda.registrarTela(tabId);
     atualizarAba();
   };
 
