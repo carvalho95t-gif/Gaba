@@ -7,6 +7,7 @@
 var fs = require("fs");
 var path = require("path");
 var hud = require(path.join(__dirname, "tests", "hudChrome.js"));
+var AM = require(path.join(__dirname, "tests", "docxAmostra.js"));
 
 var porta = Number(process.argv[2] || 8788);
 var BASE = "http://127.0.0.1:" + porta;
@@ -151,6 +152,30 @@ async function dirigir() {
   return out;
 }
 
+/* o mesmo fluxo com um .docx sintético que TRAZ os cabeçalhos de parte no arquivo:
+   aqui o professor não digita nada, a grade de revisão já sai preenchida. */
+async function dirigirDocx(b64) {
+  var bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  await GabaCaderno.importarDocx(new File([bytes], "duas-partes.docx", {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  }));
+  var provas = GabaCaderno.estado.provasLocais || [];
+  var prova = provas[0];
+  if (!prova) return { erro: "o .docx de duas partes nao virou prova" };
+  var partes = [].slice.call(document.querySelectorAll("#cad-questoes .q-rev[data-q]"))
+    .map(function (linha) {
+      var campo = linha.querySelector('[data-campo="parte"]');
+      return campo ? campo.value : "sem campo";
+    });
+  return {
+    titulos: provas.map(function (p) { return p.titulo; }),
+    questoes: (prova.questoes || []).length,
+    partes: partes,
+    erro: null
+  };
+}
+
 (async function principal() {
   var probe = await fetch(BASE + "/index.html").catch(function () { return null; });
   if (!probe || !probe.ok) {
@@ -208,6 +233,18 @@ async function dirigir() {
     var shot = await c.chama("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(PNG, Buffer.from(shot.data, "base64"));
     console.log("\nfoto da tela: " + PNG);
+
+    var d = await c.naPagina(dirigirDocx, [Buffer.from(AM.amostraDuasPartes()).toString("base64")]);
+    if (d.erro) { console.error(d.erro); process.exitCode = 1; }
+    else {
+      console.log("\n.docx com cabecalho de parte no arquivo (nada foi digitado):");
+      console.log("  " + d.titulos[0] + " | questoes " + d.questoes + " | grade: " + d.partes.join(" | "));
+      var esperado = "Língua portuguesa,Língua portuguesa,Matemática,Ciências da natureza";
+      if (d.partes.join(",") !== esperado) {
+        console.error("FALHA: a grade não saiu com as partes do cabeçalho — " + d.partes.join(","));
+        process.exitCode = 1;
+      }
+    }
   } finally {
     if (c) c.fecha();
     await hud.fecharChrome(chrome).catch(function () { /* ja era */ });

@@ -163,5 +163,27 @@ check("sem partes informadas a análise cai no grupo único",
   A.partesDaProva({ questoes: [{ numero: 1 }] }).join(",") === "Geral",
   A.partesDaProva({ questoes: [{ numero: 1 }] }));
 
-console.log(falhas ? "\n" + falhas + " check(s) falharam." : "\npartes e níveis: tudo certo");
-process.exit(falhas ? 1 : 0);
+/* --------------------------- o cabeçalho lido do arquivo .docx, não do texto solto */
+var AM = require(path.join(__dirname, "docxAmostra.js"));
+
+(async function docxDeVerdade() {
+  var bruto = AM.amostraDuasPartes();
+  var parsed = await D.parseDocx(bruto.buffer);
+  var prova = D.toProva(parsed, "DUAS PARTES EM DOCX");
+  var partes = prova.questoes.map(function (q) { return q.parte; });
+
+  check("o .docx com cabeçalhos virou as quatro questões", prova.quantidade_questoes === 4,
+    [prova.quantidade_questoes, partes]);
+  check("o cabeçalho dividido em runs do Word ainda é uma parte", partes[0] === "Língua portuguesa",
+    partes[0]);
+  check("cada parte do .docx vale até o próximo cabeçalho", partes.join(",") ===
+    "Língua portuguesa,Língua portuguesa,Matemática,Ciências da natureza", partes);
+  check("o cabeçalho com tab depois de ÁREA também é lido", partes[3] === "Ciências da natureza", partes[3]);
+  check("nenhuma questão foi criada a partir do cabeçalho",
+    prova.questoes.every(function (q) { return q.parte !== "Parte I – língua portuguesa"; }), partes);
+  check("o gabarito impresso no fim do .docx fecha as questões", prova.gabarito.join("") === "BCBC",
+    prova.gabarito);
+})().then(function () {
+  console.log(falhas ? "\n" + falhas + " check(s) falharam." : "\npartes e níveis: tudo certo");
+  process.exit(falhas ? 1 : 0);
+});
