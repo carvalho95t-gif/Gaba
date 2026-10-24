@@ -841,8 +841,7 @@
       avisos.push('"' + nome + '" aparece mais de uma vez no arquivo: entrou só a primeira.');
     });
     if (impt.saidas) {
-      avisos.push(impt.saidas === 1 ? "1 aluno marcado como transferido ou remanejado ficou de fora."
-        : impt.saidas + " alunos marcados como transferidos ou remanejados ficaram de fora.");
+      avisos.push(GabaLista.avisoDeSaidas(impt.saidas));
     }
     impt.turmas.forEach(function (t) {
       t.problemas.forEach(function (p) { avisos.push(t.nome + ": " + p); });

@@ -109,6 +109,20 @@ function check(nome, cond, detalhe) {
   console.log("\n== duplicados e lista vazia ==");
   var dup = GabaLista.montar([["Nº", "Nome"], ["4", "ANA BEATRIZ"], ["4", "ANA BEATRIZ"]]);
   check("o mesmo aluno duas vezes vira um só", dup.alunos.length === 1, dup.alunos);
+  var gemeos = GabaLista.montar([["Nº", "Nome"], ["1", "ANA BEATRIZ"], ["2", "ANA BEATRIZ"], ["3", "BRUNO CARLOS"]]);
+  check("homonimos com numeros diferentes sao dois alunos de verdade",
+    gemeos.alunos.length === 3 && gemeos.puladas === 0 &&
+    gemeos.alunos.filter(function (a) { return a.nome === "ANA BEATRIZ"; }).map(function (a) { return a.numero; }).join("|") === "1|2",
+    [gemeos.alunos, gemeos.puladas]);
+  var gemeosSemNumero = GabaLista.montar([["Nº", "Nome"], ["1", "ANA BEATRIZ"], ["", "ANA BEATRIZ"]]);
+  check("repetido sem numero de chamada continua virando um só",
+    gemeosSemNumero.alunos.length === 1 && gemeosSemNumero.puladas === 1, gemeosSemNumero.alunos);
+  var gemeosMatriculados = GabaLista.montar([
+    ["Nº", "Nome", "Matrícula"], ["1", "ANA BEATRIZ", "209900001"], ["2", "ANA BEATRIZ", "209900002"]]);
+  check("matriculas diferentes distinguem o homônimo",
+    gemeosMatriculados.alunos.length === 2 &&
+    gemeosMatriculados.alunos.map(function (a) { return a.matricula; }).join("|") === "209900001|209900002",
+    gemeosMatriculados.alunos);
   var vazio = GabaLista.montar([]);
   check("lista vazia avisa em vez de estourar",
     vazio.alunos.length === 0 && vazio.problemas.length > 0, vazio);
@@ -148,6 +162,38 @@ function check(nome, cond, detalhe) {
     chamada.alunos.length === 2 && chamada.saidas === 2 &&
     chamada.problemas.some(function (p) { return /2 alunos marcados como transferidos/.test(p); }),
     [chamada.alunos.map(function (a) { return a.numero; }), chamada.problemas]);
+  var abandono = GabaLista.montar([
+    ["Nº", "Nome do Estudante", "Situação"],
+    ["1", "ALFA BRAVO CHARLIE", ""],
+    ["2", "DELTA ECO FOXTROT", "DEIXOU DE FREQUENTAR A PARTIR DE 05/03"],
+    ["3", "GOLF HOTEL INDIA", "Não frequenta mais"],
+    ["4", "JULIETT KILO LIMA", "MATRICULADO"]
+  ]);
+  check("quem deixou de frequentar fica de fora e entra na conta das saídas",
+    abandono.alunos.length === 2 && abandono.saidas === 2 &&
+    abandono.alunos.map(function (a) { return a.nome; }).join("|") === "ALFA BRAVO CHARLIE|JULIETT KILO LIMA",
+    [abandono.alunos.map(function (a) { return a.nome; }), abandono.saidas]);
+  check("o aviso de saída diz tambem quem ficou sem frequência",
+    abandono.problemas.some(function (p) { return /sem frequência ficaram de fora\.$/.test(p); }), abandono.problemas);
+  check("o aviso de saida e um so, nao um por aluno",
+    abandono.problemas.filter(function (p) { return /ficaram de fora\./.test(p); }).length === 1, abandono.problemas);
+  var composta = GabaLista.montar([
+    ["Nº", "Nome do Estudante", "Situação"],
+    ["1", "ALFA BRAVO CHARLIE", "Ativa"],
+    ["2", "DELTA ECO FOXTROT", "Vice Líder/Transferido"],
+    ["3", "GOLF HOTEL INDIA", "ECHO PAPA SIERRA/Transferido"],
+    ["4", "JULIETT KILO LIMA", "Remanejada a pedido"]
+  ]);
+  check("o marcador que vem depois da barra no fim da celula tambem conta como saida",
+    composta.alunos.length === 1 && composta.saidas === 3 && composta.alunos[0].nome === "ALFA BRAVO CHARLIE",
+    [composta.alunos.map(function (a) { return a.nome; }), composta.saidas]);
+  var nota = GabaLista.montar([
+    ["Nº", "Nome do Estudante", "Situação"],
+    ["1", "ALFA BRAVO CHARLIE", "Ativa"],
+    ["2", "DELTA ECO FOXTROT", "Volta depois das ferias"]
+  ]);
+  check("texto solto na situacao nao tira aluno da lista", nota.alunos.length === 2 && nota.saidas === 0,
+    [nota.alunos.length, nota.saidas]);
 
   console.log("\n== turmas de uma escola num arquivo so ==");
   var pasta = GabaLista.turmasDaPasta([
@@ -168,6 +214,19 @@ function check(nome, cond, detalhe) {
     pasta.ignoradas.join("|") === "Resumo", pasta.ignoradas);
   check("o aviso de lista sem cabecalho nao se repete em cada turma",
     pasta.turmas.every(function (t) { return !t.problemas.length; }), pasta.turmas.map(function (t) { return t.problemas; }));
+
+  var comAbandono = GabaLista.turmasDaPasta([{ rotulo: "2ªV01-EM-MCN", arquivo: "chamada.xlsx", linhas: [
+    ["Nº", "Nome do Estudante", "Situação"],
+    ["1", "ALFA BRAVO CHARLIE", "DEIXOU DE FREQUENTAR"], ["2", "DELTA ECO FOXTROT", ""],
+    ["3", "GOLF HOTEL INDIA", ""]
+  ] }]);
+  check("a turma de abandono entra com os que ficaram e o aviso só no painel de cima",
+    comAbandono.turmas.length === 1 && comAbandono.saidas === 1 && comAbandono.turmas[0].saidas === 1 &&
+    comAbandono.turmas[0].alunos.length === 2 && !comAbandono.turmas[0].problemas.length,
+    [comAbandono.saidas, comAbandono.turmas[0].alunos.length, comAbandono.turmas[0].problemas]);
+  check("o aviso de uma saida so fala no singular",
+    GabaLista.avisoDeSaidas(1) === "1 aluno marcado como transferido, remanejado ou sem frequência ficou de fora." &&
+    /3 alunos marcados/.test(GabaLista.avisoDeSaidas(3)), GabaLista.avisoDeSaidas(1));
 
   var secretaria = GabaLista.turmasDaPasta([{ rotulo: "escola.csv", arquivo: "escola.csv", linhas: [
     ["Turma", "Nº", "Nome do aluno"],

@@ -52,19 +52,26 @@
   /* linhas de resumo que as planilhas colocam embaixo da chamada */
   var RODAPE = /^(total|somatorio|media|desvio|variancia|quantidade|numerodealunos?|ndealuno|aprovad|reprovad|assinatura|legenda|instru|observa|disciplina|componente|turma)/i;
 
-  /* a chamada oficial mantem quem saiu da turma, com a situacao numa coluna ao lado */
-  var SAIU = /^(transferid|remanejad)/;
+  /* a chamada oficial mantem quem saiu da turma, com a situacao numa coluna ao lado.
+     "deixou de frequentar" e o abandono que o SEGES registra: tampoco serve para
+     montar prova, entao sai junto com transferido e remanejado.
+     a celula do SEGES as vezes traz o marcador no fim, depois de um "/" com outro
+     texto na frente ("Vice Líder/Transferido"), entao vale o comeco e o fim. */
+  var SAIDA = "transferid|remanejad|deixou de frequent|nao frequent";
+  var SAIU = new RegExp("^(" + SAIDA + ")");
+  var SAIU_NO_FIM = new RegExp("(" + SAIDA + ")[a-z]*$");
+  var SAIU_NO_NOME = new RegExp("\\b(" + SAIDA + ")");
 
   function saiuDaTurma(linha, idxNome) {
     return linha.some(function (c, i) {
       var t = chaveDe(c);
-      return i === idxNome ? /\b(transferid|remanejad)/.test(t) : SAIU.test(t);
+      return i === idxNome ? SAIU_NO_NOME.test(t) : SAIU.test(t) || SAIU_NO_FIM.test(t);
     });
   }
 
   function avisoDeSaidas(n) {
-    return n === 1 ? "1 aluno marcado como transferido ou remanejado ficou de fora."
-      : n + " alunos marcados como transferidos ou remanejados ficaram de fora.";
+    return n === 1 ? "1 aluno marcado como transferido, remanejado ou sem frequência ficou de fora."
+      : n + " alunos marcados como transferidos, remanejados ou sem frequência ficaram de fora.";
   }
 
   var AVISO_SEM_CABECALHO = "A lista não tem linha de cabeçalho: usei a primeira coluna com números como Nº e a coluna de texto mais longo como nome.";
@@ -233,8 +240,11 @@
         problemas.push("Nº " + num + " se repete na linha " + (n + 1) + " (" + aluno.nome + "): só o primeiro ficou na lista.");
         continue;
       }
+      /* mesmo nome com numeros de chamada diferentes sao dois alunos de verdade: a escola
+         tem homonimos na mesma turma e o numero e a chave. Sem numero, o nome e a unica
+         identidade que existe, ai a repeticao continua virando um aluno so. */
       var quem = aluno.nome.toUpperCase().replace(/\s+/g, " ") + "|" + (aluno.matricula || "");
-      if (nomesVistos[quem]) { puladas++; continue; }
+      if (nomesVistos[quem] && !(num > 0)) { puladas++; continue; }
       if (num !== null) vistos[num] = true;
       nomesVistos[quem] = true;
       alunos.push(aluno);
@@ -359,7 +369,7 @@
 
   function avisoProprio(p) {
     return p !== AVISO_SEM_CABECALHO && p !== "Nenhum aluno reconhecido nesta lista." &&
-      !/marcados? como transferidos? ou remanejados? (ficou|ficaram) de fora\.$/.test(p);
+      !/(ficou|ficaram) de fora\.$/.test(p);
   }
 
   /* cada aba (ou arquivo) vira uma ou mais turmas; o nome da escola nao precisa estar no arquivo */
@@ -428,6 +438,7 @@
     numeroDe: numeroDe,
     tipoDe: tipoDe,
     emailValido: emailValido,
+    avisoDeSaidas: avisoDeSaidas,
     limpo: limpo
   };
 })(typeof window !== "undefined" ? window : globalThis);
