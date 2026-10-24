@@ -267,24 +267,27 @@
 
         <!-- ABA 5: ANÁLISE BÁSICA -->
         <section id="tab-relatorios" class="tab-content">
-            <h2>An&aacute;lise</h2>
-            <p class="text-muted">O que as folhas lidas dizem: a nota da turma, cada aluno, cada quest&atilde;o e cada descritor.</p>
-            <div class="segmento segmento-analise" id="analise-segmento" role="tablist" aria-label="Partes da an&aacute;lise">
-                <button type="button" role="tab" aria-selected="true" data-sub="ab-resumo" onclick="switchAnalise('ab-resumo')">Resumo</button>
-                <button type="button" role="tab" aria-selected="false" data-sub="ab-aluno" onclick="switchAnalise('ab-aluno')">Por aluno</button>
-                <button type="button" role="tab" aria-selected="false" data-sub="ab-questao" onclick="switchAnalise('ab-questao')">Por quest&atilde;o</button>
-                <button type="button" role="tab" aria-selected="false" data-sub="ab-descritor" onclick="switchAnalise('ab-descritor')">Por descritor</button>
-            </div>
-
-            <div class="form-container">
-                <div class="cad-linha">
+            <div class="ab-hero"><p class="ab-sobrelinha">DO PAPEL PARA O PRÓXIMO PASSO</p><h2>O que a turma aprendeu?</h2>
+                <p class="text-muted">Veja os resultados desta prova, encontre pontos para retomar e consulte cada aluno — sem precisar baixar uma planilha.</p></div>
+            <div class="form-container ab-filtros">
+                <div class="ab-filtro-linha">
                     <div class="field"><label for="ab-prova">Prova</label><select id="ab-prova"></select></div>
                     <div class="field"><label for="ab-turma">Turma</label><select id="ab-turma"></select></div>
+                    <button type="button" class="btn-ghost" id="ab-csv" aria-describedby="ab-csv-ajuda" disabled>Baixar CSV</button>
                 </div>
+                <p class="ajuda" id="ab-csv-ajuda">Opcional: exporta esta aba com os filtros atuais.</p>
             </div>
+            <div class="segmento segmento-analise" id="analise-segmento" role="tablist" aria-label="Partes da análise">
+                <button id="ab-tab-resumo" type="button" role="tab" aria-controls="ab-resumo" aria-selected="true" tabindex="0" data-sub="ab-resumo" onclick="switchAnalise('ab-resumo')">Resumo</button>
+                <button id="ab-tab-aluno" type="button" role="tab" aria-controls="ab-aluno" aria-selected="false" tabindex="-1" data-sub="ab-aluno" onclick="switchAnalise('ab-aluno')">Por aluno</button>
+                <button id="ab-tab-questao" type="button" role="tab" aria-controls="ab-questao" aria-selected="false" tabindex="-1" data-sub="ab-questao" onclick="switchAnalise('ab-questao')">Por questão</button>
+                <button id="ab-tab-descritor" type="button" role="tab" aria-controls="ab-descritor" aria-selected="false" tabindex="-1" data-sub="ab-descritor" onclick="switchAnalise('ab-descritor')">Por descritor</button>
+            </div>
+            <div class="ab-escopo"><h3 id="ab-escopo">Escolha uma prova</h3><p id="ab-participacao" class="text-muted"></p></div>
+            <p id="ab-anuncio" class="ab-sr" role="status" aria-live="polite" aria-atomic="true"></p>
 
             <!-- SUB-ABA: RESUMO -->
-            <div id="ab-resumo" class="ab-painel active">
+            <div id="ab-resumo" class="ab-painel active" role="tabpanel" aria-labelledby="ab-tab-resumo" tabindex="0">
                 <div id="ab-resumo-cards"></div>
                 <div id="ab-resumo-distrib"></div>
                 <h3 class="secao">Corre&ccedil;&otilde;es recentes</h3>
@@ -313,15 +316,17 @@
             </div>
 
             <!-- SUB-ABA: POR ALUNO -->
-            <div id="ab-aluno" class="ab-painel">
-                <div class="form-container">
-                    <p class="cad-status" id="ab-aluno-status">Escolha a prova para ver o ranking e a ficha de cada aluno.</p>
-                    <div id="ab-aluno-conteudo" class="ab-aluno"></div>
+            <div id="ab-aluno" class="ab-painel" role="tabpanel" aria-labelledby="ab-tab-aluno" tabindex="0" hidden>
+                <div class="ab-toolbar">
+                    <div class="field"><label for="ab-aluno-busca">Buscar aluno</label><input id="ab-aluno-busca" type="search" placeholder="Nome ou matrícula" autocomplete="off"></div>
+                    <div class="field"><label for="ab-aluno-filtro">Mostrar</label><select id="ab-aluno-filtro"><option value="todos">Todos os alunos</option><option value="corrigidos">Corrigidos</option><option value="sem">Sem leitura</option><option value="revisar">Leituras para revisar</option></select></div>
                 </div>
+                <p class="cad-status" id="ab-aluno-status">Escolha a prova para consultar os alunos e suas fichas.</p>
+                <div id="ab-aluno-conteudo" class="ab-aluno-lista"></div>
             </div>
 
             <!-- SUB-ABA: POR QUESTÃO (reusa analise.js) -->
-            <div id="ab-questao" class="ab-painel">
+            <div id="ab-questao" class="ab-painel" role="tabpanel" aria-labelledby="ab-tab-questao" tabindex="0" hidden>
                 <div class="form-container">
                     <div class="cad-linha">
                         <div class="field"><label for="ana-ordenar">Ordenar por</label>
@@ -338,19 +343,29 @@
                         <button type="button" class="btn-ghost" id="ana-csv">Baixar CSV da an&aacute;lise</button>
                     </div>
                     <p class="cad-status" id="ana-status">Escolha a prova.</p>
-                    <div class="ana-resumo" id="ana-resumo"></div>
-                    <div class="ana-itens" id="ana-itens"></div>
+                    <div id="ab-questao-conteudo" class="ab-pilha"></div>
+                    <details class="ab-tecnico"><summary>Indicadores técnicos</summary>
+                        <p class="ajuda">Tabela de apoio para revisar peso, distratores, discriminação e sinalizações dos itens.</p>
+                        <div class="ana-resumo" id="ana-resumo"></div>
+                        <div class="ana-itens" id="ana-itens"></div>
+                    </details>
                 </div>
             </div>
 
             <!-- SUB-ABA: POR DESCRITOR -->
-            <div id="ab-descritor" class="ab-painel">
+            <div id="ab-descritor" class="ab-painel" role="tabpanel" aria-labelledby="ab-tab-descritor" tabindex="0" hidden>
                 <div class="form-container">
                     <p class="cad-status" id="ab-desc-status">Escolha a prova para ver o desempenho por descritor.</p>
-                    <div id="ab-desc-conteudo"></div>
+                    <div id="ab-desc-conteudo" class="ab-pilha"></div>
                 </div>
             </div>
+            <p class="ab-limites" id="ab-limites" hidden>Um recorte, não um diagnóstico: os percentuais descrevem os acertos nos itens desta prova. Poucas questões por habilidade e leituras pendentes pedem interpretação docente. Não há decisão automática de aprovação, estimativa TRI ou comparação temporal.</p>
         </section>
+
+        <dialog id="ab-ficha" class="ab-dialogo" aria-labelledby="ab-ficha-titulo" aria-describedby="ab-ficha-subtitulo">
+            <div class="ab-dialogo-topo"><div><h2 id="ab-ficha-titulo"></h2><p id="ab-ficha-subtitulo" class="text-muted"></p></div><button type="button" class="btn-ghost" id="ab-ficha-fechar" autofocus>Fechar</button></div>
+            <div id="ab-ficha-conteudo" class="ab-dialogo-conteudo"></div>
+        </dialog>
 
         <!-- ABA: IMPRESSÃO NOMINAL EM LOTE -->
         <section id="tab-caderno" class="tab-content">

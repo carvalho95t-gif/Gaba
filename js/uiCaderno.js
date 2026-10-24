@@ -279,7 +279,7 @@
     var letras = letrasDaQuestao(q, prova);
     var peso = Number(q.peso) > 0 ? Number(q.peso) : 1;
     return '<div class="q-rev" data-q="' + (i + 1) + '">' +
-      '<span class="q-num">' + (i + 1) + "</span>" +
+      global.GabaApp.indicadorQuestao(i + 1, true) +
       '<span class="q-txt" title="' + esc(texto) + '">' +
         esc(texto.slice(0, 80) + (texto.length > 80 ? "…" : "") || "sem texto") + "</span>" +
       '<select class="q-gab" data-campo="gabarito">' +

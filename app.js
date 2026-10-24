@@ -1010,9 +1010,7 @@
     desenharNotas();
     preencherSeletoresAnalise();
     desenharAnalise();
-    desenharBasicaResumo();
-    desenharBasicaAluno();
-    desenharBasicaDescritor();
+    desenharPainelAnalise();
   }
 
   function botao(acao, id, rotulo, classe, extra) {
@@ -1412,8 +1410,12 @@
   }
 
   function folhasParaAnalise(prova, turmaId) {
+    var filtroAtivo = Boolean(window.GabaEscolas && typeof GabaEscolas.filtro === "function" && GabaEscolas.filtro());
+    var turmasPermitidas = {};
+    if (filtroAtivo) turmasVisiveis().forEach(function (t) { turmasPermitidas[String(t.id)] = true; });
     return app.correcoes.concat(leiturasSoNoAparelho()).filter(function (r) {
       if (String(r.prova_id || "") !== String(prova.id)) return false;
+      if (filtroAtivo && r.turma_id && !turmasPermitidas[String(r.turma_id)]) return false;
       if (turmaId && String(r.turma_id || "") !== String(turmaId)) return false;
       return true;
     });
@@ -1527,6 +1529,11 @@
   function turmaAtualAnalise() {
     var sel = $("ab-turma");
     return sel ? sel.value : "";
+  }
+
+  function semFolhas(turmaId) {
+    return "Nenhuma folha lida desta prova" + (turmaId ? " nesta turma" : "") +
+      ". Passe as folhas no Leitor antes de analisar.";
   }
 
   function desenharAnalise() {
@@ -1646,174 +1653,340 @@
 
   /* --------------------------------------------------------------- formularios */
 
-  /* ---- análise básica: sub-abas, resumo, ranking, descritor ---- */
+  /* ---- análise básica: painel pedagógico alimentado apenas pelos dados reais do app ---- */
 
-  window.switchAnalise = function switchAnalise(id) {
-    document.querySelectorAll(".ab-painel").forEach(function (el) { el.classList.remove("active"); });
-    var alvo = $(id);
-    if (alvo) alvo.classList.add("active");
-    document.querySelectorAll("#analise-segmento [data-sub]").forEach(function (b) {
-      b.setAttribute("aria-selected", String(b.dataset.sub === id));
+  var ab = { painel: "ab-resumo", modelo: null, dados: null, questao: null, descritor: null, retornoFicha: null };
+
+  function indicadorQuestao(numero, compacto) {
+    var n = String(numero == null ? "" : numero);
+    var classe = compacto ? "questao-selo questao-selo-compacto" : "questao-selo";
+    return '<span class="' + classe + '" aria-label="Questão ' + esc(n) + '">' +
+      (compacto ? "" : '<svg viewBox="0 0 20 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2h7l4 4v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z"></path><path d="M12 2v5h4M7 12h6M7 16h4"></path></svg>') +
+      '<span>' + esc((n.length < 2 ? "0" : "") + n) + "</span></span>";
+  }
+
+  function textoBusca(v) {
+    return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
+  function fmtAb(n, casas) {
+    return n === null || n === undefined || !Number.isFinite(Number(n)) ? "—"
+      : Number(n).toLocaleString("pt-BR", { minimumFractionDigits: casas || 0, maximumFractionDigits: casas || 0 });
+  }
+
+  function pctAb(n) { return n === null || n === undefined ? "Sem dados" : fmtAb(n, 1) + "%"; }
+
+  function nomeTurmaAnalise(id) {
+    var t = (ab.modelo && ab.modelo.turmas || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    return t ? t.nome : "Turma não informada";
+  }
+
+  function catalogoDaProva(prova) {
+    if (!window.GabaDescritores) return [];
+    if (typeof GabaDescritores.filtrar !== "function") return typeof GabaDescritores.todos === "function" ? GabaDescritores.todos() : [];
+    return GabaDescritores.filtrar({
+      disciplina: prova.disciplina || "",
+      ano: prova.ano || prova.serie || "",
+      matriz: prova.matriz || ""
     });
+  }
+
+  function versoesPurasDaProva(prova) {
+    var lista = [], lote = window.GabaCaderno && GabaCaderno.loteImpresso ? GabaCaderno.loteImpresso(prova.id) : null;
+    (lote && lote.itens || []).forEach(function (it) { if (it && it.versao) lista.push(it.versao); });
+    var scanner = window.GabaScanner && GabaScanner.estado;
+    if (scanner && scanner.prova && String(scanner.prova.id) === String(prova.id)) {
+      Object.keys(scanner.versoes || {}).forEach(function (chaveVersao) {
+        var v = scanner.versoes[chaveVersao];
+        if (v) lista.push(v);
+      });
+    }
+    return lista;
+  }
+
+  function modeloAtualAnalise() {
+    var prova = provaAtualAnalise();
+    if (!prova || !window.GabaBasica || typeof GabaBasica.montarPainel !== "function") return null;
+    var turmas = turmasVisiveis(), ids = Object.create(null);
+    turmas.forEach(function (t) { ids[String(t.id)] = true; });
+    var filtroAtivo = Boolean(window.GabaEscolas && typeof GabaEscolas.filtro === "function" && GabaEscolas.filtro());
+    var alunos = app.alunos.filter(function (a) { return !filtroAtivo || a.turma_id && ids[String(a.turma_id)]; });
+    var correcoes = app.correcoes.concat(app.leituras).filter(function (r) {
+      if (String(r.prova_id || "") !== String(prova.id)) return false;
+      return !filtroAtivo || !r.turma_id || ids[String(r.turma_id)];
+    });
+    return GabaBasica.montarPainel(prova, correcoes, turmas, alunos, versoesPurasDaProva(prova), catalogoDaProva(prova));
+  }
+
+  function atualizarModeloAnalise() {
+    ab.modelo = modeloAtualAnalise();
+    ab.dados = ab.modelo && typeof GabaBasica.analisarPainel === "function"
+      ? GabaBasica.analisarPainel(ab.modelo, turmaAtualAnalise()) : null;
+    var csv = $("ab-csv"), limites = $("ab-limites"), prova = provaAtualAnalise();
+    if (csv) csv.disabled = !ab.dados;
+    if (limites) limites.hidden = !ab.dados;
+    if ($("ab-escopo")) $("ab-escopo").textContent = turmaAtualAnalise() ? nomeTurmaAnalise(turmaAtualAnalise()) : "Todas as turmas";
+    if ($("ab-participacao")) $("ab-participacao").textContent = ab.dados
+      ? ab.dados.alunos.length + " cadastrados · " + ab.dados.corrigidos.length + " corrigidos · " + plural(ab.modelo.prova.questoes.length, "questão", "questões")
+      : prova ? "O módulo de análise ainda está carregando." : "Escolha uma prova nos filtros.";
+    if ($("ab-anuncio")) $("ab-anuncio").textContent = ab.dados
+      ? (turmaAtualAnalise() ? nomeTurmaAnalise(turmaAtualAnalise()) : "Todas as turmas") + ": " + ab.dados.corrigidos.length + " corrigidos e " + ab.dados.semLeitura + " sem leitura."
+      : "Nenhuma prova selecionada.";
+  }
+
+  window.switchAnalise = function switchAnalise(id, focar) {
+    if (!$(id)) return;
+    ab.painel = id;
+    document.querySelectorAll(".ab-painel").forEach(function (el) {
+      var ativo = el.id === id;
+      el.classList.toggle("active", ativo);
+      el.hidden = !ativo;
+    });
+    document.querySelectorAll("#analise-segmento [data-sub]").forEach(function (b) {
+      var ativo = b.dataset.sub === id;
+      b.setAttribute("aria-selected", String(ativo));
+      b.tabIndex = ativo ? 0 : -1;
+      if (ativo && focar) b.focus();
+    });
+    desenharPainelAnalise();
   };
 
-  var SITUACAO = {
-    dominado: { nivel: "alto", texto: "Dominado" },
-    parcial: { nivel: "medio", texto: "Parcial" },
-    fragil: { nivel: "baixo", texto: "Frágil" }
-  };
-
-  function umaCasa(v) {
-    return decimal(Number(v || 0).toFixed(1));
+  function vazioAb(titulo, texto) {
+    return '<div class="ab-vazio"><h3>' + esc(titulo) + "</h3><p>" + esc(texto) + "</p></div>";
   }
 
-  function nivelDaNota(nota) {
-    return nota >= 6 ? "alto" : nota >= 4 ? "medio" : "baixo";
+  function barraAb(taxa, rotulo) {
+    var largura = taxa === null || taxa === undefined ? 0 : Math.max(0, Math.min(100, taxa));
+    return '<div class="ab-barra-grafico"><div><span>' + esc(rotulo) + "</span><b>" + pctAb(taxa) +
+      '</b></div><span class="ab-trilho-grafico" aria-hidden="true"><i style="width:' + largura + '%"></i></span></div>';
   }
 
-  function etiqueta(nivel, texto) {
-    return '<span class="ab-etiqueta ab-' + nivel + '">' + esc(texto) + "</span>";
+  function kpiAb(rotulo, valor, unidade, detalhe) {
+    return '<article class="ab-kpi"><p>' + esc(rotulo) + '</p><strong>' + valor + (unidade ? " <small>" + esc(unidade) + "</small>" : "") +
+      '</strong><span>' + esc(detalhe) + "</span></article>";
   }
 
-  function barra(rotulo, pct, valor, nivel, depois) {
-    return '<div class="ab-barra"><span class="ab-barra-rotulo">' + esc(rotulo) + "</span>" +
-      '<span class="ab-trilho"><i class="ab-' + nivel + '" style="width:' +
-      Math.max(2, Math.min(100, pct)) + '%"></i></span>' +
-      '<span class="ab-barra-valor">' + esc(valor) + "</span>" + (depois || "") + "</div>";
-  }
-
-  function semFolhas(turmaId) {
-    return "Nenhuma folha lida desta prova" + (turmaId ? " nesta turma" : "") +
-      ". Passe as folhas no Leitor antes de analisar.";
+  function graficoDistribuicao() {
+    var d = ab.dados, rotulos = ["0–<2", "2–<4", "4–<6", "6–<8", "8–10"];
+    if (!d.notas.length) return vazioAb("Ainda não há notas para distribuir", "Alunos sem leitura não entram nas faixas de nota.");
+    var maior = Math.max.apply(null, [1].concat(d.faixas));
+    var descricao = rotulos.map(function (r, i) { return r + ": " + d.faixas[i] + " alunos"; }).join("; ");
+    var barras = d.faixas.map(function (n, i) {
+      var x = 74 + i * 112, altura = n / maior * 160, y = 200 - altura;
+      return '<rect class="ab-svg-barra" x="' + x + '" y="' + y + '" width="58" height="' + altura + '" rx="8"></rect>' +
+        '<text class="ab-svg-contagem" x="' + (x + 29) + '" y="' + (y - 11) + '" text-anchor="middle">' + n + "</text>" +
+        '<text x="' + (x + 29) + '" y="235" text-anchor="middle">' + rotulos[i] + "</text>";
+    }).join("");
+    return '<svg class="ab-grafico-svg" viewBox="0 0 640 265" role="img" aria-labelledby="ab-dist-titulo ab-dist-desc"><title id="ab-dist-titulo">Distribuição de notas</title><desc id="ab-dist-desc">' + esc(descricao) + '. Sem leitura não entra no gráfico.</desc><line x1="44" y1="200" x2="622" y2="200"></line>' + barras + "</svg>";
   }
 
   function desenharBasicaResumo() {
-    var box = $("ab-resumo-cards");
-    var dist = $("ab-resumo-distrib");
+    var box = $("ab-resumo-cards"), dist = $("ab-resumo-distrib");
     if (!box) return;
     if (dist) dist.innerHTML = "";
-    var prova = provaAtualAnalise();
-    var turmaId = turmaAtualAnalise();
-    if (!prova || !window.GabaBasica) {
-      box.innerHTML = '<p class="cad-status">Escolha a prova para ver a média, quem passou e como as notas se espalham.</p>';
+    atualizarModeloAnalise();
+    if (!ab.dados) {
+      box.innerHTML = vazioAb("Escolha uma prova para começar", "Os resultados aparecem aqui depois que uma prova é selecionada.");
       return;
     }
-    var folhas = folhasParaAnalise(prova, turmaId);
-    if (!folhas.length) {
-      box.innerHTML = '<p class="cad-status">' + esc(semFolhas(turmaId)) + "</p>";
-      return;
-    }
-    var r = GabaBasica.resumoTurma(prova, folhas, turmaId);
-    box.innerHTML = '<div class="ana-cards ab-cards">' +
-      cartao("Média", umaCasa(r.media), "nota de 0 a 10") +
-      cartao("Mediana", umaCasa(r.mediana), "metade tirou mais que isso") +
-      cartao("Aprovados", decimal(String(r.taxaAprovacao)) + "%", r.aprovados + " com nota 6 ou mais") +
-      cartao("Folhas lidas", String(r.alunos), "") +
-      cartao("Menor e maior", umaCasa(r.min) + " – " + umaCasa(r.max), "") +
-      cartao("Desvio", umaCasa(r.desvio), "quanto as notas se espalham") +
-      "</div>";
-    if (dist) {
-      var maior = Math.max.apply(null, r.faixas) || 1;
-      dist.innerHTML = '<h3 class="secao">Distribuição das notas</h3><div class="form-container">' +
-        r.faixaRotulos.map(function (rot, i) {
-          return barra(rot.replace("-", " a "), r.faixas[i] / maior * 100,
-            plural(r.faixas[i], "folha", "folhas"), i < 2 ? "baixo" : i < 3 ? "medio" : "alto");
-        }).join("") + "</div>";
-    }
+    var d = ab.dados;
+    var cards = kpiAb("Média da prova", fmtAb(d.media, 1), "de 10", d.notas.length + " notas registradas; só corrigidos") +
+      kpiAb("Folhas corrigidas", fmtAb(d.corrigidos.length), "de " + d.alunos.length, "Uma correção por aluno") +
+      kpiAb("Sem leitura", fmtAb(d.semLeitura), "", "Sem nota; não entra na média") +
+      kpiAb("Leituras para revisar", fmtAb(d.revisao), "", "Marcações sinalizadas pelo leitor");
+    var faixas = ["0 a menos de 2", "2 a menos de 4", "4 a menos de 6", "6 a menos de 8", "8 a 10"];
+    var maior = Math.max.apply(null, d.faixas), modais = faixas.filter(function (_, i) { return d.faixas[i] === maior; });
+    var relatoNotas = d.notas.length ? (modais.length === 1 ? "A faixa mais frequente é " + modais[0] : "As faixas mais frequentes são " + modais.join(" e ")) + ", com " + plural(maior, "aluno", "alunos") + ". " + d.notas.filter(function (n) { return n < 6; }).length + " de " + d.notas.length + " notas ficaram abaixo de 6; isso não determina aprovação." : "Não há notas registradas neste recorte.";
+    var turmas = ab.modelo.turmas.map(function (t) { return { turma: t, dados: GabaBasica.analisarPainel(ab.modelo, t.id) }; });
+    var comparacao = turmas.map(function (t) {
+      var selecionada = String(t.turma.id) === String(turmaAtualAnalise());
+      return '<div class="ab-compara' + (selecionada ? " selecionada" : "") + '"><div><strong>' + esc(t.turma.nome) + "</strong><span>" + fmtAb(t.dados.media, 1) +
+        ' / 10</span></div><span class="ab-trilho-grafico" aria-hidden="true"><i style="width:' + (t.dados.media === null ? 0 : t.dados.media * 10) + '%"></i></span><p>' + t.dados.corrigidos.length + " corrigidos · " + t.dados.semLeitura + " sem leitura</p></div>";
+    }).join("");
+    var comNota = turmas.filter(function (t) { return t.dados.media !== null; }).sort(function (a, b) { return a.dados.media - b.dados.media; });
+    var diferenca = comNota.length > 1 ? comNota[comNota.length - 1].dados.media - comNota[0].dados.media : null;
+    var relatoTurmas = diferenca === null ? "São necessárias duas turmas com notas para comparar." : "A distância entre a maior e a menor média é " + fmtAb(diferenca, 2) + (+diferenca.toFixed(2) > 0 && +diferenca.toFixed(2) < 2 ? " ponto" : " pontos") + ". Todas as turmas permanecem visíveis" + (turmaAtualAnalise() ? "; o contorno destaca a selecionada" : "") + ". As médias não explicam a causa da diferença.";
+    var itens = d.itens.slice().sort(function (a, b) { return questaoDoItem(a).numero - questaoDoItem(b).numero; });
+    var graficoItens = '<div class="ab-questao-grafico" aria-label="Acerto por questão, de zero a cem por cento">' + itens.map(function (item) {
+      var q = questaoDoItem(item);
+      return '<button type="button" data-ab-questao="' + esc(q.numero) + '" aria-label="Questão ' + esc(q.numero) + ": " + pctAb(item.taxa) + ' de acerto; abrir detalhes"><span>' + pctAb(item.taxa) + '</span><i aria-hidden="true"><b style="height:' + (item.taxa || 0) + '%"></b></i>' + indicadorQuestao(q.numero, true) + "</button>";
+    }).join("") + "</div>";
+    var comTaxa = d.itens.filter(function (q) { return q.taxa !== null; }).sort(function (a, b) { return a.taxa - b.taxa; });
+    var minimo = comTaxa[0], relatoItens = minimo ? "A questão " + questaoDoItem(minimo).numero + " teve a menor taxa: " + pctAb(minimo.taxa) + " (" + minimo.acertos + "/" + minimo.participantes + "). Abra o item para comparar o gabarito às alternativas marcadas, sem atribuir automaticamente o resultado ao aluno ou ao enunciado." : "Ainda não há respostas corrigidas para comparar os itens.";
+    var habilidades = d.descritores.filter(function (x) { return x.codigo !== "__sem_descritor__"; });
+    var graficoHab = '<div class="ab-habilidades-grafico">' + habilidades.map(function (h) {
+      return '<button type="button" data-ab-descritor="' + esc(h.codigo) + '"><span><strong>' + esc(h.descricao) + "</strong><b>" + pctAb(h.taxa) + '</b></span><i aria-hidden="true"><b style="width:' + (h.taxa || 0) + '%"></b></i><small>' + esc(h.codigo) + " · " + plural(h.questoes.length, "questão", "questões") + " · " + h.acertos + "/" + h.total + " acertos</small></button>";
+    }).join("") + "</div>";
+    var menorHab = habilidades.filter(function (h) { return h.taxa !== null; })[0];
+    var relatoHab = menorHab ? "Neste recorte, “" + menorHab.descricao + "” tem " + pctAb(menorHab.taxa) + " de acerto. " + (menorHab.questoes.length === 1 ? "É apenas 1 questão" : "São apenas " + menorHab.questoes.length + " questões") + ": uma pista para retomar os textos e ouvir justificativas, não uma medida definitiva." : "Sem respostas suficientes para interpretar habilidades.";
+    box.innerHTML = '<div class="ab-kpis">' + cards + '</div><div class="ab-resumo-grade"><article class="ab-card"><h3>Como as notas se distribuem</h3><p>Número de alunos por faixa de nota.</p>' + graficoDistribuicao() + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoNotas) + '</p></article><article class="ab-card"><h3>Comparação entre turmas</h3><p>Média de nota, de 0 a 10 · somente corrigidos.</p><div class="ab-comparacao">' + comparacao + '</div><p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoTurmas) + '</p></article><article class="ab-card"><h3>Acerto por questão</h3><p>Toque numa barra para abrir o item.</p>' + graficoItens + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoItens) + '</p></article><article class="ab-card"><h3>Onde vale retomar</h3><p>Acerto por habilidade · menores taxas primeiro.</p>' + graficoHab + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoHab) + "</p></article></div>";
   }
 
-  var abAlunoSel = "";
+  function alunosFiltrados() {
+    if (!ab.dados) return [];
+    var busca = textoBusca((($("ab-aluno-busca") || {}).value || "").trim());
+    var filtro = ($("ab-aluno-filtro") || {}).value || "todos";
+    return ab.dados.alunos.filter(function (a) {
+      var c = a.correcao;
+      return (!busca || textoBusca(a.nome).indexOf(busca) >= 0 || textoBusca(a.matricula).indexOf(busca) >= 0) &&
+        (filtro === "todos" || filtro === "corrigidos" && c || filtro === "sem" && !c || filtro === "revisar" && c && c.confusao.length);
+    });
+  }
 
   function desenharBasicaAluno() {
-    var box = $("ab-aluno-conteudo");
-    var statusEl = $("ab-aluno-status");
+    var box = $("ab-aluno-conteudo"), statusEl = $("ab-aluno-status");
     if (!box) return;
-    var prova = provaAtualAnalise();
-    var turmaId = turmaAtualAnalise();
-    if (!prova || !window.GabaBasica) {
-      box.innerHTML = "";
-      if (statusEl) statusEl.textContent = "Escolha a prova para ver o ranking e a ficha de cada aluno.";
-      return;
-    }
-    var folhas = folhasParaAnalise(prova, turmaId);
-    if (!folhas.length) {
-      box.innerHTML = "";
-      if (statusEl) statusEl.textContent = semFolhas(turmaId);
-      return;
-    }
-    var rank = GabaBasica.ranking(prova, folhas, turmaId, app.alunos);
-    if (statusEl) statusEl.textContent = plural(rank.length, "aluno", "alunos") + " nesta prova. Toque no nome para ver a ficha.";
+    atualizarModeloAnalise();
+    if (!ab.dados) { box.innerHTML = ""; if (statusEl) statusEl.textContent = "Escolha a prova para consultar os alunos."; return; }
+    var lista = alunosFiltrados();
+    if (statusEl) statusEl.textContent = lista.length + " de " + ab.dados.alunos.length + " alunos neste filtro · toque para abrir a ficha.";
+    box.innerHTML = lista.length ? lista.map(function (a) {
+      var c = a.correcao, iniciais = a.nome.split(/\s+/).filter(Boolean).slice(0, 2).map(function (p) { return p.charAt(0); }).join("");
+      return '<button type="button" class="ab-aluno-linha" data-ab-aluno="' + esc(a.id) + '" aria-label="Abrir ficha de ' + esc(a.nome) + '"><span class="ab-avatar" aria-hidden="true">' + esc(iniciais) + '</span><span class="ab-aluno-nome"><strong>' + esc(a.nome) + "</strong><small>" + esc(nomeTurmaAnalise(a.turma_id)) + (a.numero !== "" ? " · Nº " + esc(a.numero) : "") + "<br>Matrícula " + esc(a.matricula || "não informada") + '</small></span><span class="ab-aluno-nota"><strong>' + (c && c.nota !== null ? fmtAb(c.nota, 1) : "—") + "</strong><small>" + (c ? c.acertos + "/" + c.total + " acertos" : "Sem nota") + '</small></span><span class="ab-aluno-situacao">' + (c ? "Corrigido" + (c.confusao.length ? " · revisar leitura" : "") : "Sem leitura") + "</span></button>";
+    }).join("") : vazioAb("Nenhum aluno neste filtro", "Tente outro nome, matrícula ou situação de leitura.");
+  }
 
-    var tabela = '<div class="ab-tabela"><table class="data-table"><thead><tr>' +
-      "<th>Nº</th><th>Aluno</th><th>Nota</th><th>Posição</th></tr></thead><tbody>" +
-      rank.map(function (a) {
-        var sel = String(a.aluno_id || a.nome) === abAlunoSel ? " ab-sel" : "";
-        return '<tr class="ab-rank-linha' + sel + '" data-aluno="' + esc(String(a.aluno_id || a.nome)) + '">' +
-          '<td class="ana-num">' + esc(String(a.numero || "-")) + "</td>" +
-          "<td><b>" + esc(a.nome) + "</b></td>" +
-          '<td class="ab-nota"><strong>' + esc(umaCasa(a.nota)) + '</strong> <span class="text-muted">' +
-          esc(String(a.acertos)) + "/" + esc(String(a.total)) + "</span></td>" +
-          "<td>" + etiqueta(nivelDaNota(a.nota), a.posicao + "º") + "</td></tr>";
-      }).join("") + "</tbody></table></div>";
+  function tituloHabilidade(q) {
+    return ab.modelo.descricoes[q.descritor] || (q.descritor ? "Habilidade sem descrição disponível" : "Sem descritor informado");
+  }
 
-    var ficha = "";
-    var sel = rank.filter(function (a) { return String(a.aluno_id || a.nome) === abAlunoSel; })[0] || rank[0];
-    if (sel) {
-      abAlunoSel = String(sel.aluno_id || sel.nome);
-      var descs = GabaBasica.perfilAluno(prova, sel);
-      var mediaRank = rank.length ? rank.reduce(function (s, a) { return s + a.nota; }, 0) / rank.length : 0;
-      var diff = sel.nota - mediaRank;
-      var comparacao = Math.abs(diff) < 0.05 ? '<span class="ab-na-media">na média da turma</span>'
-        : '<span class="' + (diff > 0 ? "ab-acima" : "ab-abaixo") + '">' + esc(umaCasa(Math.abs(diff))) +
-          (diff > 0 ? " acima" : " abaixo") + " da média</span>";
-      ficha = '<div class="ab-ficha"><p class="ab-ficha-nome">' + esc(sel.nome) + "</p>" +
-        '<p class="ab-ficha-nota">Nota <b>' + esc(umaCasa(sel.nota)) + "</b> · " + comparacao + "</p>" +
-        '<p class="ab-rotulo">Descritores</p>' +
-        (descs.length ? descs.map(function (d) {
-          var s = SITUACAO[d.status];
-          return barra(d.descritor, d.taxa, Math.round(d.taxa) + "%", s.nivel, etiqueta(s.nivel, s.texto));
-        }).join("") : '<p class="ajuda">Nenhum descritor vinculado às questões desta prova.</p>') +
-        "</div>";
+  function questaoDoItem(item) { return item.questao || item; }
+
+  function itensPainelOrdenados() {
+    if (!ab.dados) return [];
+    var lista = ab.dados.itens.slice(), modo = ($("ana-ordenar") || {}).value || "numero";
+    if (($("ana-revisar") || {}).checked) {
+      var sinalizadas = {};
+      ana.itens.filter(function (it) { return it.bandeiras.length; }).forEach(function (it) { sinalizadas[String(it.numero)] = true; });
+      lista = lista.filter(function (it) { return sinalizadas[String(questaoDoItem(it).numero)]; });
     }
-    box.innerHTML = tabela + ficha;
+    lista.sort(function (a, b) {
+      if (modo === "acerto") return (a.taxa === null ? 999 : a.taxa) - (b.taxa === null ? 999 : b.taxa);
+      if (modo === "discriminacao") return (a.discriminacao === null ? 9 : a.discriminacao) - (b.discriminacao === null ? 9 : b.discriminacao);
+      if (modo === "distrator") {
+        function forte(x) { var q = questaoDoItem(x); return Math.max.apply(null, [0].concat(Object.keys(x.contagem || {}).filter(function (l) { return l !== q.gabarito; }).map(function (l) { return x.contagem[l]; }))); }
+        return forte(b) - forte(a);
+      }
+      return questaoDoItem(a).numero - questaoDoItem(b).numero;
+    });
+    return lista;
+  }
+
+  function desenharQuestoesPainel() {
+    var box = $("ab-questao-conteudo");
+    if (!box) return;
+    atualizarModeloAnalise();
+    if (!ab.dados) { box.innerHTML = vazioAb("Escolha uma prova", "Os detalhes das questões aparecem aqui."); return; }
+    var itens = itensPainelOrdenados();
+    box.innerHTML = itens.length ? itens.map(function (it) {
+      var q = questaoDoItem(it);
+      var alternativas = q.alternativas.map(function (alt) {
+        var n = it.contagem[alt.letra] || 0;
+        return '<li class="ab-alternativa' + (alt.letra === q.gabarito ? " correta" : "") + '"><b>' + esc(alt.letra) + '</b><span>' + esc(alt.texto) + (alt.letra === q.gabarito ? " · Gabarito" : "") + '</span><small>' + n + " marcações · " + pctAb(it.participantes ? n / it.participantes * 100 : null) + "</small></li>";
+      }).join("");
+      var disc = it.discriminacao === null ? "Não disponível para este recorte." : "Índice: " + fmtAb(it.discriminacao, 3) + ".";
+      var cabecalho = indicadorQuestao(q.numero, false) + '<span><strong>' + esc(tituloHabilidade(q)) + '</strong><small>' +
+        esc(q.descritor || "Sem descritor") + (q.bncc ? " · BNCC " + esc(q.bncc) : "") +
+        '</small></span><span class="ab-item-taxa"><strong>' + pctAb(it.taxa) + '</strong><small>' +
+        it.acertos + "/" + it.participantes + " acertos</small></span>";
+      var textoQuestao = '<div class="ab-enunciado">' + esc(q.enunciado || "Enunciado não informado.") +
+        (q.comando ? "<p><strong>" + esc(q.comando) + "</strong></p>" : "") + "</div>";
+      var dadosItem = '<div class="ab-item-dados"><span>' + it.participantes + " folhas corrigidas</span><span>" +
+        it.branco + " em branco</span>" + (it.outras ? "<span>" + it.outras + " respostas inválidas</span>" : "") + "</div>";
+      return '<details class="ab-item" id="ab-questao-' + esc(q.numero) + '"' +
+        (String(ab.questao) === String(q.numero) ? " open" : "") + "><summary>" + cabecalho +
+        '</summary><div class="ab-item-corpo">' + textoQuestao +
+        (!q.gabarito ? '<p class="ab-alerta">Sem gabarito informado: não interpretar taxa de acerto.</p>' : "") +
+        '<ul class="ab-alternativas">' + alternativas + "</ul>" + barraAb(it.taxa, "Acertos na questão") + dadosItem +
+        '<p class="ab-relato"><strong>Discriminação.</strong> ' + esc(disc) +
+        " É a diferença entre as taxas dos 25% com maiores e menores notas; varia de −1 a 1 e só é calculada com participantes suficientes. O valor convida a examinar item e contexto, não define sua qualidade.</p></div></details>";
+    }).join("") : vazioAb("Nenhuma questão neste filtro", "Desmarque o filtro de revisão para ver todos os itens.");
+    ab.questao = null;
   }
 
   function desenharBasicaDescritor() {
-    var box = $("ab-desc-conteudo");
-    var statusEl = $("ab-desc-status");
+    var box = $("ab-desc-conteudo"), statusEl = $("ab-desc-status");
     if (!box) return;
-    var prova = provaAtualAnalise();
-    var turmaId = turmaAtualAnalise();
-    if (!prova || !window.GabaBasica) {
-      box.innerHTML = "";
-      if (statusEl) statusEl.textContent = "Escolha a prova para ver o desempenho por descritor.";
-      return;
+    atualizarModeloAnalise();
+    if (!ab.dados) { box.innerHTML = ""; if (statusEl) statusEl.textContent = "Escolha a prova para ver o desempenho por descritor."; return; }
+    if (statusEl) statusEl.textContent = ab.dados.descritores.length + " descritores neste recorte. Abra um para ver a composição.";
+    box.innerHTML = ab.dados.descritores.length ? ab.dados.descritores.map(function (d, i) {
+      return '<details class="ab-item ab-descritor" data-ab-codigo="' + esc(d.codigo) + '"' + (ab.descritor === d.codigo ? " open" : "") + '><summary><span><strong>' + esc(d.descricao) + "</strong><small>" + esc(d.codigo === "__sem_descritor__" ? "Código não informado" : d.codigo) + " · " + plural(d.questoes.length, "questão", "questões") + " · " + d.acertos + "/" + d.total + ' acertos</small></span><span class="ab-item-taxa"><strong>' + pctAb(d.taxa) + '</strong><small>nesta prova</small></span></summary><div class="ab-item-corpo"><p class="text-muted">A taxa reúne respostas aos itens desta habilidade; não representa quantos alunos a dominam.</p>' + barraAb(d.taxa, "Taxa de acerto") + d.questoes.map(function (it) { var q = it.questao || it; return '<div class="ab-descritor-questao"><div><strong>Questão ' + esc(q.numero) + " · " + pctAb(it.taxa) + "</strong><p>" + esc(q.comando || String(q.enunciado || "").slice(0, 180) || "Texto disponível na aba Questões") + '</p></div><button type="button" class="btn-ghost" data-ab-questao="' + esc(q.numero) + '">Abrir questão</button></div>'; }).join("") + "</div></details>";
+    }).join("") : vazioAb("Nenhum descritor vinculado", "Vincule descritores às questões na revisão da prova.");
+    ab.descritor = null;
+  }
+
+  function desenharPainelAnalise() {
+    if (ab.painel === "ab-resumo") desenharBasicaResumo();
+    else if (ab.painel === "ab-aluno") desenharBasicaAluno();
+    else if (ab.painel === "ab-questao") desenharQuestoesPainel();
+    else desenharBasicaDescritor();
+  }
+
+  function abrirFichaAnalise(id, origem) {
+    if (!ab.dados || !ab.modelo) return;
+    var aluno = ab.dados.alunos.filter(function (a) { return String(a.id) === String(id); })[0];
+    var dialogo = $("ab-ficha");
+    if (!aluno || !dialogo) return;
+    ab.retornoFicha = origem;
+    $("ab-ficha-titulo").textContent = aluno.nome;
+    $("ab-ficha-subtitulo").textContent = nomeTurmaAnalise(aluno.turma_id) + " · Matrícula " + (aluno.matricula || "não informada");
+    var c = aluno.correcao, conteudo = $("ab-ficha-conteudo");
+    if (!c) {
+      conteudo.innerHTML = vazioAb("Sem leitura · sem nota", "Ainda não há correção para este aluno. A ausência de leitura não comprova falta e não equivale a nota zero.");
+    } else {
+      var grupos = Object.create(null);
+      ab.modelo.prova.questoes.forEach(function (q) {
+        var codigo = q.descritor || "__sem_descritor__";
+        if (!grupos[codigo]) grupos[codigo] = { codigo: codigo, nome: tituloHabilidade(q), acertos: 0, total: 0 };
+        if (q.gabarito) { grupos[codigo].total += 1; if (c.respostas[q.indice] === q.gabarito) grupos[codigo].acertos += 1; }
+      });
+      var linhas = ab.modelo.prova.questoes.map(function (q) {
+        var resposta = c.respostas[q.indice], resultado = !q.gabarito ? "Sem gabarito" : !resposta ? "Branco / inválida" : resposta === q.gabarito ? "Acerto" : "Erro";
+        var revisar = c.revisarBase.indexOf(q.indice) >= 0;
+        return "<tr><th scope=\"row\">" + indicadorQuestao(q.numero, true) + "</th><td>" + esc(resposta || "—") + "</td><td>" + esc(q.gabarito || "—") + "</td><td>" + esc(resultado) + (revisar ? " · revisar leitura" : "") + "</td><td>" + esc(tituloHabilidade(q)) + (q.descritor ? " · " + esc(q.descritor) : "") + "</td></tr>";
+      }).join("");
+      var confusao = c.confusao.length ? '<div class="ab-alerta"><strong>Leitura para revisar.</strong> O leitor sinalizou ' + (c.confusao.length === 1 ? "a questão " : "as questões ") + esc(c.confusao.join(", ")) + " na ordem do caderno impresso. " + (c.revisarBase.length ? (c.revisarBase.length === 1 ? "Corresponde à questão base " : "Correspondem às questões base ") + esc(c.revisarBase.map(function (i) { return ab.modelo.prova.questoes[i] && ab.modelo.prova.questoes[i].numero; }).filter(Boolean).join(", ")) + "." : "Este caderno não tem mapeamento disponível para apontar a correspondente na ordem base.") + " Confira a folha original; nada foi ajustado automaticamente.</div>" : "";
+      var habilidades = Object.keys(grupos).map(function (codigo) { var h = grupos[codigo], taxa = h.total ? h.acertos / h.total * 100 : null; return '<div class="ab-ficha-habilidade"><strong>' + esc(h.nome) + "</strong><p>" + esc(codigo === "__sem_descritor__" ? "Sem código" : codigo) + " · " + h.acertos + "/" + h.total + " itens com gabarito</p>" + barraAb(taxa, "Acerto nesta prova") + "</div>"; }).join("");
+      conteudo.innerHTML = '<div class="ab-ficha-kpis">' + kpiAb("Nota registrada", fmtAb(c.nota, 1), "de 10", "") + kpiAb("Acertos", c.acertos, "de " + c.total, "") + kpiAb("Brancos / inválidas", c.branco, "", "") + "</div>" + confusao + '<h3>Respostas na ordem base</h3><p class="ajuda">Questões e letras já convertidas à prova base.</p><div class="ab-tabela" role="region" aria-label="Respostas, gabarito e habilidade; role horizontalmente se necessário" tabindex="0"><table class="data-table"><thead><tr><th>Questão</th><th>Resposta</th><th>Gabarito</th><th>Resultado</th><th>Habilidade</th></tr></thead><tbody>' + linhas + "</tbody></table></div><h3 class=\"secao\">Acerto por habilidade nesta prova</h3>" + habilidades;
     }
-    var folhas = folhasParaAnalise(prova, turmaId);
-    if (!folhas.length) {
-      box.innerHTML = "";
-      if (statusEl) statusEl.textContent = semFolhas(turmaId);
-      return;
+    dialogo.showModal();
+  }
+
+  function linhasCsvPainel() {
+    if (!ab.dados || !ab.modelo) return [];
+    var linhas = [["Prova", ab.modelo.prova.titulo], ["Turma", turmaAtualAnalise() ? nomeTurmaAnalise(turmaAtualAnalise()) : "Todas as turmas"], ["Visão", ab.painel], []], d = ab.dados;
+    if (ab.painel === "ab-resumo") {
+      linhas.push(["Indicador", "Valor"], ["Média (0 a 10)", d.media === null ? "" : fmtAb(d.media, 2)], ["Alunos cadastrados", d.alunos.length], ["Folhas corrigidas", d.corrigidos.length], ["Sem leitura", d.semLeitura], ["Leituras para revisar", d.revisao]);
+    } else if (ab.painel === "ab-aluno") {
+      linhas.push(["Aluno", "Matrícula", "Turma", "Situação", "Nota", "Acertos", "Brancos / inválidas", "Revisar no caderno"]);
+      alunosFiltrados().forEach(function (a) { var c = a.correcao; linhas.push([a.nome, a.matricula, nomeTurmaAnalise(a.turma_id), c ? "Corrigido" : "Sem leitura", c && c.nota !== null ? fmtAb(c.nota, 2) : "", c ? c.acertos : "", c ? c.branco : "", c ? c.confusao.join(", ") : ""]); });
+    } else if (ab.painel === "ab-questao") {
+      linhas.push(["Questão", "Habilidade", "Descritor", "Gabarito", "Acertos", "Participantes", "Acerto (%)", "Brancos", "Inválidas", "Discriminação"]);
+      itensPainelOrdenados().forEach(function (it) { var q = questaoDoItem(it); linhas.push([q.numero, tituloHabilidade(q), q.descritor, q.gabarito, it.acertos, it.participantes, it.taxa === null ? "" : fmtAb(it.taxa, 2), it.branco, it.outras, it.discriminacao === null ? "" : fmtAb(it.discriminacao, 3)]); });
+    } else {
+      linhas.push(["Habilidade", "Descritor", "Questões base", "Acertos", "Respostas em itens com gabarito", "Acerto (%)"]);
+      d.descritores.forEach(function (x) { linhas.push([x.descricao, x.codigo === "__sem_descritor__" ? "" : x.codigo, x.questoes.map(function (it) { return (it.questao || it).numero; }).join(", "), x.acertos, x.total, x.taxa === null ? "" : fmtAb(x.taxa, 2)]); });
     }
-    var catalogo = window.GabaDescritores ? GabaDescritores.todos() : [];
-    var descs = GabaBasica.taxaPorDescritor(prova, folhas, turmaId, catalogo);
-    if (!descs.length) {
-      box.innerHTML = "";
-      if (statusEl) statusEl.textContent = "Nenhum descritor vinculado às questões desta prova. Vincule na revisão da prova, na aba Provas.";
-      return;
-    }
-    if (statusEl) statusEl.textContent = plural(descs.length, "descritor", "descritores") + " nesta prova.";
-    box.innerHTML = '<div class="ab-tabela"><table class="data-table"><thead><tr>' +
-      '<th>Descritor</th><th class="ab-habilidade">Habilidade</th><th>Acerto</th><th>Situação</th></tr></thead><tbody>' +
-      descs.map(function (d) {
-        var s = SITUACAO[d.status];
-        return '<tr><td class="ana-num">' + esc(d.descritor) +
-          '<small class="ab-hab-curta">' + esc(d.descricao || "") + "</small></td>" +
-          '<td class="ab-habilidade">' + esc(d.descricao || "—") + "</td>" +
-          '<td class="ana-pc"><span class="ana-barra"><i class="ab-' + s.nivel + '" style="width:' +
-          Math.max(2, d.taxa) + '%"></i></span>' + Math.round(d.taxa) + "%</td>" +
-          "<td>" + etiqueta(s.nivel, s.texto) + "</td></tr>";
-      }).join("") + "</tbody></table></div>";
+    return linhas;
+  }
+
+  function csvSeguro(linhas) {
+    return "\ufeff" + linhas.map(function (linha) { return linha.map(function (valor) {
+      var s = String(valor == null ? "" : valor);
+      if (typeof valor === "string" && /^[\s]*[=+@-]/.test(s) && !/^-\d[\d.]*(?:,\d+)?$/.test(s)) s = "'" + s;
+      return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(";"); }).join("\r\n") + "\r\n";
+  }
+
+  function baixarCsvPainel() {
+    if (!ab.dados) return;
+    var blob = new Blob([csvSeguro(linhasCsvPainel())], { type: "text/csv;charset=utf-8" });
+    var link = document.createElement("a"), url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = "Gaba-analise-" + ab.painel.replace("ab-", "") + ".csv";
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
   }
 
   window.gerarCamposGabarito = function gerarCamposGabarito() {
@@ -1827,7 +2000,8 @@
     container.innerHTML = "";
     for (let i = 1; i <= qtd; i++) {
       const div = document.createElement("div");
-      div.innerHTML = "<label>Q" + i + ":</label><select class=\"gab-q\" data-q=\"" + i + "\">" +
+      div.innerHTML = "<label for=\"gab-resposta-" + i + "\">" + indicadorQuestao(i, true) + "</label>" +
+        "<select id=\"gab-resposta-" + i + "\" class=\"gab-q\" data-q=\"" + i + "\" aria-label=\"Gabarito da questão " + i + "\">" +
         letras.map(function (l) { return "<option>" + l + "</option>"; }).join("") + "</select>";
       container.appendChild(div);
     }
@@ -1933,25 +2107,67 @@
     var sincronizar = $("nota-sincronizar");
     if (sincronizar) sincronizar.addEventListener("click", function () { executar("sincronizar-fila"); });
 
-    ["ab-prova", "ab-turma", "ana-ordenar"].forEach(function (id) {
+    ["ab-prova", "ab-turma"].forEach(function (id) {
       var el = $(id);
       if (el) el.addEventListener("change", function () {
+        ab.questao = null; ab.descritor = null;
         desenharAnalise();
-        desenharBasicaResumo();
-        desenharBasicaAluno();
-        desenharBasicaDescritor();
+        desenharPainelAnalise();
       });
     });
+    var ordenar = $("ana-ordenar");
+    if (ordenar) ordenar.addEventListener("change", function () { desenharAnalise(); desenharQuestoesPainel(); });
     var soRevisar = $("ana-revisar");
-    if (soRevisar) soRevisar.addEventListener("change", desenharAnalise);
+    if (soRevisar) soRevisar.addEventListener("change", function () { desenharAnalise(); desenharQuestoesPainel(); });
     var csv = $("ana-csv");
     if (csv) csv.addEventListener("click", baixarCsvAnalise);
+    var csvPainel = $("ab-csv");
+    if (csvPainel) csvPainel.addEventListener("click", baixarCsvPainel);
+    var buscaAluno = $("ab-aluno-busca"), filtroAluno = $("ab-aluno-filtro");
+    if (buscaAluno) buscaAluno.addEventListener("input", desenharBasicaAluno);
+    if (filtroAluno) filtroAluno.addEventListener("change", desenharBasicaAluno);
+    var fecharFicha = $("ab-ficha-fechar"), ficha = $("ab-ficha");
+    if (fecharFicha && ficha) fecharFicha.addEventListener("click", function () { ficha.close(); });
+    if (ficha) ficha.addEventListener("close", function () {
+      if (ab.retornoFicha && ab.retornoFicha.isConnected) ab.retornoFicha.focus();
+      ab.retornoFicha = null;
+    });
 
-    document.addEventListener("click", function (ev) {
-      var linha = ev.target.closest(".ab-rank-linha");
-      if (!linha) return;
-      abAlunoSel = linha.dataset.aluno || "";
-      desenharBasicaAluno();
+    var tabsAnalise = [].slice.call(document.querySelectorAll("#analise-segmento [role=tab]"));
+    tabsAnalise.forEach(function (tab, indice) {
+      tab.addEventListener("keydown", function (ev) {
+        var alvo;
+        if (ev.key === "ArrowRight" || ev.key === "ArrowDown") alvo = (indice + 1) % tabsAnalise.length;
+        if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") alvo = (indice + tabsAnalise.length - 1) % tabsAnalise.length;
+        if (ev.key === "Home") alvo = 0;
+        if (ev.key === "End") alvo = tabsAnalise.length - 1;
+        if (alvo !== undefined) { ev.preventDefault(); window.switchAnalise(tabsAnalise[alvo].dataset.sub, true); }
+      });
+    });
+
+    var tabRelatorios = $("tab-relatorios");
+    if (tabRelatorios) tabRelatorios.addEventListener("click", function (ev) {
+      var aluno = ev.target.closest("[data-ab-aluno]");
+      if (aluno) { abrirFichaAnalise(aluno.dataset.abAluno, aluno); return; }
+      var questao = ev.target.closest("[data-ab-questao]");
+      if (questao) {
+        var numero = questao.dataset.abQuestao;
+        ab.questao = numero;
+        window.switchAnalise("ab-questao");
+        var detalhe = $("ab-questao-" + numero);
+        if (detalhe) { detalhe.open = true; detalhe.querySelector("summary").focus(); detalhe.scrollIntoView({ block: "nearest" }); }
+        return;
+      }
+      var descritor = ev.target.closest("[data-ab-descritor]");
+      if (descritor) {
+        var codigo = descritor.dataset.abDescritor;
+        ab.descritor = codigo;
+        window.switchAnalise("ab-descritor");
+        var detalheDesc = [].slice.call(document.querySelectorAll("[data-ab-codigo]")).filter(function (el) {
+          return el.dataset.abCodigo === codigo;
+        })[0];
+        if (detalheDesc) { detalheDesc.open = true; detalheDesc.querySelector("summary").focus(); detalheDesc.scrollIntoView({ block: "nearest" }); }
+      }
     });
 
     var formEscola = $("form-escola");
@@ -2286,6 +2502,7 @@
   window.GabaApp = {
     estado: app,
     importar: imp,
+    indicadorQuestao: indicadorQuestao,
     carregarTudo: carregarTudo,
     provaDoFormulario: provaDoFormulario,
     mensagemErro: mensagemErro,

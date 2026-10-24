@@ -1037,6 +1037,260 @@ async function dirigirAnalise(marcos) {
   return r;
 }
 
+async function dirigirPainelAnalise(marcos) {
+  var r = {};
+  function quadros() {
+    return new Promise(function (res) { requestAnimationFrame(function () { requestAnimationFrame(function () { res(true); }); }); });
+  }
+  function pausa(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  function limpa(t) { return String(t || "").replace(/\s+/g, " ").trim(); }
+  function visivel(id) {
+    var el = document.getElementById(id);
+    return Boolean(el && !el.hidden && el.getClientRects().length);
+  }
+  function muda(id, valor) {
+    var el = document.getElementById(id);
+    el.value = valor;
+    el.dispatchEvent(new Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+  }
+  function linhasAluno() { return [].slice.call(document.querySelectorAll("#ab-aluno-conteudo .ab-aluno-linha")); }
+  function dadosAluno(b) {
+    return { nome: limpa((b.querySelector(".ab-aluno-nome strong") || {}).textContent),
+      nota: limpa((b.querySelector(".ab-aluno-nota strong") || {}).textContent),
+      situacao: limpa((b.querySelector(".ab-aluno-situacao") || {}).textContent) };
+  }
+  var abaAntes = (document.querySelector(".tab-content.active") || { id: "tab-dashboard" }).id.replace(/^tab-/, "");
+  var dialogo = document.getElementById("ab-ficha");
+
+  window.switchTab("relatorios");
+  if (document.getElementById("ab-prova").value !== String(marcos.idNoBanco)) muda("ab-prova", String(marcos.idNoBanco));
+  window.switchAnalise("ab-resumo");
+  await quadros();
+
+  r.kpis = [].slice.call(document.querySelectorAll("#ab-resumo .ab-kpi")).map(function (k) {
+    return { rotulo: limpa((k.querySelector("p") || {}).textContent), valor: limpa((k.querySelector("strong") || {}).textContent) };
+  });
+  r.histograma = [].slice.call(document.querySelectorAll("#ab-resumo .ab-svg-contagem")).map(function (t) { return Number(t.textContent); });
+  r.graficoAcessivel = Boolean(document.querySelector("#ab-resumo svg[role=img] title") && document.querySelector("#ab-resumo svg[role=img] desc"));
+  r.comparacoes = document.querySelectorAll("#ab-resumo .ab-compara").length;
+  r.relatos = document.querySelectorAll("#ab-resumo .ab-relato").length;
+  var barras = [].slice.call(document.querySelectorAll("#ab-resumo .ab-questao-grafico [data-ab-questao]"));
+  r.barras = barras.map(function (b) {
+    var selo = b.querySelector(".questao-selo-compacto");
+    return { n: b.dataset.abQuestao, selo: selo ? limpa(selo.textContent) : null,
+      rotulo: selo ? selo.getAttribute("aria-label") : "", alto: Math.round(b.getBoundingClientRect().height) };
+  });
+  r.habilidades = [].slice.call(document.querySelectorAll("#ab-resumo [data-ab-descritor]")).map(function (b) { return b.dataset.abDescritor; });
+  r.participacao = texto("ab-participacao");
+  r.anuncio = texto("ab-anuncio");
+  r.csvLiberado = !document.getElementById("ab-csv").disabled;
+  r.limitesVisiveis = !document.getElementById("ab-limites").hidden;
+
+  var alvo = barras[barras.length - 1];
+  r.barraAlvo = alvo ? alvo.dataset.abQuestao : null;
+  if (alvo) alvo.click();
+  await quadros();
+  var det = document.getElementById("ab-questao-" + r.barraAlvo);
+  r.questaoAberta = {
+    painel: visivel("ab-questao") && !visivel("ab-resumo"),
+    aba: document.getElementById("ab-tab-questao").getAttribute("aria-selected"),
+    aberto: Boolean(det && det.open),
+    foco: Boolean(det && document.activeElement === det.querySelector("summary")),
+    selo: det ? limpa((det.querySelector("summary .questao-selo") || {}).textContent) : null,
+    svg: Boolean(det && det.querySelector("summary .questao-selo svg")),
+    corretas: det ? det.querySelectorAll(".ab-alternativa.correta").length : -1
+  };
+  r.itensQuestao = document.querySelectorAll("#ab-questao-conteudo details.ab-item").length;
+  r.semPrefixoQ = !/\bQ\s?\d/.test(document.getElementById("tab-relatorios").textContent);
+
+  window.switchAnalise("ab-resumo");
+  await quadros();
+  var hab = document.querySelector("#ab-resumo [data-ab-descritor]");
+  r.habAlvo = hab ? hab.dataset.abDescritor : null;
+  if (hab) hab.click();
+  await quadros();
+  var detDesc = [].slice.call(document.querySelectorAll("#ab-desc-conteudo [data-ab-codigo]")).filter(function (d) {
+    return d.dataset.abCodigo === r.habAlvo;
+  })[0];
+  r.descritorAberto = { painel: visivel("ab-descritor"), aberto: Boolean(detDesc && detDesc.open),
+    foco: Boolean(detDesc && document.activeElement === detDesc.querySelector("summary")) };
+  var abrirQuestao = detDesc && detDesc.querySelector("[data-ab-questao]");
+  r.questaoDoDescritor = abrirQuestao ? abrirQuestao.dataset.abQuestao : null;
+  if (abrirQuestao) abrirQuestao.click();
+  await quadros();
+  var det2 = document.getElementById("ab-questao-" + r.questaoDoDescritor);
+  r.descritorLevaQuestao = visivel("ab-questao") && Boolean(det2 && det2.open);
+
+  window.switchAnalise("ab-aluno");
+  await quadros();
+  r.alunosTodos = linhasAluno().map(dadosAluno);
+  r.alunoStatus = texto("ab-aluno-status");
+  muda("ab-aluno-busca", "analísado 3");
+  r.busca = linhasAluno().map(dadosAluno);
+  muda("ab-aluno-busca", "");
+  muda("ab-aluno-filtro", "sem");
+  r.filtroSem = linhasAluno().map(dadosAluno);
+  var semBotao = linhasAluno()[0];
+  if (semBotao) {
+    semBotao.focus();
+    semBotao.click();
+    await quadros();
+    r.fichaSem = { aberta: dialogo.open, titulo: texto("ab-ficha-titulo"), corpo: limpa(texto("ab-ficha-conteudo")),
+      foco: (document.activeElement || {}).id };
+    document.getElementById("ab-ficha-fechar").click();
+    await pausa(60);
+    r.fichaSem.fechou = !dialogo.open;
+    r.fichaSem.focoVoltou = document.activeElement === semBotao;
+  }
+  muda("ab-aluno-filtro", "corrigidos");
+  r.filtroCorrigidos = linhasAluno().map(dadosAluno);
+  muda("ab-aluno-filtro", "revisar");
+  r.filtroRevisar = { linhas: linhasAluno().length, vazio: Boolean(document.querySelector("#ab-aluno-conteudo .ab-vazio")) };
+  muda("ab-aluno-filtro", "todos");
+  var alvoAluno = linhasAluno().filter(function (b) { return dadosAluno(b).nome === "ANALISADO 0"; })[0];
+  if (alvoAluno) {
+    alvoAluno.focus();
+    alvoAluno.click();
+    await quadros();
+    var tabela = [].slice.call(document.querySelectorAll("#ab-ficha-conteudo tbody tr"));
+    r.ficha = {
+      aberta: dialogo.open, titulo: texto("ab-ficha-titulo"), linhas: tabela.length,
+      selos: document.querySelectorAll("#ab-ficha-conteudo tbody th .questao-selo-compacto").length,
+      primeiroSelo: limpa((document.querySelector("#ab-ficha-conteudo tbody th .questao-selo-compacto") || {}).textContent),
+      acertosTabela: tabela.filter(function (tr) { return limpa((tr.cells[3] || {}).textContent) === "Acerto"; }).length,
+      kpis: [].slice.call(document.querySelectorAll("#ab-ficha-conteudo .ab-kpi strong")).map(function (s) { return limpa(s.textContent); }),
+      habilidades: document.querySelectorAll("#ab-ficha-conteudo .ab-ficha-habilidade").length
+    };
+    document.getElementById("ab-ficha-fechar").click();
+    await pausa(60);
+    r.ficha.fechou = !dialogo.open;
+    r.ficha.focoVoltou = document.activeElement === alvoAluno;
+  }
+
+  function tecla(nome) {
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: nome, bubbles: true, cancelable: true }));
+    return (document.activeElement || {}).id;
+  }
+  window.switchAnalise("ab-aluno", true);
+  r.teclado = [(document.activeElement || {}).id, tecla("ArrowRight"), tecla("End"), tecla("Home"), tecla("ArrowLeft")];
+  r.tecladoPainel = visivel("ab-descritor") && !visivel("ab-resumo");
+  r.tabsFocaveis = [].slice.call(document.querySelectorAll("#analise-segmento [role=tab]")).filter(function (t) { return t.tabIndex === 0; }).length;
+
+  var capturas = [], criar = URL.createObjectURL, proprio = Object.prototype.hasOwnProperty.call(HTMLAnchorElement.prototype, "click");
+  var clicar = HTMLAnchorElement.prototype.click;
+  URL.createObjectURL = function (blob) { capturas.push({ blob: blob }); return criar.call(URL, blob); };
+  HTMLAnchorElement.prototype.click = function () { if (capturas.length) capturas[capturas.length - 1].nome = this.download; };
+  try {
+    ["ab-resumo", "ab-questao", "ab-descritor"].forEach(function (p) {
+      window.switchAnalise(p);
+      document.getElementById("ab-csv").click();
+    });
+    window.switchAnalise("ab-aluno");
+    muda("ab-aluno-filtro", "corrigidos");
+    document.getElementById("ab-csv").click();
+    muda("ab-aluno-filtro", "todos");
+  } finally {
+    URL.createObjectURL = criar;
+    if (proprio) HTMLAnchorElement.prototype.click = clicar;
+    else delete HTMLAnchorElement.prototype.click;
+  }
+  r.csvs = [];
+  for (var i = 0; i < capturas.length; i++) {
+    var bytes = new Uint8Array(await capturas[i].blob.arrayBuffer());
+    var txt = new TextDecoder("utf-8").decode(bytes);
+    var linhas = txt.replace(/\r\n$/, "").split("\r\n");
+    r.csvs.push({ nome: capturas[i].nome, tipo: capturas[i].blob.type,
+      bom: bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF,
+      linhas: linhas.length, cabecalho: linhas[4] || "", primeira: linhas[5] || "" });
+  }
+  r.cliqueRestaurado = Object.prototype.hasOwnProperty.call(HTMLAnchorElement.prototype, "click") === proprio &&
+    URL.createObjectURL === criar;
+
+  var labels = [].slice.call(document.querySelectorAll("#gabarito-inputs label"));
+  if (!labels.length) {
+    window.gerarCamposGabarito();
+    labels = [].slice.call(document.querySelectorAll("#gabarito-inputs label"));
+  }
+  r.gabarito = {
+    labels: labels.length,
+    selos: document.querySelectorAll("#gabarito-inputs label .questao-selo-compacto").length,
+    selects: document.querySelectorAll("#gabarito-inputs .gab-q").length,
+    ligados: labels.every(function (l) { var s = document.getElementById(l.htmlFor); return Boolean(s && s.classList.contains("gab-q")); }),
+    semQ: labels.every(function (l) { return !/Q/.test(l.textContent); }),
+    primeiro: labels[0] ? limpa(labels[0].textContent) : ""
+  };
+  r.qRev = { linhas: document.querySelectorAll(".q-rev[data-q]").length,
+    comSelo: document.querySelectorAll(".q-rev[data-q] > .questao-selo-compacto").length };
+  r.qNum = document.querySelectorAll(".q-num").length;
+
+  muda("ab-aluno-busca", "");
+  muda("ab-aluno-filtro", "todos");
+  window.switchAnalise("ab-resumo");
+  if (dialogo.open) dialogo.close();
+  window.switchTab(abaAntes);
+  return r;
+}
+
+async function medirPainelAnalise(marcos) {
+  function quadros() {
+    return new Promise(function (res) { requestAnimationFrame(function () { requestAnimationFrame(function () { res(true); }); }); });
+  }
+  function rolaSozinho(el) {
+    for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      var ox = getComputedStyle(p).overflowX;
+      if ((ox === "auto" || ox === "scroll" || ox === "hidden") && p.scrollWidth > p.clientWidth) return true;
+    }
+    return false;
+  }
+  function nome(el) { return el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : ""); }
+  function vazados(raiz) {
+    return [].slice.call(raiz.querySelectorAll("*")).filter(function (el) {
+      if (!el.getClientRects().length) return false;
+      var b = el.getBoundingClientRect();
+      return b.width > 0 && (b.right > innerWidth + 1 || b.left < -1) && !rolaSozinho(el);
+    }).slice(0, 5).map(nome);
+  }
+  function alvosPequenos(raiz) {
+    return [].slice.call(raiz.querySelectorAll(".ab-painel:not([hidden]) button, .ab-painel:not([hidden]) summary, #analise-segmento button, #ab-csv"))
+      .filter(function (el) { return el.getClientRects().length && !el.closest(".ab-tecnico, .tabela-rola"); })
+      .filter(function (el) { return el.getBoundingClientRect().height < 43.5; })
+      .slice(0, 5).map(function (el) { return nome(el) + "=" + el.getBoundingClientRect().height.toFixed(2); });
+  }
+  var r = { largura: innerWidth, paineis: {} };
+  var abaAntes = (document.querySelector(".tab-content.active") || { id: "tab-dashboard" }).id.replace(/^tab-/, "");
+  window.switchTab("relatorios");
+  var prova = document.getElementById("ab-prova");
+  if (prova.value !== String(marcos.idNoBanco)) {
+    prova.value = String(marcos.idNoBanco);
+    prova.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  var sec = document.getElementById("tab-relatorios");
+  for (var p of ["ab-resumo", "ab-aluno", "ab-questao", "ab-descritor"]) {
+    window.switchAnalise(p);
+    var primeiro = document.querySelector("#" + p + " details.ab-item");
+    if (primeiro) primeiro.open = true;
+    await quadros();
+    r.paineis[p] = { pagina: document.documentElement.scrollWidth, vazados: vazados(sec), pequenos: alvosPequenos(sec) };
+  }
+  window.switchAnalise("ab-aluno");
+  await quadros();
+  var linha = [].slice.call(document.querySelectorAll("#ab-aluno-conteudo .ab-aluno-linha")).filter(function (b) {
+    return b.querySelector(".ab-aluno-nota strong").textContent.trim() !== "—";
+  })[0];
+  var dialogo = document.getElementById("ab-ficha");
+  if (linha) {
+    linha.click();
+    await quadros();
+    var d = dialogo.getBoundingClientRect();
+    r.ficha = { aberta: dialogo.open, cabe: d.left >= 0 && d.right <= innerWidth && d.top >= 0 && d.bottom <= innerHeight,
+      vazados: vazados(dialogo), caixa: [Math.round(d.left), Math.round(d.right), Math.round(d.top), Math.round(d.bottom)] };
+    dialogo.close();
+  }
+  window.switchAnalise("ab-resumo");
+  window.switchTab(abaAntes);
+  return r;
+}
+
 function colherErros() {
   return { erros: window.__erros || [], abasAtivas: document.querySelectorAll(".tab-content.active").length };
 }
@@ -2074,6 +2328,85 @@ var LISTA = {
       /Distrator mais forte/.test(an.csvCabecalho) && /\d,\d/.test(an.csv),
       [an.csvLinhas, an.csvColunas, an.csvCabecalho, an.csv.split(/\r\n/)[1]]);
     check("o botão de baixar responde em português", /CSV da análise gerado/.test(an.statusCsv || ""), an.statusCsv);
+
+    console.log("\n== painel de análise: resumo, alunos, questões e descritores ==");
+    var pa = await c.naPagina(dirigirPainelAnalise, [{ idNoBanco: d.idNoBanco }]);
+    var doisDigitos = function (n) { return (String(n).length < 2 ? "0" : "") + n; };
+    var mediaUmaCasa = (an.notas.reduce(function (a, b) { return a + b; }, 0) / an.notas.length).toFixed(1).replace(".", ",");
+    var semLeitura = (pa.alunosTodos || []).filter(function (a) { return a.situacao === "Sem leitura"; }).length;
+    check("o resumo abre com os quatro indicadores e a média só dos corrigidos",
+      pa.kpis.length === 4 && pa.kpis[0].rotulo === "Média da prova" && pa.kpis[0].valor === mediaUmaCasa + " de 10" &&
+      pa.kpis[1].valor === "8 de " + pa.alunosTodos.length && pa.kpis[2].valor === String(semLeitura) && semLeitura >= 1,
+      [pa.kpis, mediaUmaCasa, semLeitura]);
+    check("o histograma soma as 8 folhas corrigidas e tem título e descrição acessíveis",
+      pa.histograma.length === 5 && pa.histograma.reduce(function (a, b) { return a + b; }, 0) === 8 && pa.graficoAcessivel,
+      [pa.histograma, pa.graficoAcessivel]);
+    check("o resumo compara as turmas e traz as quatro leituras rápidas",
+      pa.comparacoes >= 2 && pa.relatos === 4, [pa.comparacoes, pa.relatos]);
+    check("o gráfico tem uma barra por questão, com selo numérico 01, 02… e alvo de 44px",
+      pa.barras.length === an.total && pa.barras.every(function (b) {
+        return b.selo === doisDigitos(b.n) && b.rotulo === "Questão " + b.n && b.alto >= 44;
+      }), pa.barras.slice(0, 3));
+    check("nenhum identificador 'Q' + número sobra na aba de análise", pa.semPrefixoQ === true, pa.semPrefixoQ);
+    check("prova, participação, anúncio, CSV e limites acompanham a prova escolhida",
+      /8 corrigidos/.test(pa.participacao) && /corrigidos/.test(pa.anuncio) && pa.csvLiberado && pa.limitesVisiveis,
+      [pa.participacao, pa.anuncio, pa.csvLiberado, pa.limitesVisiveis]);
+    check("tocar uma barra abre a questão com o selo completo e o foco no resumo do item",
+      pa.questaoAberta.painel && pa.questaoAberta.aba === "true" && pa.questaoAberta.aberto && pa.questaoAberta.foco &&
+      pa.questaoAberta.selo === doisDigitos(pa.barraAlvo) && pa.questaoAberta.svg && pa.questaoAberta.corretas <= 1,
+      [pa.barraAlvo, pa.questaoAberta]);
+    check("a visão por questão lista todos os itens", pa.itensQuestao === an.total, [pa.itensQuestao, an.total]);
+    check("a habilidade leva ao descritor e o descritor leva à questão",
+      pa.habilidades.length >= 1 && pa.descritorAberto.painel && pa.descritorAberto.aberto && pa.descritorAberto.foco &&
+      pa.questaoDoDescritor && pa.descritorLevaQuestao, [pa.habAlvo, pa.descritorAberto, pa.questaoDoDescritor]);
+    check("a busca de aluno ignora acento e maiúsculas",
+      pa.busca.length === 1 && pa.busca[0].nome === "ANALISADO 3", pa.busca);
+    check("quem não tem leitura aparece como 'Sem leitura', sem nota e nunca como zero",
+      pa.filtroSem.length === semLeitura && pa.filtroSem.every(function (a) { return a.nota === "—" && a.situacao === "Sem leitura"; }),
+      pa.filtroSem);
+    check("a ficha sem leitura avisa que não é zero, foca Fechar e devolve o foco",
+      pa.fichaSem && pa.fichaSem.aberta && /Sem leitura · sem nota/.test(pa.fichaSem.corpo) && /não equivale a nota zero/.test(pa.fichaSem.corpo) &&
+      pa.fichaSem.foco === "ab-ficha-fechar" && pa.fichaSem.fechou && pa.fichaSem.focoVoltou, pa.fichaSem);
+    check("os filtros 'corrigidos' e 'revisar' recortam a lista",
+      pa.filtroCorrigidos.length === 8 && pa.filtroCorrigidos.every(function (a) { return a.situacao !== "Sem leitura"; }) &&
+      pa.filtroRevisar.linhas === 0 && pa.filtroRevisar.vazio, [pa.filtroCorrigidos.length, pa.filtroRevisar]);
+    check("a ficha do aluno mostra nota, acertos e uma linha por questão com selo",
+      pa.ficha && pa.ficha.aberta && pa.ficha.titulo === "ANALISADO 0" && pa.ficha.linhas === an.total &&
+      pa.ficha.selos === an.total && pa.ficha.primeiroSelo === "01" &&
+      pa.ficha.kpis[0] === an.notas[0].toFixed(1).replace(".", ",") + " de 10" &&
+      pa.ficha.kpis[1] === pa.ficha.acertosTabela + " de " + an.total && pa.ficha.habilidades >= 1,
+      [pa.ficha, an.notas[0]]);
+    check("fechar a ficha devolve o foco ao aluno", pa.ficha && pa.ficha.fechou && pa.ficha.focoVoltou, pa.ficha);
+    check("as setas, Home e End trocam as partes da análise com uma só aba focável",
+      pa.teclado.join() === "ab-tab-aluno,ab-tab-questao,ab-tab-descritor,ab-tab-resumo,ab-tab-descritor" &&
+      pa.tecladoPainel && pa.tabsFocaveis === 1, [pa.teclado, pa.tecladoPainel, pa.tabsFocaveis]);
+    var csvDe = function (fim) { return (pa.csvs || []).filter(function (x) { return x.nome === "Gaba-analise-" + fim + ".csv"; })[0] || {}; };
+    check("o CSV opcional sai com BOM e segue a parte aberta da análise",
+      pa.csvs.length === 4 && pa.csvs.every(function (x) { return x.bom && /^text\/csv/.test(x.tipo); }) &&
+      csvDe("resumo").linhas === 10 && csvDe("questao").linhas === an.total + 5 &&
+      /^Questão;Habilidade/.test(csvDe("questao").cabecalho) && csvDe("descritor").linhas >= pa.habilidades.length + 5 &&
+      csvDe("aluno").linhas === 8 + 5, pa.csvs);
+    check("o teste devolve o download do navegador como estava", pa.cliqueRestaurado === true, pa.cliqueRestaurado);
+    check("o gabarito manual usa o selo 01, 02… ligado ao seletor",
+      pa.gabarito.labels > 0 && pa.gabarito.labels === pa.gabarito.selects && pa.gabarito.selos === pa.gabarito.labels &&
+      pa.gabarito.ligados && pa.gabarito.semQ && pa.gabarito.primeiro === "01", pa.gabarito);
+    check("a revisão do caderno usa o selo e não sobra .q-num",
+      pa.qRev.linhas > 0 && pa.qRev.comSelo === pa.qRev.linhas && pa.qNum === 0, [pa.qRev, pa.qNum]);
+
+    var larguras = [{ w: 0 }, { w: 390, h: 760 }, { w: 320, h: 640 }];
+    for (var li0 = 0; li0 < larguras.length; li0++) {
+      var tela = larguras[li0];
+      if (tela.w) await c.chama("Emulation.setDeviceMetricsOverride", { width: tela.w, height: tela.h, deviceScaleFactor: 1, mobile: true });
+      var med = await c.naPagina(medirPainelAnalise, [{ idNoBanco: d.idNoBanco }]);
+      Object.keys(med.paineis).forEach(function (p) {
+        var m = med.paineis[p];
+        check("em " + med.largura + "px, " + p + " cabe sem rolar a página de lado e com alvos de 44px",
+          m.pagina <= med.largura && m.vazados.length === 0 && m.pequenos.length === 0, m);
+      });
+      check("em " + med.largura + "px, a ficha do aluno cabe na tela; só a tabela rola",
+        med.ficha && med.ficha.aberta && med.ficha.cabe && med.ficha.vazados.length === 0, med.ficha);
+    }
+    await c.chama("Emulation.clearDeviceMetricsOverride", {});
 
     console.log("\n== importar a lista de chamada em lote ==");
     var li = await c.naPagina(dirigirLista, [Object.assign({
