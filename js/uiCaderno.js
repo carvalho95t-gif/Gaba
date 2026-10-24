@@ -91,6 +91,7 @@
       turma: saved.turmaLabel || "",
       ano: campo("cad-ano", saved.ano),
       bimestre: campo("cad-bimestre", saved.bimestre),
+      trimestre: campo("cad-trimestre", saved.trimestre),
       data: campo("cad-data", saved.data),
       instrucoes: campo("cad-instrucoes", saved.instrucoes)
     };
@@ -333,8 +334,11 @@
     var turma = turmaAtual() || {};
     var disc = campo("cad-disciplina", saved.disciplina) || (prova && prova.disciplina) || "";
     var ano = campo("cad-ano", saved.ano) || turma.ano || (prova && prova.ano) || "";
+    /* o trimestre vem so do seletor da ficha, nunca de texto livre: "1 trimestre" nao casa com
+       "1º trimestre" no mesmoRotulo do catalogo e a lista viraria vazia na mao do professor */
+    var banda = campo("cad-trimestre", saved.trimestre) || "";
     /* "Geral" é o que a criação da prova escreve quando ninguém disse a disciplina: não filtra nada */
-    return { disciplina: disc === "Geral" ? "" : disc, ano: ano };
+    return { disciplina: disc === "Geral" ? "" : disc, ano: ano, banda: banda };
   }
 
   function itensDoDescritor(texto, contexto) {
@@ -343,7 +347,8 @@
     /* reabrir a lista com o código já na caixa mostraria uma linha só: código não é busca */
     var ehCodigo = /^[Dd]\d{1,3}(?:_[A-Za-z])?$/.test(alvo) && GabaDescritores.porCodigo(alvo).length;
     return GabaDescritores.filtrar({
-      disciplina: contexto.disciplina, ano: contexto.ano, busca: ehCodigo ? "" : alvo
+      disciplina: contexto.disciplina, ano: contexto.ano, banda: contexto.banda,
+      busca: ehCodigo ? "" : alvo
     });
   }
 
@@ -367,7 +372,10 @@
   }
 
   function rotuloDaLinha(r) {
-    return [r.disciplina, r.componente, r.ano, r.banda, r.matriz].filter(function (t) { return t; }).join(" · ");
+    var partes = [r.disciplina, r.componente, r.ano, r.banda, r.matriz].filter(function (t) { return t; });
+    /* 1 = a linha do papel nao e firme: serie, trimestre ou texto deduzidos de outro lugar */
+    if (r.duvidoso) partes.push("revisar");
+    return partes.join(" · ");
   }
 
   function posicionarPick() {
@@ -405,7 +413,7 @@
         "nenhum descritor bate com o que está na caixa — o texto livre continua valendo" :
         "este aparelho ainda não tem o catálogo das matrizes") + "</div>");
     }
-    var where = [pick.contexto.disciplina, pick.contexto.ano].filter(function (t) { return t; });
+    var where = [pick.contexto.disciplina, pick.contexto.ano, pick.contexto.banda].filter(function (t) { return t; });
     partes.push('<div class="q-pick-foot">' + (where.join(" · ") || "todas as disciplinas e anos") +
       " — " + itens.length + " de " + (global.GabaDescritores ? GabaDescritores.total : itens.length) +
       " descritores das matrizes oficiais</div>");
@@ -1148,7 +1156,8 @@
   var CAMPOS_CFG = {
     "cad-modelo": "modelo", "cad-rede": "rede", "cad-escola": "escola", "cad-titulo": "titulo",
     "cad-disciplina": "disciplina", "cad-professor": "professor", "cad-ano": "ano",
-    "cad-bimestre": "bimestre", "cad-data": "data", "cad-instrucoes": "instrucoes", "cad-colunas": "colunas"
+    "cad-bimestre": "bimestre", "cad-trimestre": "trimestre",
+    "cad-data": "data", "cad-instrucoes": "instrucoes", "cad-colunas": "colunas"
   };
 
   function gravarCfg() {

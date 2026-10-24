@@ -162,17 +162,24 @@ function colunaDeTexto(x, fim, texto) { return pedaco(x, fim, texto); }
   var catalogo = D.todos();
   check("o catálogo embutido tem os descritores todos", catalogo.length > 400 && D.total === catalogo.length,
     { total: D.total, lidos: catalogo.length });
-  var codigoRuim = catalogo.filter(function (r) { return !/^D\d{1,3}(_[A-Z])?$/.test(r.codigo); });
-  check("todo código tem o formato oficial (D + número, sufixo quando houver)", codigoRuim.length === 0,
+  var codigoRuim = catalogo.filter(function (r) {
+    /* cada matriz traz o código do papel dela: PAEBES/AMA imprime D###, o currículo ES imprime EM13xxx */
+    return r.matriz === "Currículo ES FGB EM"
+      ? !/^EM\d{2}[A-Z]{2,4}\d{2,3}[A-Z]{0,4}(\/[A-Z]{2,3})?$/.test(r.codigo)
+      : !/^D\d{1,3}(_[A-Z])?$/.test(r.codigo);
+  });
+  check("todo código tem o formato que o papel da própria matriz imprime", codigoRuim.length === 0,
     codigoRuim.slice(0, 4));
   var chaves = {};
   var repetidas = catalogo.filter(function (r) {
-    var k = [r.matriz, r.disciplina, r.ano, r.codigo].join("|");
+    /* o trimestre entra na conta: no currículo ES o mesmo código reaparece em outro trimestre da
+       mesma série, e é exatamente isso que decide em qual prova a linha entra */
+    var k = [r.matriz, r.disciplina, r.ano, r.banda, r.codigo].join("|");
     if (chaves[k]) return true;
     chaves[k] = 1;
     return false;
   });
-  check("matriz + disciplina + ano + código não se repete", repetidas.length === 0, repetidas.slice(0, 4));
+  check("matriz + disciplina + ano + trimestre + código não se repete", repetidas.length === 0, repetidas.slice(0, 4));
   check("toda linha tem disciplina e ano",
     catalogo.every(function (r) { return !!r.disciplina && !!r.ano && !!r.anoChave; }));
   check("a chave de ano do catálogo bate com a do extrator",
@@ -202,7 +209,16 @@ function colunaDeTexto(x, fim, texto) { return pedaco(x, fim, texto); }
     D.filtrar({ busca: "CÍRCULO" }).length > 0 &&
     D.filtrar({ busca: "CÍRCULO" }).every(function (r) { return D.despido(r.descricao).indexOf("circulo") >= 0; }));
   check("uma disciplina que não existe no catálogo não inventa linha",
-    D.filtrar({ disciplina: "Educação Física" }).length === 0);
+    D.filtrar({ disciplina: "Educação para o Trânsito" }).length === 0);
+  /* o critério de oferta do currículo ES é turma + trimestre, e o filtro tem que fechar os dois */
+  check("a disciplina que só o currículo ES traz aparece",
+    D.filtrar({ disciplina: "Educação Física" }).length === 27, D.filtrar({ disciplina: "Educação Física" }).length);
+  var tri = D.filtrar({ disciplina: "Química", ano: "2ª série EM", banda: "1º trimestre" });
+  check("o trimestre escolhido não deixa entrar linha de outro trimestre",
+    tri.length === 4 && tri.every(function (r) { return r.banda === "1º trimestre"; }),
+    { n: tri.length, bandas: tri.map(function (r) { return r.banda; }) });
+  check("a série escolhida não deixa entrar linha de outra série",
+    D.filtrar({ disciplina: "História", ano: "3ª série EM" }).every(function (r) { return r.anoChave === "3:EM"; }));
   check("o mesmo código em mais de uma matriz aparece inteiro em porCodigo",
     D.porCodigo("d002_m").length >= 2);
   check("o catálogo se expande igualzinho duas vezes (nada é recriado a cada consulta)",

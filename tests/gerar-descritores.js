@@ -29,11 +29,41 @@ function cabecalhoDe(nome) {
   return { matriz: "", disciplina: "" };
 }
 
+/* ---------- a matriz do currículo ES (Ensino Médio / Formação Geral Básica) ---------- */
+
+/* O catálogo dela não sai destes PDFs: quem o monta é o pacote da Área de Trabalho, que lê os 37
+   PDFs publicados no site da SEDU-ES e classifica cada habilidade por disciplina, série e trimestre.
+   Entra no bundle, mas NÃO no seed: o seed monta a chave como matriz|disciplina|ano|codigo e isso
+   juntaria os três trimestres de um mesmo código numa linha só. Quem sobe essas linhas ao banco é
+   importar-habilidades-fgb-em.sql, cuja chave leva o trimestre. */
+var FGB = process.argv[3] ||
+  path.join(process.env.USERPROFILE || process.env.HOME || "", "OneDrive", "Área de Trabalho",
+    "Curriculo-ES_Habilidades_EM_FGB", "catalogo-fgb-em.json");
+
+function linhasFgb(caminho) {
+  var bruto = JSON.parse(fs.readFileSync(caminho, "utf8"));
+  var semSerie = 0;
+  var linhas = bruto.filter(function (r) {
+    /* sem série não há turma que a casa: o filtro de ano do seletor nunca a alcança. Fica no banco,
+       onde o professor consulta pelo código, mas não entope o seletor com linha impossível. */
+    if (!r.ano) { semSerie++; return false; }
+    return true;
+  }).map(function (r) {
+    return {
+      matriz: r.matriz, codigo: r.codigo, disciplina: r.disciplina, componente: r.componente,
+      ano: r.ano || "", banda: r.banda || "", descricao: r.descricao || "",
+      pagina: String(r.pagina || "").split(",")[0], duvida: r.duvidoso ? (r.motivo || "revisar") : "",
+      fontes: [r.fonte || caminho]
+    };
+  });
+  return { linhas: linhas, semSerie: semSerie };
+}
+
 /* ---------- js/descritoresMatriz.js: o catalogo embutido no app ---------- */
 
 /* o modulo nao leva nome de campo em linha alguma: sao ~52KB que o caderno le no carregamento,
    entao a ordem dos campos fica escrita no cabecalho e o modulo expande na primeira consulta */
-var CAMPOS = ["matriz", "codigo", "disciplina", "componente", "ano", "banda", "descricao", "anoChave", "pagina"];
+var CAMPOS = ["matriz", "codigo", "disciplina", "componente", "ano", "banda", "descricao", "anoChave", "pagina", "duvidoso"];
 
 function literal(v) {
   return JSON.stringify(typeof v === "number" ? v : String(v == null ? "" : v));
@@ -41,12 +71,25 @@ function literal(v) {
 
 function linhaDe(r) {
   return [r.matriz, r.codigo, r.disciplina, r.componente, r.ano, r.banda, r.descricao,
-    GabaMatriz.chaveDeAno(r.ano), Number(r.pagina) || 0].map(literal).join(", ");
+    GabaMatriz.chaveDeAno(r.ano), Number(r.pagina) || 0, r.duvida ? 1 : 0].map(literal).join(", ");
 }
 
-function moduloDe(catalogo, rel) {
+function moduloDe(catalogo, rel, fgb, semSerie) {
   var semTexto = catalogo.filter(function (r) { return !r.descricao; });
   var origem = rel.map(function (r) { return "     · " + r.arquivo + " — " + r.paginas + " páginas"; });
+  if (fgb && fgb.length) {
+    origem.push("   e " + fgb.length + " linhas da Formação Geral Básica do currículo ES (Ensino Médio),",
+      "     do pacote Curriculo-ES_Habilidades_EM_FGB: 37 PDFs de",
+      "     https://curriculo.sedu.es.gov.br/curriculo/orientacoescurriculares/, classificados por",
+      "     disciplina, série e trimestre. " + fgb.filter(function (r) { return r.duvida; }).length +
+      " delas estão marcadas como duvidosas e o seletor",
+      "     mostra \"revisar\" no rótulo: a série ou o trimestre vieram do texto da página, não do",
+      "     destino nomeado que o próprio PDF declara.");
+    if (semSerie) {
+      origem.push("     " + semSerie + " linha do documento não traz série: sem turma que a casa, ela fica só");
+      origem.push("     no banco (importar-habilidades-fgb-em.sql) e não entra neste catálogo.");
+    }
+  }
   var buracos = semTexto.map(function (r) {
     return "     · " + r.matriz + " / " + r.disciplina + " / " + r.ano + " / " + r.codigo +
       (r.duvida ? " (" + r.duvida + ")" : " (a linha do papel não trouxe texto)");
@@ -72,7 +115,7 @@ function moduloDe(catalogo, rel) {
     "   Ficam pelo código, com descricao vazia, para o seletor não mostrar chute:",
     buracos.join("\n"),
     "",
-    "   Regenerar:  node tests/gerar-descritores.js [pasta com os PDFs]",
+    "   Regenerar:  node tests/gerar-descritores.js [pasta com os PDFs] [catalogo-fgb-em.json]",
     "*/",
     "(function (root, factory) {",
     "  var api = factory();",
@@ -81,7 +124,8 @@ function moduloDe(catalogo, rel) {
     "})(typeof globalThis !== \"undefined\" ? globalThis : this, function () {",
     "  \"use strict\";",
     "",
-    "  /* [matriz, codigo, disciplina, componente, ano, banda, descricao, chave do ano, pagina do PDF] */",
+    "  /* [matriz, codigo, disciplina, componente, ano, banda, descricao, chave do ano, pagina do PDF,",
+    "     duvidoso (1 = a linha do papel nao e firme: serie, trimestre ou texto deduzidos)] */",
     "  var CAMPOS = [" + CAMPOS.map(literal).join(", ") + "];",
     "  var LINHAS = [",
     catalogo.map(function (r) { return "    [" + linhaDe(r) + "]"; }).join(",\n"),
@@ -129,12 +173,18 @@ function moduloDe(catalogo, rel) {
     "    var lista = todos().filter(function (r) {",
     "      if (!o.incompletos && !r.descricao) return false;",
     "      if (o.matriz && r.matriz !== o.matriz) return false;",
-    "      if (o.disciplina && !mesmoRotulo(r.disciplina, o.disciplina)) return false;",
     "      if (o.banda && !mesmoRotulo(r.banda, o.banda)) return false;",
     "      var texto = despido(r.codigo + \" \" + r.descricao);",
     "      for (var i = 0; i < chaves.length; i++) if (texto.indexOf(chaves[i]) < 0) return false;",
     "      return true;",
     "    });",
+    "    /* disciplina e texto livre do cabecalho, e \"Educação Física\" contem \"Física\": a substring só",
+    "       vale quando nenhuma linha bate pelo nome inteiro, senão a disciplina pedida arrasta a vizinha */",
+    "    if (o.disciplina) {",
+    "      var exata = lista.filter(function (r) { return despido(r.disciplina) === despido(o.disciplina); });",
+    "      lista = exata.length ? exata",
+    "        : lista.filter(function (r) { return mesmoRotulo(r.disciplina, o.disciplina); });",
+    "    }",
     "    if (!ano) return lista;",
     "    var doAno = lista.filter(function (r) { return r.anoChave === ano; });",
     "    return doAno.length ? doAno : lista;",
@@ -257,12 +307,23 @@ function seedDe(catalogo, rel) {
     todos = todos.concat(extra.registros);
   }
   var catalogo = GabaMatriz.deduplicar(todos);
-  catalogo.sort(function (a, b) {
-    return String(a.matriz).localeCompare(String(b.matriz)) ||
-      String(a.disciplina).localeCompare(String(b.disciplina)) ||
-      String(a.ano).localeCompare(String(b.ano), "pt", { numeric: true }) ||
-      a.codigo.localeCompare(b.codigo, "pt", { numeric: true });
-  });
+  function ordena(vetor) {
+    return vetor.sort(function (a, b) {
+      return String(a.matriz).localeCompare(String(b.matriz)) ||
+        String(a.disciplina).localeCompare(String(b.disciplina)) ||
+        String(a.ano).localeCompare(String(b.ano), "pt", { numeric: true }) ||
+        String(a.codigo).localeCompare(String(b.codigo), "pt", { numeric: true });
+    });
+  }
+
+  if (!fs.existsSync(FGB)) console.log("\n  ATENCAO: sem " + FGB + " — o bundle sai so com as matrizes de papel.");
+  var lidoFgb = fs.existsSync(FGB) ? linhasFgb(FGB) : { linhas: [], semSerie: 0 };
+  var fgb = ordena(lidoFgb.linhas);
+  var bundle = ordena(catalogo).concat(fgb);
+  console.log("\n  FGB EM: " + fgb.length + " linhas no bundle (" +
+    fgb.filter(function (r) { return r.duvida; }).length + " duvidosas" +
+    (lidoFgb.semSerie ? ", " + lidoFgb.semSerie + " sem série ficam de fora: nenhuma turma as casa" : "") +
+    ") de " + FGB);
 
   console.log("== origem ==");
   rel.forEach(function (r) {
@@ -274,23 +335,23 @@ function seedDe(catalogo, rel) {
       (r.semAno ? " [sem ano " + r.semAno + "]" : ""));
   });
   var grupos = {};
-  catalogo.forEach(function (r) {
+  bundle.forEach(function (r) {
     var k = r.matriz + " / " + (r.disciplina || "?") + " / " + (r.ano || "?");
     grupos[k] = (grupos[k] || 0) + 1;
   });
-  console.log("\n== catalogo: " + catalogo.length + " descritores ==");
+  console.log("\n== catalogo: " + bundle.length + " descritores no bundle ==");
   Object.keys(grupos).sort().forEach(function (k) { console.log("  " + k + ": " + grupos[k]); });
-  console.log("\n  sem descricao: " + catalogo.filter(function (r) { return !r.descricao; }).length +
-    " | duvidosos: " + catalogo.filter(function (r) { return r.duvida; }).length +
-    " | sem ano: " + catalogo.filter(function (r) { return !r.ano; }).length);
+  console.log("\n  sem descricao: " + bundle.filter(function (r) { return !r.descricao; }).length +
+    " | duvidosos: " + bundle.filter(function (r) { return r.duvida; }).length +
+    " | sem ano: " + bundle.filter(function (r) { return !r.ano; }).length);
   fs.writeFileSync(path.join(process.env.TEMP || "/tmp", "catalogo-descritores.json"),
-    JSON.stringify(catalogo, null, 1), "utf8");
+    JSON.stringify(bundle, null, 1), "utf8");
   console.log("\n  rascunho em " + path.join(process.env.TEMP || "/tmp", "catalogo-descritores.json"));
 
   var raiz = path.resolve(__dirname, "..");
   var js = path.join(raiz, "js", "descritoresMatriz.js");
   var sql = path.join(raiz, "supabase", "seed-descritores.sql");
-  fs.writeFileSync(js, moduloDe(catalogo, rel), "utf8");
+  fs.writeFileSync(js, moduloDe(bundle, rel, fgb, lidoFgb.semSerie), "utf8");
   fs.writeFileSync(sql, seedDe(catalogo, rel), "utf8");
   console.log("  gravado " + js);
   console.log("  gravado " + sql);
