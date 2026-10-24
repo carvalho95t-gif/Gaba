@@ -177,6 +177,12 @@ function check(nome, cond, detalhe) {
     abandono.problemas.some(function (p) { return /sem frequência ficaram de fora\.$/.test(p); }), abandono.problemas);
   check("o aviso de saida e um so, nao um por aluno",
     abandono.problemas.filter(function (p) { return /ficaram de fora\./.test(p); }).length === 1, abandono.problemas);
+  check("a lista dos que ficaram de fora traz numero, nome e situacao",
+    abandono.fora.length === 2 &&
+    abandono.fora.map(function (f) { return f.numero; }).join("|") === "2|3" &&
+    abandono.fora[0].nome === "DELTA ECO FOXTROT" &&
+    /DEIXOU DE FREQUENTAR/.test(abandono.fora[0].situacao) &&
+    /Não frequenta/.test(abandono.fora[1].situacao), abandono.fora);
   var composta = GabaLista.montar([
     ["Nº", "Nome do Estudante", "Situação"],
     ["1", "ALFA BRAVO CHARLIE", "Ativa"],
@@ -224,6 +230,13 @@ function check(nome, cond, detalhe) {
     comAbandono.turmas.length === 1 && comAbandono.saidas === 1 && comAbandono.turmas[0].saidas === 1 &&
     comAbandono.turmas[0].alunos.length === 2 && !comAbandono.turmas[0].problemas.length,
     [comAbandono.saidas, comAbandono.turmas[0].alunos.length, comAbandono.turmas[0].problemas]);
+  check("cada turma carrega os seus que ficaram de fora, com o motivo",
+    comAbandono.turmas[0].fora.length === 1 && comAbandono.turmas[0].fora[0].numero === 1 &&
+    /DEIXOU DE FREQUENTAR/.test(comAbandono.turmas[0].fora[0].situacao), comAbandono.turmas[0].fora);
+  check("o motivo prefere a celula de situacao ao nome do aluno",
+    GabaLista.montar([["Nº", "Nome do Estudante", "Situação"], ["9", "MIKE NOVEMBER OSCAR", "Vice Líder/Transferido"]])
+      .fora[0].situacao === "Vice Líder/Transferido",
+    GabaLista.montar([["Nº", "Nome do Estudante", "Situação"], ["9", "MIKE NOVEMBER OSCAR", "Vice Líder/Transferido"]]).fora);
   check("o aviso de uma saida so fala no singular",
     GabaLista.avisoDeSaidas(1) === "1 aluno marcado como transferido, remanejado ou sem frequência ficou de fora." &&
     /3 alunos marcados/.test(GabaLista.avisoDeSaidas(3)), GabaLista.avisoDeSaidas(1));

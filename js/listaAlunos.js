@@ -62,11 +62,24 @@
   var SAIU_NO_FIM = new RegExp("(" + SAIDA + ")[a-z]*$");
   var SAIU_NO_NOME = new RegExp("\\b(" + SAIDA + ")");
 
+  function ehSaida(texto, coluna, idxNome) {
+    var t = chaveDe(texto);
+    return coluna === idxNome ? SAIU_NO_NOME.test(t) : SAIU.test(t) || SAIU_NO_FIM.test(t);
+  }
+
   function saiuDaTurma(linha, idxNome) {
-    return linha.some(function (c, i) {
-      var t = chaveDe(c);
-      return i === idxNome ? SAIU_NO_NOME.test(t) : SAIU.test(t) || SAIU_NO_FIM.test(t);
-    });
+    return linha.some(function (c, i) { return ehSaida(c, i, idxNome); });
+  }
+
+  /* a celula que denunciou a saida, preferindo a de situacao ao nome do aluno */
+  function motivoDaSaida(linha, idxNome) {
+    var doNome = "";
+    for (var i = 0; i < linha.length; i++) {
+      if (!ehSaida(linha[i], i, idxNome)) continue;
+      if (i !== idxNome) return rotuloDe(linha[i]);
+      doNome = rotuloDe(linha[i]);
+    }
+    return doNome;
   }
 
   function avisoDeSaidas(n) {
@@ -195,6 +208,7 @@
     var vistos = {};
     var nomesVistos = {};
     var alunos = [];
+    var fora = [];
     var maior = 0;
     var puladas = 0;
     var saidas = 0;
@@ -204,7 +218,14 @@
       if (!nome || nome.length < 3) { puladas++; continue; }
       var chaveNome = limpo(nome);
       if (ROTULOS_DE_DESCARTE[chaveNome] || ehRodape(nome) || pareceContato(nome)) { puladas++; continue; }
-      if (saiuDaTurma(linha, idx.nome)) { saidas++; continue; }
+      if (saiuDaTurma(linha, idx.nome)) {
+        saidas++;
+        fora.push({
+          numero: idx.numero >= 0 ? numeroDe(rotuloDe(linha[idx.numero] || "")) : null,
+          nome: nome, situacao: motivoDaSaida(linha, idx.nome), linha: n + 1
+        });
+        continue;
+      }
 
       var brutoNumero = idx.numero >= 0 ? rotuloDe(linha[idx.numero] || "") : "";
       var num = numeroDe(brutoNumero);
@@ -268,6 +289,7 @@
 
     return {
       alunos: alunos,
+      fora: fora,
       problemas: problemas,
       cabecalho: cabecalho,
       linhaCabecalho: linhaCabecalho,
@@ -386,7 +408,7 @@
       abasPorArquivo[arq] = (abasPorArquivo[arq] || 0) + 1;
     });
 
-    function guardar(nome, alunos, problemas, fonte, saiu) {
+    function guardar(nome, alunos, problemas, fonte, saiu, fora) {
       nome = rotuloDe(nome).slice(0, 120);
       var k = limpo(nome);
       if (!k) return;
@@ -396,7 +418,8 @@
       }
       saidas += saiu || 0;
       porNome[k] = true;
-      turmas.push({ nome: nome, alunos: alunos, problemas: problemas.filter(avisoProprio), saidas: saiu || 0, fonte: fonte });
+      turmas.push({ nome: nome, alunos: alunos, problemas: problemas.filter(avisoProprio),
+        saidas: saiu || 0, fora: fora || [], fonte: fonte });
     }
 
     (itens || []).forEach(function (it) {
@@ -406,13 +429,15 @@
       var onde = colunaDeTurma(linhas);
       if (onde && onde.comNome) {
         separarPorTurma(linhas, onde).forEach(function (g) {
-          if (g.lista.alunos.length || g.lista.saidas) guardar(g.nome, g.lista.alunos, g.lista.problemas, rotulo, g.lista.saidas);
+          if (g.lista.alunos.length || g.lista.saidas) {
+            guardar(g.nome, g.lista.alunos, g.lista.problemas, rotulo, g.lista.saidas, g.lista.fora);
+          }
         });
         return;
       }
       var nomes = nomesDeTurmas(linhas, onde);
       if (nomes) {
-        nomes.forEach(function (n) { guardar(n, [], [], rotulo, 0); });
+        nomes.forEach(function (n) { guardar(n, [], [], rotulo, 0, []); });
         return;
       }
       var lista = montar(linhas);
@@ -423,7 +448,7 @@
       var nome = rotulo;
       if (!it.arquivo || rotulo === it.arquivo) nome = semExtensao(rotulo);
       else if (ABA_GENERICA.test(rotulo) && abasPorArquivo[it.arquivo] === 1) nome = semExtensao(it.arquivo);
-      guardar(nome, lista.alunos, lista.problemas, rotulo, lista.saidas);
+      guardar(nome, lista.alunos, lista.problemas, rotulo, lista.saidas, lista.fora);
     });
 
     return { turmas: turmas, ignoradas: ignoradas, repetidas: repetidas, saidas: saidas };

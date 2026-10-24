@@ -1557,6 +1557,11 @@ async function dirigirImportarTurmas(marcos) {
         return { nome: tr.querySelector(".impt-nome").value, alunos: tr.querySelector(".impt-num").textContent,
           selo: tr.querySelector(".badge").textContent, marcada: tr.querySelector("[data-impt]").checked };
       }),
+      foraSumario: ((box.querySelector(".imp-fora > summary") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+      fora: [].slice.call(box.querySelectorAll(".imp-fora-tabela tbody tr")).map(function (tr) {
+        return [].slice.call(tr.children).map(function (td) { return td.textContent.trim(); });
+      }),
+      foraCsv: Boolean(box.querySelector("#impt-fora-csv")),
       ano: (document.getElementById("impt-ano") || {}).value,
       comAlunos: Boolean(document.getElementById("impt-alunos") && document.getElementById("impt-alunos").checked),
       salvar: salvar ? { texto: salvar.textContent, desligado: salvar.disabled } : null,
@@ -1584,6 +1589,28 @@ async function dirigirImportarTurmas(marcos) {
   r.lido = await espera(function () { var p = painel(); return p.linhas.length === 2 ? p : null; }, 15000)
     .catch(painel);
   r.bancoAntesDeSalvar = window.__gaba.mb.turmas.length - turmasAntes;
+
+  /* o download de quem ficou de fora, interceptado sem sair da pagina */
+  var pega = [], cria = URL.createObjectURL, clickOriginal = HTMLAnchorElement.prototype.click;
+  var tinhaPropria = Object.prototype.hasOwnProperty.call(HTMLAnchorElement.prototype, "click");
+  URL.createObjectURL = function (blob) { pega.push({ blob: blob }); return cria.call(URL, blob); };
+  HTMLAnchorElement.prototype.click = function () { if (pega.length) pega[pega.length - 1].nome = this.download; };
+  try {
+    var btnFora = document.getElementById("impt-fora-csv");
+    if (btnFora) btnFora.click();
+  } finally {
+    URL.createObjectURL = cria;
+    if (tinhaPropria) HTMLAnchorElement.prototype.click = clickOriginal;
+    else delete HTMLAnchorElement.prototype.click;
+  }
+  r.foraCsv = null;
+  if (pega.length) {
+    var bytesFora = new Uint8Array(await pega[0].blob.arrayBuffer());
+    var txtFora = new TextDecoder("utf-8").decode(bytesFora);
+    r.foraCsv = { nome: pega[0].nome, tipo: pega[0].blob.type,
+      bom: bytesFora[0] === 0xEF && bytesFora[1] === 0xBB && bytesFora[2] === 0xBF,
+      linhas: txtFora.replace(/\r\n$/, "").split("\r\n") };
+  }
 
   var todas = document.getElementById("impt-todas");
   todas.click();
@@ -2528,6 +2555,15 @@ var LISTA = {
     check("o transferido fica de fora e o painel conta",
       it.lido.linhas[0].alunos === "2" &&
       it.lido.avisos.some(function (a) { return /1 aluno marcado como transferido/.test(a); }), it.lido);
+    check("o painel mostra quem ficou de fora, com turma, numero e situacao",
+      it.lido.foraSumario === "1 linha ficou de fora: quem saiu da turma" &&
+      it.lido.fora.length === 1 && it.lido.fora[0].join("|") === "6º A (teste)|2|TRANSFERIDO|CHARLIE DELTA TESTE",
+      [it.lido.foraSumario, it.lido.fora]);
+    check("a lista de quem ficou de fora sai em CSV com o nome da chamada",
+      it.foraCsv && it.foraCsv.bom && it.foraCsv.tipo === "text/csv;charset=utf-8" &&
+      it.foraCsv.nome === "Gaba-ficaram-de-fora-chamada-da-escola.csv" &&
+      it.foraCsv.linhas[0] === "Turma;Nº;Situação na chamada;Estudante" &&
+      it.foraCsv.linhas[1] === "6º A (teste);2;TRANSFERIDO;CHARLIE DELTA TESTE", it.foraCsv);
     check("a turma que ja existe na escola vem marcada, a outra como nova",
       it.lido.linhas[0].selo === "nova" && it.lido.linhas[1].selo === "já existe", it.lido.linhas);
     check("ler o arquivo nao grava nada antes do professor salvar", it.bancoAntesDeSalvar === 0, it.bancoAntesDeSalvar);
@@ -2546,6 +2582,9 @@ var LISTA = {
       [it.existentes, it.alunosDaExistente]);
     check("o resumo conta a nova, a que ja existia e os alunos salvos",
       /1 turma nova, 1 já existia/.test(it.salvo.resumo) && /4 alunos salvos/.test(it.salvo.resumo), it.salvo);
+    check("depois de salvar o painel continua mostrando quem ficou de fora",
+      it.salvo.fora.length === 1 && it.salvo.fora[0][3] === "CHARLIE DELTA TESTE" && it.salvo.foraCsv,
+      [it.salvo.fora, it.salvo.foraCsv]);
     check("o cartao passa a 2 turmas e o topo fica na escola",
       it.cartaoDepois && /2 turmas/.test(it.cartaoDepois.texto) && mesmaEscola(it.filtro, ESCADA.escolaNova),
       [it.cartaoDepois, it.filtro]);

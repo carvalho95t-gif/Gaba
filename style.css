@@ -161,6 +161,13 @@ button:not(:disabled) { cursor: pointer; }
 .imp-tabela th, .imp-tabela td { padding: 7px 9px; border-bottom: 1px solid var(--linha); text-align: left;
     white-space: nowrap; }
 .imp-tabela th { position: sticky; top: 0; background: var(--bg); font-size: .76rem; font-weight: 800; color: var(--tinta-2); }
+.imp-fora { margin: 0 0 12px; border: 1px solid var(--linha); border-radius: var(--raio-m); padding: 0 12px; }
+.imp-fora > summary { padding: 9px 0; font-size: .84rem; font-weight: 700; color: var(--tinta-2); cursor: pointer; }
+.imp-fora[open] > summary { border-bottom: 1px solid var(--linha); margin-bottom: 6px; }
+.imp-fora-tabela { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.imp-fora-tabela th, .imp-fora-tabela td { padding: 6px 8px; border-bottom: 1px solid var(--linha); text-align: left; }
+.imp-fora-tabela th { font-size: .74rem; font-weight: 800; color: var(--tinta-2); }
+.imp-fora .cad-acoes { padding: 8px 0 10px; }
 .impt-painel { border-color: var(--menta-linha); animation: fadeIn .2s var(--curva); }
 .impt-titulo { margin: 0; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; color: var(--grafite); }
 .impt-titulo em { font-style: normal; color: var(--primary); }

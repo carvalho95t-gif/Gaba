@@ -855,6 +855,44 @@
     }).join("") + "</ul>" : "";
   }
 
+  /* quem a regra de saida tirou da chamada: o professor precisa ver a lista, nao so a conta */
+  function linhasFora() {
+    var out = [];
+    (impt.turmas || []).forEach(function (t, i) {
+      (t.fora || []).forEach(function (f) {
+        out.push([nomeImpt(i), f.numero === null || f.numero === undefined ? "" : f.numero,
+          f.situacao, f.nome]);
+      });
+    });
+    return out;
+  }
+
+  function blocoFora() {
+    var linhas = linhasFora();
+    if (!linhas.length) return "";
+    return '<details class="imp-fora"><summary>' + plural(linhas.length, "linha ficou de fora", "linhas ficaram de fora") +
+      ": quem saiu da turma</summary>" +
+      '<table class="imp-fora-tabela"><thead><tr><th>Turma</th><th class="impt-num">Nº</th><th>Situação na chamada</th><th>Estudante</th></tr></thead><tbody>' +
+      linhas.map(function (l) {
+        return "<tr><td>" + esc(l[0]) + '</td><td class="impt-num">' + esc(l[1] === "" ? "—" : l[1]) +
+          "</td><td>" + esc(l[2]) + "</td><td>" + esc(l[3]) + "</td></tr>";
+      }).join("") + "</tbody></table>" +
+      '<div class="cad-acoes"><button type="button" id="impt-fora-csv" class="btn-ghost">Baixar essa lista (CSV)</button></div>' +
+      "</details>";
+  }
+
+  function baixarCsvFora() {
+    var linhas = linhasFora();
+    if (!linhas.length) return;
+    var corpo = [["Turma", "Nº", "Situação na chamada", "Estudante"]].concat(linhas);
+    var blob = new Blob([csvSeguro(corpo)], { type: "text/csv;charset=utf-8" });
+    var link = document.createElement("a"), url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = "Gaba-ficaram-de-fora-" + String(impt.arquivo || "chamada").replace(/\.[a-z0-9]{2,4}$/i, "") + ".csv";
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
   function desenharImportacaoTurmas() {
     var box = $("impt-painel");
     if (!box) return;
@@ -873,7 +911,7 @@
     }
     if (impt.feito) {
       box.innerHTML = titulo + '<div class="imp-resumo">' + impt.feito.resumo + "</div>" +
-        listaDeAvisos(impt.feito.avisos) +
+        listaDeAvisos(impt.feito.avisos) + blocoFora() +
         '<div class="cad-acoes"><button type="button" id="impt-cancelar" class="btn-ghost">Fechar</button></div>' + rodape;
       imptStatus(impt.feito.status, impt.feito.tipo);
       return;
@@ -890,7 +928,7 @@
     box.innerHTML = titulo +
       '<div class="imp-resumo"><strong>' + plural(impt.turmas.length, "turma", "turmas") + "</strong> em \"<em>" +
       esc(impt.arquivo) + "</em>\"" + (alunos ? " &middot; " + plural(alunos, "aluno", "alunos") : " &middot; só os nomes, sem alunos") +
-      "</div>" + listaDeAvisos(avisosImpt()) +
+      "</div>" + listaDeAvisos(avisosImpt()) + blocoFora() +
       '<div class="cad-linha"><div class="field"><label for="impt-ano">Ano / período das turmas novas</label>' +
       '<input type="text" id="impt-ano" value="' + esc(impt.ano) + '" placeholder="Ex.: 2026"></div></div>' +
       (alunos ? '<label class="cad-check"><input type="checkbox" id="impt-alunos"' + (impt.comAlunos ? " checked" : "") +
@@ -1078,6 +1116,7 @@
       var b = ev.target.closest("button");
       if (!b) return;
       if (b.id === "impt-salvar") salvarImportacaoTurmas();
+      else if (b.id === "impt-fora-csv") baixarCsvFora();
       else if (b.id === "impt-cancelar") fecharImportacaoTurmas();
       else if (b.id === "impt-outro") abrirImportacaoTurmas(impt.escola);
     });
