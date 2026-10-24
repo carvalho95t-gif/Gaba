@@ -1282,3 +1282,200 @@ i.ab-baixo { background: var(--danger); }
     .ab-ficha-kpis .ab-kpi { padding: var(--e3); }
     .ab-ficha-kpis .ab-kpi strong { font-size: 1.2rem; }
 }
+
+/* ===================== EDITOR DE LAYOUT ===================== */
+.editor-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .editor-layout { grid-template-columns: 1fr; }
+}
+.editor-painel {
+  background: var(--cartao, #fff);
+  border: 1px solid var(--borda, #e2e8f0);
+  border-radius: 12px;
+  padding: 1rem;
+}
+.editor-secao {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--borda, #e2e8f0);
+}
+.editor-secao:last-child { border-bottom: none; }
+.editor-secao h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--texto, #1a1a2e);
+}
+.editor-campo {
+  margin: 0.4rem 0;
+}
+.editor-campo label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--texto-suave, #555);
+  margin-bottom: 0.15rem;
+}
+.editor-slider-linha {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.editor-slider-linha input[type="range"] {
+  flex: 1;
+  accent-color: var(--cor-primaria, #2EC4B6);
+}
+.editor-num {
+  width: 60px;
+  text-align: center;
+  padding: 0.2rem;
+  border: 1px solid var(--borda, #ccc);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.editor-unidade {
+  font-size: 0.8rem;
+  color: var(--texto-suave, #888);
+  min-width: 20px;
+}
+.editor-acoes-finais {
+  padding-top: 1rem;
+}
+.editor-preview-area {
+  background: var(--cartao, #fff);
+  border: 1px solid var(--borda, #e2e8f0);
+  border-radius: 12px;
+  padding: 1rem;
+}
+.editor-preview {
+  background: #f8f8f8;
+  border: 1px solid var(--borda, #ddd);
+  border-radius: 8px;
+  padding: 0.5rem;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor-svg {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+}
+.editor-info-grid {
+  font-size: 0.85rem;
+  color: var(--texto-suave, #555);
+  margin-top: 0.5rem;
+}
+.editor-lista-presets {
+  margin-top: 0.5rem;
+}
+.editor-preset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--borda, #e2e8f0);
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.editor-preset-ativo {
+  border-color: var(--cor-primaria, #2EC4B6);
+  background: rgba(46, 196, 182, 0.05);
+}
+.editor-preset-info {
+  flex: 1;
+  min-width: 120px;
+}
+.editor-preset-info strong {
+  font-size: 0.9rem;
+}
+.editor-preset-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  background: var(--cor-primaria, #2EC4B6);
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+.editor-preset-acoes {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.editor-preset-acoes .btn-ghost {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+.btn-danger-text {
+  color: #c00 !important;
+}
+.editor-caderno-preview {
+  background: #fff;
+  border: 1px solid var(--borda, #ddd);
+  border-radius: 8px;
+  padding: 1rem;
+  min-height: 300px;
+  overflow: auto;
+}
+.editor-caderno-preview-area {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.editor-cabecalho-preview {
+  border-bottom: 2px solid #333;
+  margin-bottom: 15px;
+}
+.editor-questao {
+  margin-bottom: 8px;
+}
+.editor-questao-num {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+.editor-enunciado {
+  margin-bottom: 8px;
+}
+.editor-alternativas {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* ===================== EDITOR DE POSIÇÕES ===================== */
+.editor-canvas {
+  background: #f8f8f8;
+  border: 1px solid var(--borda, #ddd);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+  max-height: 600px;
+  display: flex;
+  justify-content: center;
+}
+.editor-folha-a4 {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.editor-drag-item {
+  user-select: none;
+  transition: box-shadow 0.2s;
+}
+.editor-drag-item:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.editor-drag-item:active {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+.editor-qr {
+  background: #333 !important;
+  color: white !important;
+}
+.editor-cartao {
+  background: rgba(46, 196, 182, 0.1) !important;
+  color: #2EC4B6 !important;
+}

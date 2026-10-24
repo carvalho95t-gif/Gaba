@@ -13,14 +13,31 @@ var fs = require("fs");
 var RAIZ = path.resolve(__dirname, "..");
 var porta = Number(process.argv[2] || 8793);
 var BASE = "http://127.0.0.1:" + porta;
+/* A Área de Trabalho real desta máquina é "OneDrive\Área de Trabalho": tem
+   acento e fica fora do home. Não dá para descobri-la pelo console - o shell
+   escreve no codepage OEM (CP850) e o Node lê como UTF-8, o que já abriu as
+   pastas "µrea de Trabalho" e "?rea de Trabalho". reg.exe export grava um
+   arquivo UTF-16LE, então os bytes chegam intactos sem tocar em codepage. */
 var SAIDA = (function () {
+  var os = require("os");
+  var cp = require("child_process");
   try {
-    var r = require("child_process").execSync(
-      'powershell.exe -NoProfile -Command "[Environment]::GetFolderPath(\'Desktop\')"',
-      { encoding: "utf8" }).trim();
-    if (r) return path.join(r, "demo-portugues");
+    var reg = path.join(os.tmpdir(), "gaba-shellfolders-" + process.pid + ".reg");
+    cp.execSync('reg.exe export "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion' +
+      '\\Explorer\\User Shell Folders" "' + reg + '" /y', { windowsHide: true });
+    /* valores REG_EXPAND_SZ vêm como hex(2) e podem continuar na linha de baixo */
+    var m = /"Desktop"=hex\(2\):([0-9a-fA-F,]+)/.exec(
+      fs.readFileSync(reg, "utf16le").replace(/\\\r\n\s+/g, ""));
+    fs.unlinkSync(reg);
+    if (m) {
+      var d = Buffer.from(m[1].replace(/,/g, ""), "hex").toString("utf16le")
+        .replace(/\0+$/, "")
+        .replace(/%([^%]+)%/g, function (_, n) { return process.env[n] || _; });
+      if (d && fs.existsSync(d)) return path.join(d, "demo-portugues");
+    }
   } catch (e) { /* cai no fallback */ }
-  return path.join(require("os").homedir(), "Desktop", "demo-portugues");
+  return path.join(process.env.USERPROFILE || os.homedir(), "OneDrive",
+    "Área de Trabalho", "demo-portugues");
 })();
 
 /* ================================================================

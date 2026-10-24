@@ -419,6 +419,84 @@ function check(nome, cond, extra) {
   check("quando o banco volta, a fila tenta de novo e esvazia",
     falha.depois.pendentes === 0 && falha.depois.status === "enviado" && falha.depois.erro === "", falha.depois);
 
+  var trava = await c.naPagina(async function () {
+    var antes = window.__enviados.length;
+    var rapido = GabaDB.getClient;
+    GabaDB.getClient = function () {
+      return {
+        from: function (tabela) {
+          return {
+            insert: function (linha) {
+              window.__enviados.push({ tabela: tabela, linha: linha });
+              return new Promise(function (resolve) {
+                setTimeout(function () { resolve({ error: window.__erroFake }); }, 150);
+              });
+            }
+          };
+        }
+      };
+    };
+    var form = document.getElementById("duvida-form");
+    var botao = form.querySelector('button[type="submit"]');
+    var espera = async function () {
+      var fim = Date.now() + 5000;
+      while (botao.disabled && Date.now() < fim) {
+        await new Promise(function (r) { setTimeout(r, 40); });
+      }
+    };
+    var lista = function (texto) {
+      return JSON.parse(localStorage.getItem(GabaSync.chaveLocal("ajuda")) || "null")
+        .duvidas.filter(function (d) { return d.texto === texto; });
+    };
+
+    /* dois cliques no mesmo segundo: o segundo chega enquanto a rede ainda não respondeu */
+    document.getElementById("duvida-texto").value = "Trava de duplo clique.";
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    var preso = botao.disabled;
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await espera();
+    var umSo = lista("Trava de duplo clique.");
+    var primeira = {
+      preso: preso,
+      tentativas: window.__enviados.length - antes,
+      itens: umSo.length,
+      status: umSo[0] && umSo[0].status
+    };
+
+    /* a mesma trava tem que devolver o botão quando o envio falha, senão o
+       professor fica sem jeito de reenviar a dúvida que já está na fila */
+    window.__erroFake = { code: "ECONN", message: "sem conexao agora" };
+    form.hidden = false;
+    document.getElementById("duvida-texto").value = "Trava liberada na falha.";
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await espera();
+    var faltando = lista("Trava liberada na falha.");
+    var segunda = {
+      liberado: botao.disabled === false,
+      itens: faltando.length,
+      status: faltando[0] && faltando[0].status,
+      erro: (faltando[0] && faltando[0].erro) || ""
+    };
+
+    window.__erroFake = null;
+    GabaDB.getClient = rapido;
+    GabaAjuda.aoAbrir();
+    var fim = Date.now() + 6000;
+    while (GabaAjuda.pendentes() > 0 && Date.now() < fim) {
+      await new Promise(function (r) { setTimeout(r, 60); });
+    }
+    segunda.pendentes = GabaAjuda.pendentes();
+    return { primeira: primeira, segunda: segunda };
+  }, []);
+  check("o segundo clique durante o envio não cria item nem linha no banco",
+    trava.primeira.preso === true && trava.primeira.tentativas === 1 &&
+    trava.primeira.itens === 1 && trava.primeira.status === "enviado",
+    trava.primeira);
+  check("quando o envio falha o botão volta a ficar livre e a dúvida segue na fila",
+    trava.segunda.liberado === true && trava.segunda.itens === 1 &&
+    trava.segunda.status === "fila" && /sem conexao/.test(trava.segunda.erro) &&
+    trava.segunda.pendentes === 0, trava.segunda);
+
   /* o filtro ampliado e o funil de aviso() entram no fim da sequência: antes
      disso eles mudariam qual captura o botão "Relatar" pega logo acima */
   var filtro = await c.naPagina(function () {

@@ -21,9 +21,9 @@
   /* o rodape da folha sobe ate ~281mm: a moldura do cartao para antes dele */
   var RODAPE_MM = 17;
   var MOLDURA_FOLGA_MM = 1.5;
-  var fiducialMm = 10;
+  var FIDUCIAL_MM = 10;
   /* QR no canto de cima a esquerda: libera a largura toda a direita para a tabela do cabecalho */
-  var qr = { xMm: 14, yMm: 12, wMm: 40, hMm: 40 };
+  var QR_PADRAO = { xMm: 14, yMm: 12, wMm: 40, hMm: 40 };
   /* o recorte que o leitor entrega ao jsQR: nenhum preto de marca pode entrar aqui */
   var FOLGA_RECORTE_QR_MM = 6;
   /* faixa de instrucoes entre o cabecalho e o cartao. ela entra ou nao so pelo numero de
@@ -34,6 +34,24 @@
   /* a grade recua 3mm de cada lado: a moldura do cartao fica nos mesmos 14..196mm do cabecalho */
   var GRADE_RECUO_MM = 3;
 
+  /* constantes que o editor de layout pode sobrescrever — o objeto e exportado para o
+     painel copiar os valores-padrao e o compute() mesclar com o preset do professor */
+  var PADRAO = {
+    pageWmm: PAGE_W_MM,
+    pageHmm: PAGE_H_MM,
+    marginMm: MARGIN_MM,
+    fiducialMm: FIDUCIAL_MM,
+    marcaFolgaMm: MARCA_FOLGA_MM,
+    rodapeMm: RODAPE_MM,
+    molduraFolgaMm: MOLDURA_FOLGA_MM,
+    qr: { xMm: QR_PADRAO.xMm, yMm: QR_PADRAO.yMm, wMm: QR_PADRAO.wMm, hMm: QR_PADRAO.hMm },
+    folgaRecorteQrMm: FOLGA_RECORTE_QR_MM,
+    instrucoesMm: INSTRUCOES_MM,
+    instrucoesFolgaM: INSTRUCOES_FOLGA_MM,
+    linhaMinComInstrucoesMm: LINHA_MIN_COM_INSTRUCOES_MM,
+    gradeRecuoMm: GRADE_RECUO_MM
+  };
+
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
   }
@@ -42,51 +60,82 @@
     return Math.round(v * 10) / 10;
   }
 
-  function gridUsableWidth() {
-    return PAGE_W_MM - 2 * (MARGIN_MM + GRADE_RECUO_MM);
+  function mesclar(overrides) {
+    if (!overrides) return copiarPadrao();
+    var c = copiarPadrao();
+    var chaves = ["pageWmm","pageHmm","marginMm","fiducialMm","marcaFolgaMm","rodapeMm",
+      "molduraFolgaMm","folgaRecorteQrMm","instrucoesMm","instrucoesFolgaM",
+      "linhaMinComInstrucoesMm","gradeRecuoMm"];
+    chaves.forEach(function (k) {
+      if (overrides[k] != null && isFinite(Number(overrides[k]))) c[k] = Number(overrides[k]);
+    });
+    if (overrides.qr && typeof overrides.qr === "object") {
+      ["xMm","yMm","wMm","hMm"].forEach(function (k) {
+        if (overrides.qr[k] != null && isFinite(Number(overrides.qr[k]))) c.qr[k] = Number(overrides.qr[k]);
+      });
+    }
+    return c;
   }
 
-  function cartaoTopoMm(comInstrucoes) {
-    var base = qr.yMm + qr.hMm + FOLGA_RECORTE_QR_MM + 0.5;
-    return comInstrucoes ? base + INSTRUCOES_FOLGA_MM * 2 + INSTRUCOES_MM : base;
+  function copiarPadrao() {
+    return {
+      pageWmm: PADRAO.pageWmm, pageHmm: PADRAO.pageHmm, marginMm: PADRAO.marginMm,
+      fiducialMm: PADRAO.fiducialMm, marcaFolgaMm: PADRAO.marcaFolgaMm,
+      rodapeMm: PADRAO.rodapeMm, molduraFolgaMm: PADRAO.molduraFolgaMm,
+      qr: { xMm: PADRAO.qr.xMm, yMm: PADRAO.qr.yMm, wMm: PADRAO.qr.wMm, hMm: PADRAO.qr.hMm },
+      folgaRecorteQrMm: PADRAO.folgaRecorteQrMm, instrucoesMm: PADRAO.instrucoesMm,
+      instrucoesFolgaM: PADRAO.instrucoesFolgaM, linhaMinComInstrucoesMm: PADRAO.linhaMinComInstrucoesMm,
+      gradeRecuoMm: PADRAO.gradeRecuoMm
+    };
   }
 
-  function gridTopMm(comInstrucoes) {
-    return cartaoTopoMm(comInstrucoes) + MOLDURA_FOLGA_MM + fiducialMm + MARCA_FOLGA_MM;
+  function gridUsableWidth(c) {
+    return c.pageWmm - 2 * (c.marginMm + c.gradeRecuoMm);
   }
 
-  function gridBottomMm() {
-    return PAGE_H_MM - RODAPE_MM - MOLDURA_FOLGA_MM - fiducialMm - MARCA_FOLGA_MM;
+  function cartaoTopo(c, comInstrucoes) {
+    var base = c.qr.yMm + c.qr.hMm + c.folgaRecorteQrMm + 0.5;
+    return comInstrucoes ? base + c.instrucoesFolgaM * 2 + c.instrucoesMm : base;
   }
 
-  function compute(totalQuestoes, optionCount) {
-    var total = clamp(Math.round(totalQuestoes || 10), 1, MAX_QUESTIONS);
+  function gridTop(c, comInstrucoes) {
+    return cartaoTopo(c, comInstrucoes) + c.molduraFolgaMm + c.fiducialMm + c.marcaFolgaMm;
+  }
+
+  function gridBottom(c) {
+    return c.pageHmm - c.rodapeMm - c.molduraFolgaMm - c.fiducialMm - c.marcaFolgaMm;
+  }
+
+  function compute(totalQuestoes, optionCount, overrides) {
+    var c = mesclar(overrides);
+    var maxQ = MAX_QUESTIONS;
+    var total = clamp(Math.round(totalQuestoes || 10), 1, maxQ);
     var nOpts = clamp(Math.round(optionCount || 5), 2, 5);
     var cols = total <= 24 ? 2 : 3;
     var rowsPerCol = Math.ceil(total / cols);
-    var comInstrucoes = (gridBottomMm() - gridTopMm(true)) / rowsPerCol >= LINHA_MIN_COM_INSTRUCOES_MM;
-    var topo = gridTopMm(comInstrucoes);
-    var rowGap = round1(clamp((gridBottomMm() - topo) / rowsPerCol, 6.0, 9.6));
+    var comInstrucoes = (gridBottom(c) - gridTop(c, true)) / rowsPerCol >= c.linhaMinComInstrucoesMm;
+    var topo = gridTop(c, comInstrucoes);
+    var rowGap = round1(clamp((gridBottom(c) - topo) / rowsPerCol, 6.0, 9.6));
     var bubble = round1(clamp(rowGap * 0.62, 3.2, 4.2));
     var optionGap = round1(clamp(bubble + 2.4, 5.8, 8.2));
     var numberWidth = 9;
     var colContent = numberWidth + (nOpts - 1) * optionGap + bubble;
-    var availW = gridUsableWidth();
+    var availW = gridUsableWidth(c);
     var colGap = cols > 1 ? Math.min(92, (availW - colContent) / (cols - 1)) : 0;
     var blockWidth = colGap * (cols - 1) + colContent;
-    var xMm = MARGIN_MM + GRADE_RECUO_MM + Math.max(0, (availW - blockWidth) / 2);
-    var base = cartaoTopoMm(false);
+    var xMm = c.marginMm + c.gradeRecuoMm + Math.max(0, (availW - blockWidth) / 2);
+    var base = cartaoTopo(c, false);
     var layout = {
-      pageWmm: PAGE_W_MM,
-      pageHmm: PAGE_H_MM,
+      pageWmm: c.pageWmm,
+      pageHmm: c.pageHmm,
       total: total,
       options: nOpts,
       optionLetters: ["A", "B", "C", "D", "E"].slice(0, nOpts),
-      fiducialMm: fiducialMm,
-      qrFolgaRecorteMm: FOLGA_RECORTE_QR_MM,
-      qr: qr,
-      cartaoTopoMm: round1(cartaoTopoMm(comInstrucoes)),
-      instrucoes: comInstrucoes ? { yMm: base + INSTRUCOES_FOLGA_MM, hMm: INSTRUCOES_MM } : null,
+      fiducialMm: c.fiducialMm,
+      qrFolgaRecorteMm: c.folgaRecorteQrMm,
+      qr: { xMm: c.qr.xMm, yMm: c.qr.yMm, wMm: c.qr.wMm, hMm: c.qr.hMm },
+      cartaoTopoMm: round1(cartaoTopo(c, comInstrucoes)),
+      instrucoes: comInstrucoes ? { yMm: base + c.instrucoesFolgaM, hMm: c.instrucoesMm } : null,
       grid: {
         xMm: round1(xMm),
         yMm: round1(topo),
@@ -98,12 +147,13 @@
         numberWidthMm: numberWidth,
         colGapMm: round1(colGap),
         colContentMm: round1(colContent)
-      }
+      },
+      _cfg: c
     };
     layout.colRow = function (qIndex) { return colRow(layout, qIndex); };
     layout.bubbleCenterMm = function (qIndex, optIndex) { return bubbleCenterMm(layout, qIndex, optIndex); };
     layout.fiducialCenters = function () { return fiducialCentersMm(layout); };
-    layout.cartaoFundoMm = function () { return fiducialCentersMm(layout)[2].y + fiducialMm / 2 + MOLDURA_FOLGA_MM; };
+    layout.cartaoFundoMm = function () { return fiducialCentersMm(layout)[2].y + c.fiducialMm / 2 + c.molduraFolgaMm; };
     layout.qrRoiMm = function (folga) { return qrRoiMm(layout, folga); };
     layout.problemas = function () { return validate(layout); };
     return layout;
@@ -127,10 +177,11 @@
   function fiducialCentersMm(layout) {
     var g = layout.grid;
     var s = layout.fiducialMm;
+    var c = layout._cfg || PADRAO;
     var x0 = g.xMm + g.numberWidthMm + s / 2;
     var x1 = g.xMm + (g.cols - 1) * g.colGapMm + g.colContentMm - s / 2;
-    var y0 = g.yMm - MARCA_FOLGA_MM - s / 2;
-    var y1 = g.yMm + (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm + MARCA_FOLGA_MM + s / 2;
+    var y0 = g.yMm - c.marcaFolgaMm - s / 2;
+    var y1 = g.yMm + (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm + c.marcaFolgaMm + s / 2;
     return [
       { x: x0, y: y0, name: "tl" },
       { x: x1, y: y0, name: "tr" },
@@ -151,25 +202,26 @@
 
   function validate(layout) {
     var g = layout.grid;
+    var c = layout._cfg || PADRAO;
     var problems = [];
     var right = g.xMm + (g.cols - 1) * g.colGapMm + g.colContentMm;
     var bottom = g.yMm + (g.questionsPerCol - 1) * g.rowGapMm + g.bubbleMm;
     if (right > layout.pageWmm - 8) problems.push("grade ultrapassa a margem direita em " + round1(right - (layout.pageWmm - 8)) + "mm");
-    if (bottom > gridBottomMm()) problems.push("grade invade a faixa das marcas de baixo em " + round1(bottom - gridBottomMm()) + "mm");
+    if (bottom > gridBottom(c)) problems.push("grade invade a faixa das marcas de baixo em " + round1(bottom - gridBottom(c)) + "mm");
     if (g.yMm < layout.qr.yMm + layout.qr.hMm) problems.push("grade começa sobre o QR Code");
     if (g.cols * g.questionsPerCol < layout.total) problems.push("grade comporta apenas " + g.cols * g.questionsPerCol + " questões");
     var meio = layout.fiducialMm / 2;
-    fiducialCentersMm(layout).forEach(function (c) {
-      var borda = Math.min(c.x - meio, layout.pageWmm - c.x - meio, c.y - meio, layout.pageHmm - c.y - meio);
-      if (borda < 10) problems.push("marca " + c.name + " a " + round1(borda) + "mm da borda: a impressora e o alimentador cortam");
+    fiducialCentersMm(layout).forEach(function (fc) {
+      var borda = Math.min(fc.x - meio, layout.pageWmm - fc.x - meio, fc.y - meio, layout.pageHmm - fc.y - meio);
+      if (borda < 10) problems.push("marca " + fc.name + " a " + round1(borda) + "mm da borda: a impressora e o alimentador cortam");
     });
-    if (layout.cartaoFundoMm() > layout.pageHmm - RODAPE_MM) {
-      problems.push("cartao invade o rodape em " + round1(layout.cartaoFundoMm() - (layout.pageHmm - RODAPE_MM)) + "mm");
+    if (layout.cartaoFundoMm() > layout.pageHmm - c.rodapeMm) {
+      problems.push("cartao invade o rodape em " + round1(layout.cartaoFundoMm() - (layout.pageHmm - c.rodapeMm)) + "mm");
     }
     var roi = qrRoiMm(layout);
-    fiducialCentersMm(layout).forEach(function (c) {
-      if (c.x + meio > roi.x0 && c.x - meio < roi.x1 && c.y + meio > roi.y0 && c.y - meio < roi.y1) {
-        problems.push("marca " + c.name + " encosta no recorte do QR Code");
+    fiducialCentersMm(layout).forEach(function (fc) {
+      if (fc.x + meio > roi.x0 && fc.x - meio < roi.x1 && fc.y + meio > roi.y0 && fc.y - meio < roi.y1) {
+        problems.push("marca " + fc.name + " encosta no recorte do QR Code");
       }
     });
     return problems;
@@ -178,6 +230,7 @@
   return {
     MAX_QUESTIONS: MAX_QUESTIONS,
     GEOMETRIA: GEOMETRIA,
+    PADRAO: PADRAO,
     compute: compute,
     colRow: colRow,
     bubbleCenterMm: bubbleCenterMm,

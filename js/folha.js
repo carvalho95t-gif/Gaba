@@ -85,7 +85,8 @@
   function layoutDa(prova, opts) {
     opts = opts || {};
     var L = mod("GabaLayout");
-    var layout = L.compute(opts.total || totalDa(prova), opts.alternativas || nAlternativas(prova));
+    var overrides = (global.GabaEditor && global.GabaEditor.constantesAtivas()) || null;
+    var layout = L.compute(opts.total || totalDa(prova), opts.alternativas || nAlternativas(prova), overrides);
     var problemas = layout.problemas();
     if (problemas.length) throw new Error("Layout A4 invalido: " + problemas.join("; "));
     return layout;

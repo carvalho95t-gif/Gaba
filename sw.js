@@ -1,4 +1,4 @@
-const CACHE = "gaba-omr-v18";
+const CACHE = "gaba-omr-v21";
 const PRECACHE = [
   "./",
   "./index.html",

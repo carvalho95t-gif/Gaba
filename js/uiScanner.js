@@ -432,7 +432,8 @@
       options: {
         sensibilidade: estado.sensibilidade,
         totalQuestoes: estado.totalQuestoes,
-        alternativas: estado.alternativas
+        alternativas: estado.alternativas,
+        layoutOverrides: (global.GabaEditor && global.GabaEditor.constantesAtivas()) || null
       }
     }, [data.data.buffer]);
   }

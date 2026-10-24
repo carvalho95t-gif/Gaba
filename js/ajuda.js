@@ -707,6 +707,21 @@
   }
 
   /* ------------------------------------------------------------ envios */
+  /* Sem trava, dois cliques rápidos criam dois uuid novos e o banco recebe duas
+     linhas com o mesmo texto: o on_conflict=id não dedupa porque cada clique
+     inventa o próprio id. A liberação fica no finally porque a rede pode falhar
+     e o professor precisa poder clicar de novo. */
+  async function comTrava(form, enviar) {
+    var botao = form.querySelector('button[type="submit"]');
+    if (botao && botao.disabled) return;
+    if (botao) botao.disabled = true;
+    try {
+      await enviar(form);
+    } finally {
+      if (botao) botao.disabled = false;
+    }
+  }
+
   async function enviarDuvida(form) {
     var texto = corta(limparNomes($("duvida-texto").value.trim()), TEXTO_MAX);
     if (!texto) {
@@ -891,18 +906,18 @@
 
     $("duvida-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      enviarDuvida(this).catch(function () { toast("Não deu para registrar agora.", "erro"); });
+      comTrava(this, enviarDuvida).catch(function () { toast("Não deu para registrar agora.", "erro"); });
     });
     $("duvida-cancelar").addEventListener("click", fecharDuvida);
 
     $("sugestao-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      enviarSugestao(this).catch(function () { toast("Não deu para registrar agora.", "erro"); });
+      comTrava(this, enviarSugestao).catch(function () { toast("Não deu para registrar agora.", "erro"); });
     });
 
     $("problema-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
-      enviarProblema(this).catch(function () { toast("Não deu para registrar agora.", "erro"); });
+      comTrava(this, enviarProblema).catch(function () { toast("Não deu para registrar agora.", "erro"); });
     });
     $("prob-texto").addEventListener("input", atualizarPayload);
     $("prob-tecnico").addEventListener("change", atualizarPayload);

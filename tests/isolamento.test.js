@@ -1,6 +1,7 @@
-/* Cada professor ve e altera so o que e dele. Confere o texto de supabase/schema.sql e de
-   supabase/isolar-por-professor.sql e, quando acha o PGlite (Postgres em WASM, fora do
-   repositorio de proposito), roda os dois num banco de verdade com duas contas:
+/* Cada professor ve e altera so o que e dele. Confere o texto de supabase/schema.sql, de
+   supabase/isolar-por-professor.sql e de supabase/ajuda.sql e, quando acha o PGlite
+   (Postgres em WASM, fora do repositorio de proposito), roda tudo num banco de verdade
+   com duas contas (e uma terceira para o gatilho do expurgo):
      npm install @electric-sql/pglite --prefix %TEMP%\gaba-pg
      node tests/isolamento.test.js        (ou GABA_PGLITE=<pasta que tem node_modules>)
    Sem o PGlite, a parte do banco sai como PULADO. */
@@ -13,7 +14,10 @@ var path = require("path");
 var RAIZ = path.join(__dirname, "..");
 var SCHEMA = fs.readFileSync(path.join(RAIZ, "supabase", "schema.sql"), "utf8");
 var MIGRACAO = fs.readFileSync(path.join(RAIZ, "supabase", "isolar-por-professor.sql"), "utf8");
+var AJUDA = fs.readFileSync(path.join(RAIZ, "supabase", "ajuda.sql"), "utf8");
 var TABELAS = ["turmas", "escolas", "alunos", "provas", "correcoes", "prova_versoes", "professores"];
+/* as tres tabelas da Ajuda moram no proprio arquivo e so gravam: quem le e o painel */
+var AJUDA_TABELAS = ["ajuda_duvidas", "ajuda_sugestoes", "ajuda_erros"];
 /* saidas (quem saiu da turma) nasceu depois da tranca por dono: o schema.sql a cria e isola do
    mesmo jeito; a migracao nao tem linha antiga para entregar nela, entao fica fora de TABELAS */
 var LISTAS = {
@@ -119,6 +123,76 @@ check("a migracao vai para o git com o e-mail de exemplo, numa linha so",
 check("a migracao confere o e-mail antes do begin e grava dentro de begin/commit",
   MIGRACAO.indexOf("Nenhuma conta do Supabase") < MIGRACAO.indexOf("\nbegin;") &&
   MIGRACAO.indexOf("\nbegin;") < MIGRACAO.indexOf("\ncommit;"));
+
+/* ------------------------------------------------------------------- ajuda */
+
+/* o que o Postgres veria de fato: as linhas de comentario fora. E o que deixa
+   claro que o delete do expurgo esta escrito mas nao roda junto do arquivo. */
+function semComentario(sql) {
+  return sql.replace(/--[^\n]*/g, "");
+}
+
+/* a consulta do gatilho mora comentada dentro do arquivo, de proposito. Tira os "--"
+   das linhas entre "select tabela," e "order by tabela" para poder roda-la. */
+function gatilhoDe(sql) {
+  var m = sql.match(/^--\s+(select tabela,[\s\S]*?order by tabela;)/m);
+  return m ? m[1].replace(/^--/gm, "") : "";
+}
+
+function conferirAjuda() {
+  console.log("\n== supabase/ajuda.sql (texto) ==");
+  var codigo = espaco(semComentario(AJUDA));
+  var todas = regras(AJUDA);
+
+  check("cria as tres tabelas sem mexer em nenhuma de antes",
+    AJUDA_TABELAS.every(function (t) { return codigo.indexOf("create table if not exists public." + t + " (") >= 0; }));
+  check("dono obrigatorio e preenchido por auth.uid() nas tres",
+    (codigo.match(/dono uuid not null default auth\.uid\(\)/g) || []).length === 3,
+    (codigo.match(/dono uuid not null default auth\.uid\(\)/g) || []).length);
+  check("o arquivo nao toca em turma, aluno, prova, leitura, professor, saida ou descritor",
+    ["turmas", "escolas", "alunos", "saidas", "provas", "correcoes", "prova_versoes", "professores", "descritores"]
+      .every(function (t) { return codigo.indexOf("public." + t) < 0; }));
+
+  AJUDA_TABELAS.forEach(function (t) {
+    var minhas = todas.filter(function (r) { return r.tabela === t; });
+    check(t + ": RLS ligado e uma unica regra, de insert na propria conta",
+      codigo.indexOf("alter table public." + t + " enable row level security;") >= 0 &&
+      minhas.length === 1 && minhas[0].comando === "insert" &&
+      minhas[0].corpo === "to authenticated with check (dono = (select auth.uid()) and situacao = 'novo')", minhas);
+  });
+  check("nenhuma regra de select, update ou delete em tabela alguma do arquivo",
+    todas.length === 3 && todas.every(function (r) { return r.comando === "insert"; }),
+    todas.map(function (r) { return r.nome + " " + r.comando; }));
+  check("nenhuma regra aberta com (true)",
+    todas.every(function (r) { return !/\(\s*true\s*\)/i.test(r.corpo); }));
+  check("o bloco que limpa as regras antigas so mexe nas tres tabelas da Ajuda",
+    codigo.indexOf("tablename in ('ajuda_duvidas', 'ajuda_sugestoes', 'ajuda_erros')") >= 0);
+  check("anon e professor perdem tudo e ganham so o insert",
+    codigo.indexOf("revoke all on public.ajuda_duvidas, public.ajuda_sugestoes, public.ajuda_erros" +
+      " from anon, authenticated, public;") >= 0 &&
+    codigo.indexOf("grant insert on public.ajuda_duvidas, public.ajuda_sugestoes, public.ajuda_erros" +
+      " to authenticated;") >= 0);
+  check("nada de service_role: a leitura pelo painel continua de pe", !/revoke[^;]*service_role/i.test(codigo));
+  check("so insert, nunca select, update ou delete de privilegio",
+    !/\bgrant (select|update|delete)\b/i.test(codigo));
+  check("o arquivo nao apaga tabela, nao truncar e nao mexe em coluna alheia",
+    !/\b(drop table|truncate|drop column)\b/i.test(codigo));
+  check("o expurgo esta escrito, mas comentado: rodar o arquivo nao apaga nada",
+    /delete from public\.ajuda_erros/i.test(AJUDA) && !/\bdelete from\b/i.test(codigo));
+
+  check("assinatura: coluna nova sem check e indice parcial",
+    codigo.indexOf("add column if not exists assinatura text") >= 0 &&
+    /create index if not exists ajuda_erros_assinatura_idx on public\.ajuda_erros \(assinatura, criado_em desc\) where assinatura is not null/.test(codigo));
+  check("nenhum e-mail nem dado real no arquivo", !/[\w.+-]+@[\w-]+\.[\w.]+/.test(AJUDA));
+
+  var g = gatilhoDe(AJUDA);
+  check("a consulta do gatilho existe e da para extrair do comentario", g !== "");
+  check("o gatilho mede as tres tabelas e as tres regras",
+    AJUDA_TABELAS.every(function (t) { return g.indexOf("public." + t) >= 0; }) &&
+    /90 days/.test(g) && /encerradas > 300/.test(g) && /contas > 2/.test(g), g);
+}
+
+conferirAjuda();
 
 console.log("\n== os dois arquivos dizem a mesma coisa ==");
 function mapa(sql) {
@@ -403,13 +477,168 @@ async function asContas(db) {
   check("chave publica (anon) ainda le o catalogo de descritores", (await contar(db, null, "descritores")) === 1);
 }
 
+/* ------------------------------------------------------------- ajuda no banco */
+
+var AJUDA_PG = AJUDA.replace(/create extension if not exists "pgcrypto";/, "");
+var C = "cccccccc-0000-4000-8000-000000000003";
+var ID_A = "33333333-0000-4000-8000-000000000001";
+var ID_B = "33333333-0000-4000-8000-000000000002";
+
+/* o insert exato que o app faz: id criado no aparelho, sem dono, sem situacao e sem
+   pedir a linha de volta (Prefer: return=minimal) */
+var RELATO_ERRO = "insert into public.ajuda_erros (id, tela, texto_usuario, mensagem_tecnica," +
+  " navegador, versao, origem, assinatura) values ($1, 'scanner', $2, $3," +
+  " 'Chrome/140 Windows', 'gaba-omr-v21', 'captura', $4)";
+var MINIMO = {
+  ajuda_duvidas: "insert into public.ajuda_duvidas (tela, texto) values ('turmas', 'como importa a chamada?')",
+  ajuda_sugestoes: "insert into public.ajuda_sugestoes (tela, texto, importancia)" +
+    " values ('config', 'ideia de melhoria', 'Ajudaria muito')",
+  ajuda_erros: "insert into public.ajuda_erros (tela, texto_usuario, origem) values ('scanner', 'a folha nao cola', 'manual')"
+};
+
+async function abertasNoPublico(db) {
+  return (await linhas(db, "select count(*)::int n from pg_policies where schemaname = 'public'" +
+    " and (qual = 'true' or with_check = 'true') and tablename <> 'descritores'"))[0].n;
+}
+
+async function n(db, tabela) {
+  return (await linhas(db, "select count(*)::int n from public." + tabela))[0].n;
+}
+
+async function ajudaNoBanco(PGlite) {
+  console.log("\n== as tres tabelas da Ajuda, com duas contas no banco ==");
+  var db = await bancoNovo(PGlite);
+  var abertasAntes = await abertasNoPublico(db);
+
+  var e = await erro(db.exec(AJUDA_PG));
+  check("ajuda.sql roda por cima do schema.sql sem erro", e === null, e);
+
+  /* roda de novo: a conferencia que o proprio arquivo imprime no SQL Editor */
+  var res = await db.exec(AJUDA_PG);
+  var conf = null;
+  res.forEach(function (r) {
+    if (r.rows && r.rows.length && Object.prototype.hasOwnProperty.call(r.rows[0], "tabela")) conf = r.rows;
+  });
+  check("rodar de novo nao quebra e o arquivo se auto-confere", conf !== null, e);
+  check("a conferencia do arquivo: 1 regra, nenhuma aberta, professor so grava",
+    conf && conf.length === 3 && conf.every(function (r) {
+      return Number(r.regras) === 1 && Number(r.regras_abertas) === 0 &&
+        r.anon_le === false && r.anon_grava === false && r.professor_le === false &&
+        r.professor_grava === true && r.professor_altera === false && r.professor_apaga === false;
+    }), conf);
+  var pol = await linhas(db, "select count(*)::int n," +
+    " count(*) filter (where cmd = 'INSERT')::int as de_insert from pg_policies" +
+    " where schemaname = 'public' and tablename like 'ajuda_%'");
+  check("rodar de novo nao duplica regra: continuam tres, todas de insert",
+    pol[0].n === 3 && pol[0].de_insert === 3, pol[0]);
+
+  var eA = await erro(como(db, A, RELATO_ERRO, [ID_A, "A folha nao cola", "QR invalido em 10 questoes", "fnv1-12345678"]));
+  var eB = await erro(como(db, B, RELATO_ERRO, [ID_B, "O QR nao decodifica", "Falha em 45 questoes", "fnv1-87654321"]));
+  check("A e B relatam um problema sem mandar dono nem situacao", eA === null && eB === null, [eA, eB]);
+  var erros = await linhas(db, "select dono::text as d, situacao, assinatura from public.ajuda_erros order by dono");
+  check("cada relato fica com quem enviou e o app pode preencher a assinatura",
+    erros.length === 2 && erros[0].d === A && erros[1].d === B &&
+    erros.every(function (r) { return r.situacao === "novo"; }) && erros[1].assinatura === "fnv1-87654321", erros);
+
+  var duvidasOk = await erro(como(db, A, MINIMO.ajuda_duvidas));
+  var sugOk = await erro(como(db, B, MINIMO.ajuda_sugestoes));
+  check("duvida e sugestao entram pelas outras duas tabelas tambem",
+    duvidasOk === null && sugOk === null, [duvidasOk, sugOk]);
+
+  var leu = {};
+  for (var i = 0; i < AJUDA_TABELAS.length; i += 1) {
+    leu["B_le_" + AJUDA_TABELAS[i]] = await erro(como(db, B, "select * from public." + AJUDA_TABELAS[i]));
+    leu["A_le_" + AJUDA_TABELAS[i]] = await erro(como(db, A, "select count(*)::int n from public." + AJUDA_TABELAS[i]));
+  }
+  check("nem A nem B leem nada das tres tabelas, nem a propria linha",
+    AJUDA_TABELAS.every(function (t) {
+      return /permission denied/.test(leu["B_le_" + t] || "") && /permission denied/.test(leu["A_le_" + t] || "");
+    }), leu);
+  var alterou = await erro(como(db, B, "update public.ajuda_erros set situacao = 'resolvido' where dono = $1", [A]));
+  var apagou = await erro(como(db, B, "delete from public.ajuda_erros"));
+  var apagaProprio = await erro(como(db, A, "delete from public.ajuda_sugestoes where dono = $1", [A]));
+  check("B nao altera nem apaga; A tambem nao apaga nem o proprio envio",
+    /permission denied/.test(alterou || "") && /permission denied/.test(apagou || "") &&
+    /permission denied/.test(apagaProprio || "") && (await n(db, "ajuda_erros")) === 2, [alterou, apagou, apagaProprio]);
+
+  var forja = await erro(como(db, B, "insert into public.ajuda_duvidas (tela, texto, dono) values ('turmas', 'duvida', $1)", [A]));
+  check("B nao grava duvida em nome de A", forja && /row-level security/.test(forja), forja);
+  var fechada = await erro(como(db, A, "insert into public.ajuda_sugestoes (tela, texto, importancia, situacao)" +
+    " values ('config', 'ideia', 'Me trava hoje', 'resolvido')"));
+  check("o app nao fecha a triagem: so entra linha com situacao novo",
+    fechada && /row-level security/.test(fechada), fechada);
+  var voltando = await erro(como(db, A, MINIMO.ajuda_duvidas + " returning id"));
+  check("insert pedindo a linha de volta e negado (por isso o app grava sem select)",
+    voltando && /permission denied/.test(voltando), voltando);
+  var repete = await erro(como(db, A, RELATO_ERRO, [ID_A, "A folha nao cola", "QR invalido em 10 questoes", "fnv1-12345678"]));
+  check("reenviar a fila com o mesmo id do aparelho nao duplica (23505 tratado como ok)",
+    repete && /duplicate key/.test(repete) && (await n(db, "ajuda_erros")) === 2, repete);
+
+  var anon = {};
+  var semLogin = {};
+  for (var k = 0; k < AJUDA_TABELAS.length; k += 1) {
+    var t = AJUDA_TABELAS[k];
+    anon[t] = await erro(como(db, null, MINIMO[t]));
+    anon["le_" + t] = await erro(como(db, null, "select * from public." + t));
+    semLogin[t] = await erro(como(db, "", MINIMO[t]));
+  }
+  check("a chave publica (anon) nao le nem grava em nenhuma das tres",
+    AJUDA_TABELAS.every(function (t) {
+      return /permission denied/.test(anon[t] || "") && /permission denied/.test(anon["le_" + t] || "");
+    }), anon);
+  check("authenticated sem token tambem nao grava (o dono ficaria vazio)",
+    AJUDA_TABELAS.every(function (t) { return Boolean(semLogin[t]); }) &&
+    (await n(db, "ajuda_duvidas")) === 1 && (await n(db, "ajuda_sugestoes")) === 1, semLogin);
+
+  var peloPainel = await linhas(db, "select dono::text as d, situacao from public.ajuda_erros order by 1");
+  check("o painel (que passa por cima do RLS) le as duas linhas que nenhum professor ve",
+    peloPainel.length === 2 && peloPainel.every(function (r) { return r.situacao === "novo"; }), peloPainel);
+
+  check("ajuda.sql nao reabre nem fecha nada das tabelas de sempre",
+    (await abertasNoPublico(db)) === abertasAntes &&
+    (await linhas(db, "select has_table_privilege('authenticated', 'public.turmas', 'select') le," +
+      " has_table_privilege('authenticated', 'public.turmas', 'delete') apaga," +
+      " has_table_privilege('anon', 'public.descritores', 'select') catalogo"))[0].le === true);
+
+  console.log("\n== o gatilho do expurgo, rodado de verdade ==");
+  var g = gatilhoDe(AJUDA);
+  var v0 = await linhas(db, g);
+  check("com duas contas e nada encerrado, o veredito e ADIAR nas tres tabelas",
+    v0.length === 3 && v0.every(function (r) { return /^ADIAR/.test(r.veredito); }), v0);
+
+  await db.query("insert into auth.users values ($1, 'prof.c@escola.br')", [C]);
+  var eC = await erro(como(db, C, MINIMO.ajuda_erros));
+  check("uma terceira conta relata o mesmo bug", eC === null && (await n(db, "ajuda_erros")) === 3, eC);
+  var v1 = await linhas(db, g);
+  check("com outra conta relatando, o gatilho continua ADIAR enquanto nada foi encerrado ha 90 dias",
+    v1.filter(function (r) { return r.tabela === "ajuda_erros"; })[0].contas === 3 &&
+    /^ADIAR/.test(v1.filter(function (r) { return r.tabela === "ajuda_erros"; })[0].veredito), v1);
+
+  /* a triagem e do painel: aqui ele encerra a linha de A com 91 dias, como se tivesse
+     resolvido o bug daqueles aparelhos antigos */
+  await db.query("update public.ajuda_erros set situacao = 'resolvido'," +
+    " criado_em = now() - interval '91 days' where dono = $1", [A]);
+  await db.query("update public.ajuda_sugestoes set situacao = 'descartado'," +
+    " criado_em = now() - interval '91 days' where dono = $1", [B]);
+  var v2 = await linhas(db, g);
+  var de = v2.filter(function (r) { return r.tabela === "ajuda_erros"; })[0];
+  var sg = v2.filter(function (r) { return r.tabela === "ajuda_sugestoes"; })[0];
+  check("linha encerrada ha mais de 90 dias + outra conta relatando = FAZER",
+    /^FAZER/.test(de.veredito) && Number(de.encerradas) === 1, de);
+  check("linha encerrada antiga, mas so uma conta, continua ADIAR por volume",
+    /^ADIAR: volume/.test(sg.veredito) && Number(sg.contas) === 1, sg);
+  await db.close();
+}
+
 (async function principal() {
   var onde = acharPglite();
   if (!onde) {
     console.log("\n== no banco ==\n  PULADO  sem @electric-sql/pglite (veja o comeco deste arquivo)");
   } else {
     try {
-      await noBanco(require(onde).PGlite);
+      var PGlite = require(onde).PGlite;
+      await noBanco(PGlite);
+      await ajudaNoBanco(PGlite);
     } catch (err) {
       check("rodar no PGlite sem erro inesperado", false, String(err && err.stack || err));
     }

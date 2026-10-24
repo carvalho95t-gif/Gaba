@@ -29,10 +29,10 @@ function qrApi() {
   return GQR;
 }
 
-function layoutPara(total, alternativas) {
+function layoutPara(total, alternativas, overrides) {
   var t = Math.max(1, Math.min(layoutApi().MAX_QUESTIONS, parseInt(total, 10) || 10));
   var a = Math.max(2, Math.min(5, parseInt(alternativas, 10) || 5));
-  return layoutApi().compute(t, a);
+  return layoutApi().compute(t, a, overrides || null);
 }
 
 function pageSize(layout) {
@@ -476,7 +476,7 @@ function processFrame(imageData, opts) {
   if (!cvReady || typeof cv === "undefined" || !cv.Mat) {
     return fallbackProcess(imageData);
   }
-  var layout = layoutPara(opts.totalQuestoes, opts.alternativas);
+  var layout = layoutPara(opts.totalQuestoes, opts.alternativas, opts.layoutOverrides);
   var semMarcas = "Enquadre a folha inteira: as 4 marcas pretas em volta do cartao-resposta precisam aparecer.";
   var src = matFromImageData(imageData);
   var warped = null;
@@ -555,7 +555,7 @@ self.onmessage = function (event) {
   }
   if (msg.type === "layout") {
     try {
-      postMessage({ type: "layout-ok", layout: layoutPara(msg.total, msg.alternativas).grid });
+      postMessage({ type: "layout-ok", layout: layoutPara(msg.total, msg.alternativas, msg.overrides).grid });
     } catch (err) {
       postMessage({ type: "engine-error", error: String(err) });
     }
