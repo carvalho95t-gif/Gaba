@@ -87,6 +87,14 @@
                 </span>
                 <span>Cada folha lida é <mark>uma pilha a menos</mark> na sua mesa.</span>
             </p>
+            <div id="banner-backup" class="banner-aviso" hidden>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2l8 14H2L10 2z" fill="#F59E0B" stroke="#B45309" stroke-width="1"/><text x="10" y="14" text-anchor="middle" font-size="10" font-weight="800" fill="#7C2D12">!</text></svg>
+                <div>
+                    <p><strong>Sem c&oacute;pia de seguran&ccedil;a.</strong> Se algo acontecer com o banco, suas turmas, alunos e corre&ccedil;&otilde;es n&atilde;o t&ecirc;m como voltar.</p>
+                    <button type="button" id="btn-backup-banner" class="btn-ghost">Baixar agora</button>
+                </div>
+            </div>
+
             <div class="alivio">
                 <div class="alivio-grande">
                     <h3 id="dash-papel">0 g</h3>
@@ -542,9 +550,20 @@
                 <p id="cfg-aviso" class="ajuda">A <code>anon key</code> &eacute; p&uacute;blica por natureza e vai dentro do app: quem protege o banco &eacute; o login, porque as pol&iacute;ticas s&oacute; atendem quem est&aacute; dentro. A <code>service_role</code> nunca entra aqui.</p>
                 <p class="ajuda">O endere&ccedil;o e a chave v&ecirc;m no pr&oacute;prio pacote (js/credencial.js), ent&atilde;o nenhum aparelho precisa digitar nada. Digite aqui apenas se este celular deva apontar para outro banco.</p>
             </div>
+
+            <h3 class="secao">C&oacute;pia de seguran&ccedil;a</h3>
+            <div class="form-container">
+                <p class="ajuda ajuda-topo">Baixe um arquivo .json com todas as suas escolas, turmas, alunos, provas, vers&otilde;es e corre&ccedil;&otilde;es. Se precisar restaurar, o pr&oacute;prio Gaba l&ecirc; o arquivo de volta.</p>
+                <div id="backup-status" class="cad-status" hidden></div>
+                <div class="cad-acoes">
+                    <button type="button" id="btn-backup" class="btn-primary">Baixar c&oacute;pia agora</button>
+                    <button type="button" id="btn-restaurar" class="btn-ghost">Restaurar de um arquivo</button>
+                    <input type="file" id="arquivo-restaurar" accept=".json" hidden>
+                </div>
+                <p class="ajuda">O arquivo fica no seu computador ou celular. Nada &eacute; enviado para nenhum servidor externo.</p>
+            </div>
         </section>
 
-        <!-- SOMENTE O QUE GABA FOLHA DESENHA ENTRA AQUI NA HORA DE IMPRIMIR -->
         <div id="print-root"></div>
         <div id="print-medidor" aria-hidden="true"></div>
     </main>
@@ -575,6 +594,7 @@
     <script src="js/credencial.js"></script>
     <script src="js/supabaseClient.js"></script>
     <script src="js/offlineSync.js"></script>
+    <script src="js/backup.js"></script>
     <script src="js/escolas.js"></script>
     <script src="js/descritoresMatriz.js"></script>
     <script src="js/uiCaderno.js"></script>

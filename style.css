@@ -104,6 +104,12 @@ h2 + .text-muted { margin-top: 4px; }
 }
 
 /* --- central de alívio: as duas contas que devolvem tempo --- */
+.banner-aviso { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: var(--laranja-fundo); border: 1px solid var(--laranja-linha); border-radius: var(--raio-m); margin: var(--e3) 0; }
+.banner-aviso svg { flex: none; margin-top: 1px; }
+.banner-aviso p { font-size: .84rem; font-weight: 700; color: var(--laranja-escuro); line-height: 1.4; }
+.banner-aviso strong { font-weight: 800; }
+.banner-aviso .btn-ghost { margin-top: 6px; font-size: .78rem; padding: 6px 14px; min-height: 32px; }
+.backup-ok { background: var(--menta-fundo); border-color: var(--menta-linha); color: var(--primary); }
 .alivio-lema { display: flex; align-items: center; gap: var(--e3); margin: var(--e2) 0 0; padding: 12px 16px 12px 12px; background: linear-gradient(100deg, var(--menta-fundo) 0%, var(--branco) 80%); border: 1px solid var(--menta-linha); border-radius: var(--raio-l); box-shadow: var(--sombra-1); font-size: 1.02rem; font-weight: 800; letter-spacing: -.01em; line-height: 1.35; color: var(--grafite); }
 .alivio-lema mark { padding: 0 3px; color: inherit; background: linear-gradient(transparent 56%, rgba(16, 185, 129, .32) 56%); border-radius: 2px; }
 .alivio-lema-icone { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--raio-m); background: var(--grafite); box-shadow: 0 6px 16px -8px rgba(15, 23, 42, .6); }

@@ -143,6 +143,8 @@
     desenharTudo();
     badge();
     desenharAjustes();
+    atualizarBannerBackup();
+    atualizarStatusBackup();
     return true;
   }
 
@@ -209,6 +211,8 @@
     app.momento = Date.now();
     desenharTudo();
     desenharAjustes();
+    atualizarBannerBackup();
+    atualizarStatusBackup();
   }
 
   async function carregarEscolas() {
@@ -1313,6 +1317,7 @@
       ? (soAparelho ? plural(soAparelho, "folha corrigida", "folhas corrigidas") + " ainda só neste aparelho." : "Tudo que foi lido está no banco.")
       : faltaParaOBanco() + " Turmas, provas e notas ficam só neste aparelho."));
     desenharPilhas(visiveis);
+    atualizarBannerBackup();
   }
 
   function setTexto(id, valor) {
@@ -2156,6 +2161,112 @@
     atualizarAba();
   };
 
+  /* --- backup / restauração --- */
+
+  function atualizarBannerBackup() {
+    var banner = $("banner-backup");
+    if (!banner) return;
+    var info = window.GabaBackup && GabaBackup.ultimoBackup();
+    banner.hidden = Boolean(info) || !dbOk();
+  }
+
+  function atualizarStatusBackup() {
+    var el = $("backup-status");
+    if (!el) return;
+    var info = window.GabaBackup && GabaBackup.ultimoBackup();
+    if (!info) {
+      el.hidden = false;
+      el.className = "cad-status";
+      el.textContent = "Nenhuma cópia foi baixada ainda.";
+      return;
+    }
+    var d = new Date(info.data);
+    var c = info.contagens || {};
+    var partes = [];
+    if (c.escolas) partes.push(c.escolas + " escola" + (c.escolas > 1 ? "s" : ""));
+    if (c.turmas) partes.push(c.turmas + " turma" + (c.turmas > 1 ? "s" : ""));
+    if (c.alunos) partes.push(c.alunos + " aluno" + (c.alunos > 1 ? "s" : ""));
+    if (c.provas) partes.push(c.provas + " prova" + (c.provas > 1 ? "s" : ""));
+    if (c.correcoes) partes.push(c.correcoes + " correç" + (c.correcoes > 1 ? "ões" : "ão"));
+    el.hidden = false;
+    el.className = "cad-status backup-ok";
+    el.textContent = "Última cópia: " + d.toLocaleDateString("pt-BR") + " — " + (partes.join(", ") || "vazio");
+  }
+
+  async function fazerBackup() {
+    if (!window.GabaBackup) return;
+    var versao = versaoConta;
+    aviso("Baixando a cópia de segurança…", "ok");
+    try {
+      var c = await GabaBackup.exportar();
+      if (versao !== versaoConta) return;
+      var total = 0;
+      Object.keys(c).forEach(function (k) { total += c[k]; });
+      aviso("Cópia baixada: " + total + " registros.", "ok");
+    } catch (err) {
+      if (versao !== versaoConta) return;
+      aviso(mensagemErro(err), "erro");
+    }
+    atualizarBannerBackup();
+    atualizarStatusBackup();
+  }
+
+  async function iniciarRestauracao() {
+    if (!window.GabaBackup) return;
+    var versao = versaoConta;
+    var input = $("arquivo-restaurar");
+    if (!input) return;
+    input.value = "";
+    input.onchange = async function () {
+      var arquivo = input.files && input.files[0];
+      if (!arquivo) return;
+      var envelope;
+      try {
+        envelope = await GabaBackup.lerArquivo(arquivo);
+      } catch (err) {
+        if (versao !== versaoConta) return;
+        aviso(mensagemErro(err), "erro");
+        return;
+      }
+      if (versao !== versaoConta) return;
+      var c = GabaBackup.contagens(envelope.tabelas);
+      var resumo = [
+        c.escolas + " escola" + (c.escolas !== 1 ? "s" : ""),
+        c.turmas + " turma" + (c.turmas !== 1 ? "s" : ""),
+        c.alunos + " aluno" + (c.alunos !== 1 ? "s" : ""),
+        c.provas + " prova" + (c.provas !== 1 ? "s" : ""),
+        c.prova_versoes + " versõ" + (c.prova_versoes !== 1 ? "es" : ""),
+        c.correcoes + " correç" + (c.correcoes !== 1 ? "ões" : "ão"),
+        c.professores + " professor" + (c.professores !== 1 ? "es" : "")
+      ].join(", ");
+      var data = envelope.data ? new Date(envelope.data).toLocaleDateString("pt-BR") : "?";
+      var ok = await pedir({
+        titulo: "Restaurar cópia de segurança",
+        texto: arquivo.name + " — " + data + "\n\n" + resumo +
+          "\n\nRestaurar não apaga o que está no banco: registros do arquivo são comparados por id. Linhas novas são inseridas e linhas existentes voltam ao conteúdo do backup.",
+        ok: "Restaurar",
+        cancelar: "Cancelar",
+        perigo: true
+      });
+      if (!ok || versao !== versaoConta) return;
+      aviso("Restaurando…", "ok");
+      try {
+        var res = await GabaBackup.restaurar(envelope, function (tabela, n) {
+          if (versao === versaoConta) aviso("Restaurando " + tabela + " (" + n + " linhas)…", "ok");
+        });
+        if (versao !== versaoConta) return;
+        var total = 0;
+        Object.keys(res).forEach(function (k) { total += res[k]; });
+        aviso("Restauração concluída: " + total + " registros.", "ok");
+        await carregarTudo();
+      } catch (err) {
+        if (versao !== versaoConta) return;
+        aviso(mensagemErro(err), "erro");
+      }
+    };
+    input.click();
+  }
+
   function ligar() {
     var filtro = $("filtro-escola");
     if (filtro) filtro.addEventListener("change", async function () {
@@ -2172,6 +2283,13 @@
     ligarPainel();
     var escolaBotao = $("escola-botao");
     if (escolaBotao) escolaBotao.addEventListener("click", escolherEscolaTopo);
+
+    var btnBackup = $("btn-backup");
+    if (btnBackup) btnBackup.addEventListener("click", fazerBackup);
+    var btnBackupBanner = $("btn-backup-banner");
+    if (btnBackupBanner) btnBackupBanner.addEventListener("click", fazerBackup);
+    var btnRestaurar = $("btn-restaurar");
+    if (btnRestaurar) btnRestaurar.addEventListener("click", iniciarRestauracao);
 
     var segmento = $("alunos-segmento");
     if (segmento) segmento.addEventListener("click", function (ev) {
@@ -2608,6 +2726,7 @@
       setTexto("logado-nome", eu.nome || cfg.professorNome || String(eu.email || "").split("@")[0]);
       setTexto("logado-email", eu.email || "");
     }
+    atualizarStatusBackup();
   }
 
   document.addEventListener("DOMContentLoaded", function () {
