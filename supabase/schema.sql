@@ -160,6 +160,26 @@ alter table public.professores add column if not exists nome text;
 alter table public.professores add column if not exists email text;
 alter table public.professores add column if not exists created_at timestamptz not null default now();
 
+-- dono = a conta que criou a linha. O banco preenche sozinho e as regras de RLS no fim deste
+-- arquivo dependem disso. Sem foreign key para auth.users: apagar a conta nao apaga as provas.
+-- Banco que ja tinha linhas antes desta coluna roda supabase/isolar-por-professor.sql uma
+-- vez; ate la, linha sem dono fica invisivel para todo mundo.
+alter table public.turmas add column if not exists dono uuid;
+alter table public.escolas add column if not exists dono uuid;
+alter table public.alunos add column if not exists dono uuid;
+alter table public.provas add column if not exists dono uuid;
+alter table public.correcoes add column if not exists dono uuid;
+alter table public.prova_versoes add column if not exists dono uuid;
+alter table public.professores add column if not exists dono uuid;
+
+alter table public.turmas alter column dono set default auth.uid();
+alter table public.escolas alter column dono set default auth.uid();
+alter table public.alunos alter column dono set default auth.uid();
+alter table public.provas alter column dono set default auth.uid();
+alter table public.correcoes alter column dono set default auth.uid();
+alter table public.prova_versoes alter column dono set default auth.uid();
+alter table public.professores alter column dono set default auth.uid();
+
 -- Lista que nao e lista derrubaria a migracao inteira no primeiro
 -- jsonb_array_length: normaliza antes de mexer no conteudo.
 update public.provas set questoes = '[]'::jsonb where jsonb_typeof(questoes) is distinct from 'array';
@@ -380,7 +400,36 @@ end $$;
 -- nao pode ser a trava: sem login ninguem le nem escreve turma, aluno, prova, versao,
 -- correcao, escola ou professor. descritores e o unico aberto ao anon porque e o catalogo
 -- dos PDFs oficiais e nao tem dado de pessoa. O app fala com o banco depois que o
--- professor entra com e-mail e senha.
+-- professor entra com e-mail e senha, e cada conta so ve e altera as linhas de que e dona.
+-- supabase/isolar-por-professor.sql tem as mesmas regras e ainda entrega as linhas antigas.
+
+-- Quem a conta logada enxerga. Hoje: so o que e dela. Uma coordenacao, no futuro, entra
+-- trocando so o corpo desta funcao; gravar, alterar e apagar continuam exigindo ser o dono.
+create or replace function public.gaba_ve(dono uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select dono = auth.uid()
+$$;
+
+grant execute on function public.gaba_ve(uuid) to authenticated;
+
+-- not null so depois que nao sobrar linha sem dono (banco antigo: isolar-por-professor.sql)
+do $$
+declare
+  t text;
+  sem_dono boolean;
+begin
+  foreach t in array array['turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'prova_versoes', 'professores'] loop
+    execute format('create index if not exists %I on public.%I (dono)', t || '_dono_idx', t);
+    execute format('select exists (select 1 from public.%I where dono is null)', t) into sem_dono;
+    if not sem_dono then
+      execute format('alter table public.%I alter column dono set not null', t);
+    end if;
+  end loop;
+end $$;
 
 alter table public.turmas enable row level security;
 alter table public.escolas enable row level security;
@@ -391,109 +440,105 @@ alter table public.professores enable row level security;
 alter table public.prova_versoes enable row level security;
 alter table public.descritores enable row level security;
 
-drop policy if exists "turmas_select_anon" on public.turmas;
-drop policy if exists "turmas_select_logado" on public.turmas;
-drop policy if exists "turmas_insert_anon" on public.turmas;
-drop policy if exists "turmas_insert_logado" on public.turmas;
-drop policy if exists "turmas_update_anon" on public.turmas;
-drop policy if exists "turmas_update_logado" on public.turmas;
-drop policy if exists "turmas_delete_anon" on public.turmas;
-drop policy if exists "turmas_delete_logado" on public.turmas;
-drop policy if exists turmas_all on public.turmas;
+-- Apaga toda regra antiga das 7 tabelas, tenha o nome que tiver: uma "using (true)"
+-- esquecida abriria tudo de novo, porque regras do mesmo comando se somam.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'professores', 'prova_versoes')
+  loop
+    execute format('drop policy %I on %I.%I', r.policyname, r.schemaname, r.tablename);
+  end loop;
+end $$;
 
-create policy "turmas_select_logado" on public.turmas for select to authenticated using (true);
-create policy "turmas_insert_logado" on public.turmas for insert to authenticated with check (true);
-create policy "turmas_update_logado" on public.turmas for update to authenticated using (true) with check (true);
-create policy "turmas_delete_logado" on public.turmas for delete to authenticated using (true);
+create policy "turmas_select_dono" on public.turmas for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "turmas_insert_dono" on public.turmas for insert to authenticated
+  with check (dono = (select auth.uid()));
+create policy "turmas_update_dono" on public.turmas for update to authenticated
+  using (dono = (select auth.uid())) with check (dono = (select auth.uid()));
+create policy "turmas_delete_dono" on public.turmas for delete to authenticated
+  using (dono = (select auth.uid()));
 
-drop policy if exists "escolas_select_anon" on public.escolas;
-drop policy if exists "escolas_select_logado" on public.escolas;
-drop policy if exists "escolas_insert_anon" on public.escolas;
-drop policy if exists "escolas_insert_logado" on public.escolas;
-drop policy if exists "escolas_update_anon" on public.escolas;
-drop policy if exists "escolas_update_logado" on public.escolas;
-drop policy if exists "escolas_delete_anon" on public.escolas;
-drop policy if exists "escolas_delete_logado" on public.escolas;
+create policy "escolas_select_dono" on public.escolas for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "escolas_insert_dono" on public.escolas for insert to authenticated
+  with check (dono = (select auth.uid()));
+create policy "escolas_update_dono" on public.escolas for update to authenticated
+  using (dono = (select auth.uid())) with check (dono = (select auth.uid()));
+create policy "escolas_delete_dono" on public.escolas for delete to authenticated
+  using (dono = (select auth.uid()));
 
-create policy "escolas_select_logado" on public.escolas for select to authenticated using (true);
-create policy "escolas_insert_logado" on public.escolas for insert to authenticated with check (true);
-create policy "escolas_update_logado" on public.escolas for update to authenticated using (true) with check (true);
-create policy "escolas_delete_logado" on public.escolas for delete to authenticated using (true);
+-- O numero de chamada e unico dentro da turma: aluno em turma alheia bloquearia o numero
+-- do outro professor, entao a turma tambem precisa ser de quem grava.
+create policy "alunos_select_dono" on public.alunos for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "alunos_insert_dono" on public.alunos for insert to authenticated
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.turmas t where t.id = alunos.turma_id and t.dono = (select auth.uid())));
+create policy "alunos_update_dono" on public.alunos for update to authenticated
+  using (dono = (select auth.uid()))
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.turmas t where t.id = alunos.turma_id and t.dono = (select auth.uid())));
+create policy "alunos_delete_dono" on public.alunos for delete to authenticated
+  using (dono = (select auth.uid()));
 
-drop policy if exists "alunos_select_anon" on public.alunos;
-drop policy if exists "alunos_select_logado" on public.alunos;
-drop policy if exists "alunos_insert_anon" on public.alunos;
-drop policy if exists "alunos_insert_logado" on public.alunos;
-drop policy if exists "alunos_update_anon" on public.alunos;
-drop policy if exists "alunos_update_logado" on public.alunos;
-drop policy if exists "alunos_delete_anon" on public.alunos;
-drop policy if exists "alunos_delete_logado" on public.alunos;
-drop policy if exists alunos_all on public.alunos;
+-- provas.turma_id e referencia solta (a turma pode ter sido apagada): nao entra na checagem.
+create policy "provas_select_dono" on public.provas for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "provas_insert_dono" on public.provas for insert to authenticated
+  with check (dono = (select auth.uid()));
+create policy "provas_update_dono" on public.provas for update to authenticated
+  using (dono = (select auth.uid())) with check (dono = (select auth.uid()));
+create policy "provas_delete_dono" on public.provas for delete to authenticated
+  using (dono = (select auth.uid()));
 
-create policy "alunos_select_logado" on public.alunos for select to authenticated using (true);
-create policy "alunos_insert_logado" on public.alunos for insert to authenticated with check (true);
-create policy "alunos_update_logado" on public.alunos for update to authenticated using (true) with check (true);
-create policy "alunos_delete_logado" on public.alunos for delete to authenticated using (true);
+-- (prova_id, qr_payload) e unico e o id da prova vai impresso no QR: correcao gravada em
+-- prova alheia tomaria o lugar da leitura verdadeira daquela folha.
+create policy "correcoes_select_dono" on public.correcoes for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "correcoes_insert_dono" on public.correcoes for insert to authenticated
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.provas p where p.id = correcoes.prova_id and p.dono = (select auth.uid())));
+create policy "correcoes_update_dono" on public.correcoes for update to authenticated
+  using (dono = (select auth.uid()))
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.provas p where p.id = correcoes.prova_id and p.dono = (select auth.uid())));
+create policy "correcoes_delete_dono" on public.correcoes for delete to authenticated
+  using (dono = (select auth.uid()));
 
-drop policy if exists "provas_select_anon" on public.provas;
-drop policy if exists "provas_select_logado" on public.provas;
-drop policy if exists "provas_insert_anon" on public.provas;
-drop policy if exists "provas_insert_logado" on public.provas;
-drop policy if exists "provas_update_anon" on public.provas;
-drop policy if exists "provas_update_logado" on public.provas;
-drop policy if exists "provas_delete_anon" on public.provas;
-drop policy if exists "provas_delete_logado" on public.provas;
-drop policy if exists provas_all on public.provas;
+create policy "prova_versoes_select_dono" on public.prova_versoes for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "prova_versoes_insert_dono" on public.prova_versoes for insert to authenticated
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.provas p where p.id = prova_versoes.prova_id and p.dono = (select auth.uid())));
+create policy "prova_versoes_update_dono" on public.prova_versoes for update to authenticated
+  using (dono = (select auth.uid()))
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.provas p where p.id = prova_versoes.prova_id and p.dono = (select auth.uid())));
+create policy "prova_versoes_delete_dono" on public.prova_versoes for delete to authenticated
+  using (dono = (select auth.uid()));
 
-create policy "provas_select_logado" on public.provas for select to authenticated using (true);
-create policy "provas_insert_logado" on public.provas for insert to authenticated with check (true);
-create policy "provas_update_logado" on public.provas for update to authenticated using (true) with check (true);
-create policy "provas_delete_logado" on public.provas for delete to authenticated using (true);
-
-drop policy if exists "correcoes_select_anon" on public.correcoes;
-drop policy if exists "correcoes_select_logado" on public.correcoes;
-drop policy if exists "correcoes_insert_anon" on public.correcoes;
-drop policy if exists "correcoes_insert_logado" on public.correcoes;
-drop policy if exists "correcoes_update_anon" on public.correcoes;
-drop policy if exists "correcoes_update_logado" on public.correcoes;
-drop policy if exists "correcoes_delete_anon" on public.correcoes;
-drop policy if exists "correcoes_delete_logado" on public.correcoes;
-
-create policy "correcoes_select_logado" on public.correcoes for select to authenticated using (true);
-create policy "correcoes_insert_logado" on public.correcoes for insert to authenticated with check (true);
-create policy "correcoes_update_logado" on public.correcoes for update to authenticated using (true) with check (true);
-create policy "correcoes_delete_logado" on public.correcoes for delete to authenticated using (true);
-
-drop policy if exists "professores_select_anon" on public.professores;
-drop policy if exists "professores_select_logado" on public.professores;
-drop policy if exists "professores_insert_anon" on public.professores;
-drop policy if exists "professores_insert_logado" on public.professores;
-drop policy if exists "professores_update_anon" on public.professores;
-drop policy if exists "professores_update_logado" on public.professores;
-
-create policy "professores_select_logado" on public.professores for select to authenticated using (true);
-create policy "professores_insert_logado" on public.professores for insert to authenticated with check (true);
-create policy "professores_update_logado" on public.professores for update to authenticated using (true) with check (true);
-
-drop policy if exists "prova_versoes_select_anon" on public.prova_versoes;
-drop policy if exists "prova_versoes_select_logado" on public.prova_versoes;
-drop policy if exists "prova_versoes_insert_anon" on public.prova_versoes;
-drop policy if exists "prova_versoes_insert_logado" on public.prova_versoes;
-drop policy if exists "prova_versoes_update_anon" on public.prova_versoes;
-drop policy if exists "prova_versoes_update_logado" on public.prova_versoes;
-drop policy if exists "prova_versoes_delete_anon" on public.prova_versoes;
-drop policy if exists "prova_versoes_delete_logado" on public.prova_versoes;
-
-create policy "prova_versoes_select_logado" on public.prova_versoes for select to authenticated using (true);
-create policy "prova_versoes_insert_logado" on public.prova_versoes for insert to authenticated with check (true);
-create policy "prova_versoes_update_logado" on public.prova_versoes for update to authenticated using (true) with check (true);
-create policy "prova_versoes_delete_logado" on public.prova_versoes for delete to authenticated using (true);
+-- Sem regra de delete: o app nunca apaga professor.
+create policy "professores_select_dono" on public.professores for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "professores_insert_dono" on public.professores for insert to authenticated
+  with check (dono = (select auth.uid()));
+create policy "professores_update_dono" on public.professores for update to authenticated
+  using (dono = (select auth.uid())) with check (dono = (select auth.uid()));
 
 -- So leitura: o catalogo vem dos PDFs oficiais e entra pelo seed, rodado no SQL Editor como
 -- superuser (que passa por cima do RLS). Sem policy de escrita, o app nao inventa descritor.
 drop policy if exists "descritores_select_anon" on public.descritores;
 
 create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);
+
+revoke all on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes from anon, public;
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to authenticated;
