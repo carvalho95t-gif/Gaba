@@ -329,6 +329,41 @@
     return rotuloDe(nome).replace(/\.[a-z0-9]{2,4}$/i, "");
   }
 
+  var COLUNA_ESCOLA = /^escola$/;
+
+  /* quantas escolas o lote traz na propria coluna "Escola" da exportacao crua. O painel
+     cria todas as turmas dentro da escola escolhida, entao misturar escolas num so import
+     juntaria turmas de nome igual (AEE-M01 existe em mais de uma) em um lugar errado. */
+  function escolasDaPasta(itens) {
+    var achadas = [];
+    var porChave = Object.create(null);
+    (itens || []).forEach(function (it) {
+      var linhas = linhasCheias(it.linhas);
+      if (!linhas.length) return;
+      var coluna = -1;
+      var desde = 0;
+      for (var i = 0; i < Math.min(linhas.length, 25) && coluna < 0; i++) {
+        for (var c = 0; c < linhas[i].length; c++) {
+          if (COLUNA_ESCOLA.test(chaveDe(linhas[i][c]))) {
+            coluna = c;
+            desde = i + 1;
+            break;
+          }
+        }
+      }
+      if (coluna < 0) return;
+      for (var n = desde; n < linhas.length; n++) {
+        var v = rotuloDe(linhas[n][coluna] || "");
+        if (v.length < 3 || COLUNA_ESCOLA.test(chaveDe(v))) continue;
+        var k = limpo(v);
+        if (!k || porChave[k]) continue;
+        porChave[k] = true;
+        achadas.push(v);
+      }
+    });
+    return achadas;
+  }
+
   /* a linha de cabecalho que tem uma coluna "Turma"; diz se ela vem com a coluna de nomes */
   function colunaDeTurma(linhas) {
     var soTurmas = null;
@@ -458,6 +493,7 @@
     montar: montar,
     melhorDasListas: melhorDasListas,
     turmasDaPasta: turmasDaPasta,
+    escolasDaPasta: escolasDaPasta,
     papelDaColuna: papelDaColuna,
     ehCabecalho: ehCabecalho,
     numeroDe: numeroDe,

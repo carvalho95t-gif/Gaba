@@ -1538,9 +1538,9 @@ async function dirigirImportarTurmas(marcos) {
       { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
-  function mandar(arquivo) {
+  function mandar(arquivos) {
     var dt = new DataTransfer();
-    dt.items.add(arquivo);
+    [].concat(arquivos || []).forEach(function (f) { dt.items.add(f); });
     var entrada = document.getElementById("impt-arquivo");
     entrada.files = dt.files;
     entrada.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1743,6 +1743,52 @@ async function dirigirImportarTurmas(marcos) {
     GabaDB.listTurmas = listarTurmas;
   }
   document.getElementById("impt-cancelar").click();
+
+  /* ---- lote que mistura escolas nao entra: as turmas nasceriam todas na escola do painel */
+  var GEMEA = "M01 (escolas gêmeas teste)";
+  var escolaB = "EEEFM DAS DUAS ESCOLAS (teste)";
+  function chamadaDe(escola, nomeAluno) {
+    return new File(["Escola;Turma;Nº;Nome\n" + escola + ";" + GEMEA + ";1;" + nomeAluno + "\n"],
+      "chamada-" + GEMEA + "-" + escola.slice(0, 4) + ".csv", { type: "text/csv" });
+  }
+  var nomeA = cartao().nome;
+  GabaEscolas.adicionar(escolaB);
+  GabaEscolas.setFiltro("");
+  await GabaApp.carregarTudo();
+  var fA = chamadaDe(nomeA, "ALFA GEMEA TESTE");
+  var fB = chamadaDe(escolaB, "BRAVO GEMEA TESTE");
+  var turmasAntes = window.__gaba.mb.turmas.length;
+  botaoDe("#lista-escolas-cad", "importar-turmas", nomeA).click();
+  mandar([fA, fB]);
+  r.misturado = await espera(function () {
+    var p = painel();
+    return p.outro && /misturam 2 escolas/.test(p.status) ? p : null;
+  }, 8000).catch(painel);
+  r.misturadoSemTabela = painel().linhas.length === 0;
+  r.nadaGravado = window.__gaba.mb.turmas.length === turmasAntes;
+  document.getElementById("impt-cancelar").click();
+
+  /* uma escola por vez: os dois rotulos gemeos sobrevivem, cada um na sua escola */
+  botaoDe("#lista-escolas-cad", "importar-turmas", nomeA).click();
+  mandar(fA);
+  await espera(function () { return painel().linhas.length === 1; }, 8000);
+  document.getElementById("impt-salvar").click();
+  await espera(function () { return /Pronto/.test(painel().status); }, 15000);
+  GabaEscolas.setFiltro("");
+  await GabaApp.carregarTudo();
+  botaoDe("#lista-escolas-cad", "importar-turmas", escolaB).click();
+  mandar(fB);
+  await espera(function () { return painel().linhas.length === 1; }, 8000);
+  document.getElementById("impt-salvar").click();
+  await espera(function () { return /Pronto/.test(painel().status); }, 15000);
+  document.getElementById("impt-cancelar").click();
+  var gemeas = window.__gaba.mb.turmas.filter(function (t) { return t.nome === GEMEA; })
+    .sort(function (a, b) { return String(a.escola) < String(b.escola) ? -1 : 1; });
+  r.gemelas = { quantidade: gemeas.length, escolas: gemeas.map(function (t) { return t.escola; }),
+    alunos: gemeas.map(function (t) { return alunosDe(t).join(","); }),
+    rotulo: GEMEA, entrouEmB: gemeas.some(function (t) {
+      return GabaEscolas.chave(t.escola) === GabaEscolas.chave(escolaB);
+    }) };
 
   GabaEscolas.setFiltro("");
   await GabaApp.carregarTudo();
@@ -2605,6 +2651,14 @@ var LISTA = {
     check("falha no lote de alunos depois de criar a turma reaproveita o id no retry",
       it.retryDepoisDeCriar.quantidade === 1 && it.retryDepoisDeCriar.alunos.join("|") === "1:ALFA RETRY TESTE",
       it.retryDepoisDeCriar);
+    check("o painel recusa os arquivos de duas escolas juntas, porque as turmas entrariam na escola escolhida",
+      it.misturado && /misturam 2 escolas/.test(it.misturado.status || "") &&
+      it.misturadoSemTabela && it.nadaGravado,
+      [it.misturado && it.misturado.status, it.misturadoSemTabela, it.nadaGravado]);
+    check("uma escola por vez preserva as duas turmas de nome igual, cada uma na sua escola",
+      it.gemelas.quantidade === 2 && it.gemelas.entrouEmB &&
+      it.gemelas.escolas[0] !== it.gemelas.escolas[1] &&
+      it.gemelas.alunos.slice().sort().join("|") === "1:ALFA GEMEA TESTE|1:BRAVO GEMEA TESTE", it.gemelas);
 
     console.log("\n== o professor entra com e-mail e senha ==");
     var LG = { nome: "Profa. Ana (teste)", email: "ana.teste@example.test", senha: "gaba-teste-1",

@@ -292,6 +292,37 @@ function check(nome, cond, detalhe) {
     vaziaDeSaidas.turmas.length === 1 && !vaziaDeSaidas.turmas[0].alunos.length && vaziaDeSaidas.saidas === 1,
     vaziaDeSaidas);
 
+  console.log("\n== quantas escolas ha no lote ==");
+  var escolaDe = function (escola, turma, n) {
+    return { rotulo: "Chamadas_" + escola + ".csv", arquivo: "Chamadas_" + escola + ".csv",
+      linhas: [["Escola", "Turma", "Nº", "Nome do Estudante", "Situação"],
+        [escola, turma, String(n), "ALFA TESTE", ""], [escola, turma, "2", "BRAVO TESTE", "TRANSFERIDO"]] };
+  };
+  var duas = GabaLista.escolasDaPasta([escolaDe("EEEFM ALFA", "AEE-M01", 1), escolaDe("EEEFM BRAVO", "AEE-M01", 1)]);
+  check("o lote com duas escolas e reconhecido como duas",
+    duas.length === 2 && duas.join("|") === "EEEFM ALFA|EEEFM BRAVO", duas);
+  var mesma = GabaLista.escolasDaPasta([escolaDe("EEEFM ALFA", "AEE-M01", 1),
+    { rotulo: "aba", arquivo: "outra.xlsx", linhas: [["Escola", "Turma", "Nº", "Nome"],
+      ["  EEEFM   Alfa ", "7º A", "1", "CHARLIE TESTE"], ["EEEFM-Alfa", "7º B", "1", "DELTA TESTE"]] }]);
+  check("a mesma escola escrita de outro jeito nao conta duas vezes",
+    mesma.length === 1 && mesma[0] === "EEEFM ALFA", mesma);
+  var mesclada = GabaLista.escolasDaPasta([{ rotulo: "chamada", arquivo: "chamada.xlsx",
+    linhas: [["Escola", "Turma", "Nº", "Nome"], ["EEEFM UNICA", "7º A", "1", "ALFA TESTE"],
+      ["", "7º A", "2", "BRAVO TESTE"], ["", "7º B", "1", "CHARLIE TESTE"]] }]);
+  check("celula mesclada na escola basta a primeira linha", mesclada.join("|") === "EEEFM UNICA", mesclada);
+  check("o cabecalho Escola sozinho nao vira nome de escola",
+    GabaLista.escolasDaPasta([{ rotulo: "x", arquivo: "x.csv", linhas: [["Escola", "Turma", "Nº", "Nome"]] }]).length === 0);
+  check("planilha sem coluna Escola devolve nada, e o import continua como esta",
+    GabaLista.escolasDaPasta([secretaria]).length === 0 &&
+    GabaLista.escolasDaPasta([{ rotulo: "6º A", linhas: [["Nº", "Nome"], ["1", "ALFA TESTE"]] }]).length === 0);
+  var misturadas = GabaLista.turmasDaPasta([escolaDe("EEEFM ALFA", "AEE-M01", 1), escolaDe("EEEFM BRAVO", "AEE-M01", 2)]);
+  check("e por isso que o painel recusa o lote misturado: AEE-M01 sumiria numa das escolas",
+    misturadas.turmas.length === 1 && misturadas.repetidas.join("|") === "AEE-M01",
+    [misturadas.turmas.map(function (t) { return t.nome; }), misturadas.repetidas]);
+  var umaSo = GabaLista.turmasDaPasta([escolaDe("EEEFM ALFA", "AEE-M01", 1), escolaDe("EEEFM ALFA", "7º A", 3)]);
+  check("a escola inteira em dois arquivos continua entrando inteira",
+    umaSo.turmas.length === 2 && !umaSo.repetidas.length, [umaSo.turmas, umaSo.repetidas]);
+
   console.log("\n== erros honestos ==");
   var naoEhXlsx = await GabaPlanilha.leXlsx(leBuffer("chamada-sedu.csv")).catch(function (err) { return { erro: err.message }; });
   check("um CSV com nome .xlsx e barrado com explicação",

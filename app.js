@@ -993,12 +993,21 @@
     try {
       var itens = await arquivosParaItens(lista);
       if (versao !== versaoConta) return;
-      var r = GabaLista.turmasDaPasta(itens);
-      impt.turmas = r.turmas;
-      impt.ignoradas = r.ignoradas;
-      impt.repetidas = r.repetidas;
-      impt.saidas = r.saidas;
-      r.turmas.forEach(function (t, i) { impt.marcadas[i] = true; });
+      var escolas = GabaLista.escolasDaPasta(itens);
+      if (escolas.length > 1) {
+        /* uma aba por escola nao e o bastante: as turmas entram todas na escola do painel, e
+           rotulo igual em duas escolas (AEE-M01) faria uma delas desaparecer da lista */
+        impt.erro = "Estes arquivos misturam " + escolas.length + " escolas (" +
+          escolas.slice(0, 3).join(" · ") + (escolas.length > 3 ? " · …" : "") +
+          "). As turmas entrariam todas em \"" + impt.escola + "\": escolha os arquivos de uma escola por vez.";
+      } else {
+        var r = GabaLista.turmasDaPasta(itens);
+        impt.turmas = r.turmas;
+        impt.ignoradas = r.ignoradas;
+        impt.repetidas = r.repetidas;
+        impt.saidas = r.saidas;
+        r.turmas.forEach(function (t, i) { impt.marcadas[i] = true; });
+      }
     } catch (err) {
       if (versao !== versaoConta) return;
       impt.erro = mensagemErro(err);
