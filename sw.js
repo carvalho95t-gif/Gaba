@@ -1,4 +1,4 @@
-const CACHE = "gaba-omr-v17";
+const CACHE = "gaba-omr-v18";
 const PRECACHE = [
   "./",
   "./index.html",
@@ -18,6 +18,7 @@ const PRECACHE = [
   "./js/folha.js",
   "./js/analise.js",
   "./js/analiseBasica.js",
+  "./js/proficiencia.js",
   "./js/uiCaderno.js",
   "./js/uiScanner.js",
   "./js/dicas.js",

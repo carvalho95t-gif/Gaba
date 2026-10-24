@@ -305,6 +305,8 @@
         return '<option' + (l === gab ? " selected" : "") + ">" + l + "</option>";
       })).join("") + "</select>" +
       '<input class="q-peso" data-campo="peso" type="number" min="0.5" max="99" step="0.5" value="' + peso + '" title="peso">' +
+      '<input class="q-parte" data-campo="parte" type="text" value="' + esc(q.parte || "") +
+      '" placeholder="parte" title="disciplina ou parte desta questão">' +
       '<input class="q-desc" data-campo="descritor" type="text" autocomplete="off" role="combobox" aria-expanded="false" ' +
       'value="' + esc(q.descritor || "") + '" placeholder="descritor" ' +
       'title="código do descritor: comece a digitar e escolha da lista oficial">' +

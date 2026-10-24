@@ -291,6 +291,21 @@ a.btn-ghost { display: inline-flex; align-items: center; text-decoration: none; 
 .ana-chip { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 8px; border-radius: var(--raio-p);
     background: var(--laranja-fundo); border: 1px solid var(--laranja-linha); color: var(--laranja-escuro); font-size: .74rem; font-weight: 700; }
 .ana-ok { color: var(--primary); font-size: .76rem; font-weight: 700; }
+.ana-nivel { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 8px; border-radius: var(--raio-p);
+    background: var(--menta-fundo); border: 1px solid var(--menta-linha); color: var(--menta-grafite);
+    font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.ana-nivel b { font-variant-numeric: tabular-nums; }
+.ana-niveis { white-space: nowrap; }
+.ana-parte { padding: 1px 6px; border: 1px solid var(--linha-2); border-radius: var(--raio-p);
+    background: var(--bg); color: var(--tinta-2); font-size: .7rem; font-weight: 700; white-space: nowrap; }
+.ab-cortes { margin: 10px 0 0; padding: 8px 12px; border: 1px solid var(--linha); border-radius: var(--raio-m); background: var(--branco); }
+.ab-cortes summary { cursor: pointer; font-size: .84rem; font-weight: 800; color: var(--primary); }
+.ab-cortes .ajuda { margin: 6px 0 0; }
+.cortes-linha { display: grid; grid-template-columns: minmax(120px, 1fr) 110px; gap: 6px; max-width: 420px; margin-top: 6px; }
+.cortes-linha input { width: 100%; padding: 5px 6px; border: 1px solid var(--linha-2); border-radius: 6px; font-size: .8rem; }
+.cortes-linha.cortes-cab { margin-top: 10px; }
+.cortes-cab span { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--tinta-3); }
+.cortes-aviso { font-size: .78rem; color: var(--tinta-3); }
 @media (max-width: 900px) {
     .ana-cards { grid-template-columns: repeat(2, 1fr); }
 }

@@ -298,10 +298,23 @@
             <div class="ab-escopo"><h3 id="ab-escopo">Escolha uma prova</h3><p id="ab-participacao" class="text-muted"></p></div>
             <p id="ab-anuncio" class="ab-sr" role="status" aria-live="polite" aria-atomic="true"></p>
 
+            <details class="ab-cortes" id="ana-cortes">
+                <summary>Níveis de proficiência: defina os cortes da sua turma</summary>
+                <p class="ajuda">A nota vai de 0 a 10. Cada nível começa na nota ao lado e vale até a nota do próximo.</p>
+                <div class="cortes-linha cortes-cab"><span>Nível</span><span>A partir de</span></div>
+                <div id="ana-cortes-lista"></div>
+                <div class="cad-acoes">
+                    <button type="button" class="btn-ghost" id="ana-cortes-salvar">Salvar cortes</button>
+                    <button type="button" class="btn-ghost" id="ana-cortes-padrao">Voltar ao padrão</button>
+                    <span class="cortes-aviso" id="ana-cortes-aviso"></span>
+                </div>
+            </details>
+
             <!-- SUB-ABA: RESUMO -->
             <div id="ab-resumo" class="ab-painel active" role="tabpanel" aria-labelledby="ab-tab-resumo" tabindex="0">
                 <div id="ab-resumo-cards"></div>
                 <div id="ab-resumo-distrib"></div>
+                <div id="ab-resumo-partes"></div>
                 <h3 class="secao">Corre&ccedil;&otilde;es recentes</h3>
                 <div class="form-container">
                     <div class="cad-acoes cad-acoes-topo">
@@ -317,10 +330,11 @@
                                     <th>Turma</th>
                                     <th>Prova</th>
                                     <th>Nota final</th>
+                                    <th>N&iacute;vel</th>
                                 </tr>
                             </thead>
                             <tbody id="tabela-relatorios">
-                                <tr><td colspan="5" class="text-muted">Nenhuma corre&ccedil;&atilde;o registrada.</td></tr>
+                                <tr><td colspan="6" class="text-muted">Nenhuma corre&ccedil;&atilde;o registrada.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -708,6 +722,7 @@
     <script src="js/listaAlunos.js"></script>
     <script src="js/folha.js"></script>
     <script src="js/analise.js"></script>
+    <script src="js/proficiencia.js"></script>
     <script src="js/analiseBasica.js"></script>
     <script src="js/credencial.js"></script>
     <script src="js/supabaseClient.js"></script>

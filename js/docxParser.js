@@ -186,6 +186,12 @@
   var CABECALHO_INICIO_RE = /^(?:governo|secretaria|prefeitura|minist[ée]rio|aluno\s*\(?\s*[a-z]?\s*\)?\s*:|n[ºo]\s*de\s*chamada|tipo\s+de\s*prova|cart[ãa]o\s+gabarito|gabarito\s+oficial|orienta[cç][õo]es\s+para|valor\s+da\s*prova|ensino\s+m[ée]dio|turno\s+|ano\s+letivo|data\s*:|nota\s*:|q1\s*[:|])/i;
   var CABECALHO_FIM_RE = /cart[ãa]o\s+gabarito|gabarito\s+oficial|uso\s+do\s+professor|\]\s*$/i;
   var DISCIPLINA_RE = /(filosofia|matem[áa]tica|l[ií]ngua|portugu[eê]s|hist[óo]ria|geografia|ci[eê]ncias|arte|educa[çc][ãa]o|qu[ií]mica|f[ií]sica|biologia)/i;
+  /* cabeçalho de parte: "PARTE I", "1ª PARTE – MATEMÁTICA", "BLOCO 2: HISTÓRIA", "ÁREA: CIÊNCIAS DA NATUREZA".
+     O nome depois da palavra só vale atrás de um separador, de um numeral ou quando é disciplina:
+     "Área de preservação permanente" é texto de questão, não cabeçalho. */
+  var PARTE_RE = /^(?:\d{1,3}[ºªa°]?\s+)?(parte|bloco|se(?:ss|[çc])[ãa]o|[áa]rea|m[óo]dulo|unidade)\b[\s.:]*(.*)$/i;
+  var PARTE_SEP_RE = /^[–\-—:.]+\s*/;
+  var PARTE_NUM_RE = /^([IVXLC]{1,7}|\d{1,3}[ºªa°]?|[A-E])(?![A-Za-zÀ-ü])\s*/i;
 
   function lettersOf(text) {
     return (String(text || "").toUpperCase().match(/[A-E]/g) || []);
@@ -333,6 +339,32 @@
     return CABECALHO_INICIO_RE.test(String(text || "").trim());
   }
 
+  /* devolve o rótulo da parte quando a linha é um cabeçalho dela, e "" quando não é */
+  function parteDaLinha(text) {
+    var t = String(text || "").replace(/\s+/g, " ").trim();
+    if (!t || t.length > 60 || !/^[A-ZÀ-Ü0-9]/.test(t)) return "";
+    var m = PARTE_RE.exec(t);
+    if (!m) return "";
+    var keyword = m[1] || "";
+    var resto = m[2] || "";
+    var separador = false, numero = "", nome = "";
+    var sep = PARTE_SEP_RE.exec(resto);
+    if (sep) { separador = true; resto = resto.slice(sep[0].length); }
+    var num = PARTE_NUM_RE.exec(resto);
+    if (num) { numero = num[1]; resto = resto.slice(num[0].length); }
+    var sep2 = PARTE_SEP_RE.exec(resto);
+    if (sep2) { separador = true; resto = resto.slice(sep2[0].length); }
+    nome = resto.trim();
+    if (nome && !separador && !numero && !DISCIPLINA_RE.test(nome)) return "";
+    if (nome) {
+      var miudo = nome.toLowerCase();
+      return miudo.charAt(0).toUpperCase() + miudo.slice(1);
+    }
+    var base = keyword.charAt(0).toUpperCase() + keyword.slice(1).toLowerCase();
+    var marca = /^[ivxlcdm]+$/i.test(numero) ? numero.toUpperCase() : numero;
+    return marca ? base + " " + marca : base;
+  }
+
   /* o PDF parte a frase no corte de pagina: linha comecando em minuscula e continuação do ultimo texto lido */
   function emendar(state, texto) {
     if (state.rabo.alt && state.current && state.current.alternativas[state.rabo.alt]) {
@@ -350,10 +382,29 @@
       questoes: [], tipos: [], alunos: [], gabaritoFlat: {}, repetidas: 0,
       meta: { titulo: "", disciplina: "", turma: "" },
       current: null, pending: [], inGabaritoSection: false, matrixHeader: null,
-      emCabecalho: false, rabo: null, gradeViva: false
+      emCabecalho: false, rabo: null, gradeViva: false, parteAtual: ""
     };
 
-    blocks.forEach(function (block) {
+    /* a chave impressa no fim do documento vem logo depois deste rótulo? */
+    function paresDepoisDe(idx) {
+      var lidas = 0, texto = "";
+      for (var i = idx + 1; i < blocks.length && lidas < 6; i++) {
+        var b = blocks[i];
+        if (b.kind === "table") return false;
+        if (b.kind !== "p") continue;
+        var t = String(b.text || "").trim();
+        if (!t) continue;
+        lidas++;
+        texto += " " + t;
+        if (texto.length > 400) break;
+      }
+      var m, pares = 0;
+      PAIR_RE.lastIndex = 0;
+      while ((m = PAIR_RE.exec(texto))) pares++;
+      return pares >= 2;
+    }
+
+    blocks.forEach(function (block, idx) {
       if (block.kind === "table") {
         parseTablesInto(state, block.rows);
         return;
@@ -367,6 +418,15 @@
       state.gradeViva = celula || naGrade;
       if (!text) return;
 
+      // "GABARITO OFICIAL" também abre a faixa de identificação do caderno: só fecha a
+      // questão quando os pares "1 - B 2 - C" vêm logo depois, senão a chave se perderia
+      if (state.current && GABARITO_INICIO_RE.test(text) && paresDepoisDe(idx)) {
+        closeQuestion(state);
+        state.inGabaritoSection = true;
+        collectPairs(text, state.gabaritoFlat);
+        return;
+      }
+
       // a faixa de identificacao do proximo caderno cai no meio da questao: do timbre ao cartao, nao e texto
       if (state.emCabecalho) {
         if (isQuestionLine(text, explicitOnly)) state.emCabecalho = false;
@@ -378,6 +438,10 @@
         state.emCabecalho = true;
         return;
       }
+
+      // o cabeçalho da próxima parte cai no meio da última questão: muda o assunto, não é texto dela
+      var parte = parteDaLinha(text);
+      if (parte) { state.parteAtual = parte; return; }
 
       if (state.current) {
         // a grade do cartao fecha o caderno no meio da ultima questao: nao e texto dela
@@ -401,7 +465,8 @@
           enunciado: "",
           comando: "",
           alternativas: {},
-          gabarito: null
+          gabarito: null,
+          parte: state.parteAtual || ""
         };
         state.pending = [questionHeadRemainder(text)];
         state.rabo = { pend: true };
@@ -576,6 +641,7 @@
             .filter(function (a) { return a.texto; }),
           gabarito: q.gabarito || "",
           peso: 1,
+          parte: q.parte || "",
           descritor: "",
           habilidade_bncc: ""
         };
@@ -592,6 +658,7 @@
     parseDocx: parseDocx,
     parsePlain: parsePlain,
     ehCabecalhoDeCaderno: ehCabecalhoDeCaderno,
+    parteDaLinha: parteDaLinha,
     toProva: toProva,
     paraText: paraText
   };

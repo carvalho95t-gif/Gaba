@@ -1478,7 +1478,7 @@
     }).slice(0, 600);
 
     if (!linhas.length) {
-      corpo.innerHTML = '<tr><td colspan="5" class="text-muted">Nenhuma correção registrada.</td></tr>';
+      corpo.innerHTML = '<tr><td colspan="6" class="text-muted">Nenhuma correção registrada.</td></tr>';
       return;
     }
     corpo.innerHTML = linhas.map(function (l) {
@@ -1486,6 +1486,7 @@
       var total = r.total_questoes || (r.respostas || []).length || 0;
       var selo = l.banco ? "" : ' <span class="so-aparelho-tag" title="' +
         esc(r.sync_error || "ainda não subiu para o banco") + '">aparelho</span>';
+      var nivel = nivelDe(r.nota);
       return "<tr><td>" + esc(dataCurta(r.created_at)) + "</td>" +
         "<td>" + esc(r.aluno_numero || "-") + " — " + esc(r.aluno_nome || "") + selo + "</td>" +
         "<td>" + esc(nomeTurma(r.turma_id)) + "</td>" +
@@ -1493,7 +1494,9 @@
         "<td><strong>" + esc(decimal(Number(r.nota || 0).toFixed(1))) + "</strong> " +
         '<span class="text-muted">' + esc(String(r.acertos || 0)) + "/" + esc(String(total)) +
         (r.codigo ? " · tipo " + esc(String(r.versao || 1)) + " " + esc(r.codigo) : "") +
-        (r.branco ? " · " + esc(String(r.branco)) + " em branco" : "") + "</span></td></tr>";
+        (r.branco ? " · " + esc(String(r.branco)) + " em branco" : "") + "</span></td>" +
+        "<td>" + (nivel ? '<span class="ana-nivel">' + esc(nivel) + "</span>" :
+          '<span class="text-muted">–</span>') + "</td></tr>";
     }).join("");
   }
 
@@ -1581,7 +1584,8 @@
     ].filter(Boolean);
     box.innerHTML = '<div class="ana-cards">' +
       cartao("Folhas lidas", r.alunos, "") +
-      cartao("Média da turma", decimal(r.media.toFixed(2)), "nota de 0 a 10") +
+      cartao("Média da turma", decimal(r.media.toFixed(2)), "nota de 0 a 10" +
+        (nivelDe(r.media) ? " · " + nivelDe(r.media) : "")) +
       cartao("Questões", r.itens, "") +
       cartao("A revisar", r.revisar.length, r.revisar.length ? "itens " + r.revisar.slice(0, 8).join(", ") +
         (r.revisar.length > 8 ? "…" : "") : "nenhum item sinalizado") +
@@ -1605,10 +1609,12 @@
       return '<span class="ana-chip">' + esc(window.GabaAnalise ? GabaAnalise.rotuloBandeira(b) : b) + "</span>";
     }).join("");
     var pedagogico = [it.descritor, it.habilidade_bncc].filter(Boolean).join(" · ");
+    var semParte = !it.parte || (window.GabaAnalise && it.parte === GabaAnalise.SEM_PARTE);
     return '<tr data-q="' + esc(String(it.numero)) + '"' + (it.bandeiras.length ? ' class="sinalizada"' : "") +
       '><td class="ana-num">' + esc(String(it.numero)) + "</td>" +
       "<td>" + esc(it.gabarito || "—") + "</td>" +
       "<td>" + esc(decimal(it.peso)) + "</td>" +
+      "<td>" + esc(semParte ? "—" : it.parte) + "</td>" +
       "<td>" + esc(String(it.acertos)) + "/" + esc(String(it.participantes)) + "</td>" +
       '<td class="ana-pc"><span class="ana-barra"><i style="width:' + pct + '%"></i></span>' +
       esc(String(pct)) + "%</td>" +
@@ -1692,22 +1698,22 @@
     }
     corpo.innerHTML = !mostrar.length
       ? '<p class="text-muted">Nenhuma questão sinalizada nesta prova: pode imprimir a próxima.</p>'
-      : '<div class="ana-tabela"><table class="data-table"><thead><tr><th>Nº</th><th>Gab</th><th>Peso</th>' +
+      : '<div class="ana-tabela"><table class="data-table"><thead><tr><th>Nº</th><th>Gab</th><th>Peso</th><th>Parte</th>' +
         "<th>Acertos</th><th>% de acerto</th><th>Branco</th><th>Disc.</th><th>Distratores (letra e nº de marcas)</th>" +
         "<th>Descritor / BNCC</th><th>O que revisar</th></tr></thead><tbody>" +
         ordenadas.map(linhaItem).join("") + "</tbody></table></div>";
   }
 
   function resumoVazio() {
-    return { alunos: 0, media: 0, itens: 0, revisar: [], semGabarito: [], faceis: [], dificeis: [],
+    return { alunos: 0, media: 0, itens: 0, porParte: [], revisar: [], semGabarito: [], faceis: [], dificeis: [],
       distratores: [], discriminacaoBaixa: [], mediaDiscriminacao: null };
   }
 
   function csvDaAnalise(itens) {
-    var cabecalho = ["Questao", "Gabarito", "Peso", "Participantes", "Acertos", "% acerto", "Em branco",
+    var cabecalho = ["Questao", "Gabarito", "Peso", "Parte", "Participantes", "Acertos", "% acerto", "Em branco",
       "Discriminacao", "A", "B", "C", "D", "E", "Distrator mais forte", "Descritor", "Habilidade BNCC", "Bandeiras"];
     var linhas = (itens || []).map(function (it) {
-      return [it.numero, it.gabarito, decimal(it.peso), it.participantes, it.acertos,
+      return [it.numero, it.gabarito, decimal(it.peso), it.parte, it.participantes, it.acertos,
         decimal((it.proporcao * 100).toFixed(1)), it.branco,
         it.discriminacao === null ? "" : decimal(it.discriminacao.toFixed(2)),
         it.contagem.A, it.contagem.B, it.contagem.C, it.contagem.D, it.contagem.E,
@@ -1897,6 +1903,113 @@
     return '<svg class="ab-grafico-svg" viewBox="0 0 640 265" role="img" aria-labelledby="ab-dist-titulo ab-dist-desc"><title id="ab-dist-titulo">Distribuição de notas</title><desc id="ab-dist-desc">' + esc(descricao) + '. Sem leitura não entra no gráfico.</desc><line x1="44" y1="200" x2="622" y2="200"></line>' + barras + "</svg>";
   }
 
+  function nivelDe(nota) {
+    return window.GabaProficiencia ? GabaProficiencia.rotulo(nota) : "";
+  }
+
+  function seloNivel(nota) {
+    var n = nivelDe(nota);
+    return n ? '<span class="ana-nivel">' + esc(n) + "</span>" : "";
+  }
+
+  function chipsNiveis(dist) {
+    if (!dist) return "";
+    return dist.map(function (d) {
+      return '<span class="ana-nivel" title="' + esc(GabaProficiencia.faixa(d)) + '">' + esc(d.nivel) +
+        " <b>" + esc(String(d.quantidade)) + "</b></span>";
+    }).join("");
+  }
+
+  /* as folhas do recorte atual no formato que o motor de análise espera */
+  function folhasDoPainel() {
+    if (!ab.dados || !ab.modelo) return [];
+    var prova = ab.modelo.prova;
+    return ab.dados.corrigidos.filter(function (a) {
+      return a.correcao && a.correcao.respostas.length > 0;
+    }).map(function (a) {
+      return { prova_id: prova.id, aluno_id: a.id, turma_id: a.turma_id, nota: a.correcao.nota,
+        total_questoes: a.correcao.respostas.length,
+        respostas: a.correcao.respostas.map(function (l) { return String(l || "").toUpperCase().charAt(0); }) };
+    });
+  }
+
+  /* a tabela só aparece quando a prova tem duas partes ou mais: com uma só, a análise
+     por parte repetiria a nota da prova inteira */
+  function desenharResumoPartes() {
+    var box = $("ab-resumo-partes");
+    if (!box) return;
+    if (!ab.dados || !ab.modelo || !window.GabaAnalise) { box.innerHTML = ""; return; }
+    var prova = ab.modelo.prova;
+    var folhas = folhasDoPainel();
+    var partes = GabaAnalise.resumo(prova, folhas).porParte || [];
+    if (partes.length < 2) { box.innerHTML = ""; return; }
+    box.innerHTML = '<article class="ab-card ab-partes"><h3>Nota por parte</h3>' +
+      "<p>Cada disciplina ou bloco da prova tem nota própria, de 0 a 10; a discriminação é medida dentro da parte.</p>" +
+      '<div class="ab-tabela" role="region" aria-label="Nota por parte; role horizontalmente se necessário" tabindex="0">' +
+      '<table class="data-table"><thead><tr><th>Parte</th><th>Questões</th><th>Média</th><th>Nível da média</th>' +
+      "<th>Discriminação</th><th>Folhas por nível</th><th>A revisar</th></tr></thead><tbody>" +
+      partes.map(function (p) {
+        var dist = window.GabaProficiencia ? GabaProficiencia.distribuicao(
+          folhas.map(function (r) { return GabaAnalise.notaNaParte(prova, r, p.parte); })) : null;
+        return "<tr><td><strong>" + esc(p.parte) + "</strong></td>" +
+          "<td>" + esc(String(p.itens)) + "</td>" +
+          "<td>" + esc(decimal(p.media.toFixed(2))) + "</td>" +
+          "<td>" + seloNivel(p.media) + "</td>" +
+          "<td>" + esc(p.mediaDiscriminacao === null ? "–" : decimal(p.mediaDiscriminacao.toFixed(2))) + "</td>" +
+          '<td class="ana-niveis">' + (chipsNiveis(dist) || "–") + "</td>" +
+          "<td>" + esc(p.revisar.length ? p.revisar.slice(0, 10).join(", ") +
+            (p.revisar.length > 10 ? "…" : "") : "nenhuma") + "</td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      '<p class="ajuda">A média desta tabela é a nota de cada folha dentro da parte; o nível segue os cortes definidos acima.</p>' +
+      "</article>";
+  }
+
+  function desenharCortes() {
+    var box = $("ana-cortes-lista");
+    if (!box || !window.GabaProficiencia) return;
+    box.innerHTML = GabaProficiencia.cortes().map(function (c, i) {
+      return '<div class="cortes-linha">' +
+        '<input type="text" data-campo="nivel" data-i="' + i + '" value="' + esc(c.nivel) + '">' +
+        '<input type="number" step="0.1" min="0" max="10" data-campo="min" data-i="' + i + '" value="' +
+        esc(String(c.min)) + '" title="a partir desta nota">' +
+        "</div>";
+    }).join("");
+  }
+
+  function salvarCortes() {
+    var avisoEl = $("ana-cortes-aviso");
+    var inputs = [].slice.call(document.querySelectorAll("#ana-cortes-lista [data-campo]"));
+    var pares = {};
+    inputs.forEach(function (el) {
+      var i = el.dataset.i;
+      pares[i] = pares[i] || { nivel: "", min: 0 };
+      if (el.dataset.campo === "nivel") pares[i].nivel = el.value;
+      else pares[i].min = String(el.value).replace(",", ".");
+    });
+    var lista = Object.keys(pares).map(Number).sort(function (a, b) { return a - b; })
+      .map(function (i) { return pares[i]; });
+    try {
+      GabaProficiencia.salvar(lista);
+    } catch (e) {
+      if (avisoEl) avisoEl.textContent = "Não foi possível guardar: " + e.message;
+      return;
+    }
+    desenharCortes();
+    if (avisoEl) avisoEl.textContent = "Cortes salvos neste aparelho.";
+    desenharPainelAnalise();
+    desenharNotas();
+  }
+
+  function voltarCortesPadrao() {
+    if (!window.GabaProficiencia) return;
+    GabaProficiencia.limpar();
+    desenharCortes();
+    var avisoEl = $("ana-cortes-aviso");
+    if (avisoEl) avisoEl.textContent = "Cortes padrão restaurados.";
+    desenharPainelAnalise();
+    desenharNotas();
+  }
+
   function desenharBasicaResumo() {
     var box = $("ab-resumo-cards"), dist = $("ab-resumo-distrib");
     if (!box) return;
@@ -1904,10 +2017,12 @@
     atualizarModeloAnalise();
     if (!ab.dados) {
       box.innerHTML = vazioAb("Escolha uma prova para começar", "Os resultados aparecem aqui depois que uma prova é selecionada.");
+      desenharResumoPartes();
       return;
     }
     var d = ab.dados;
-    var cards = kpiAb("Média da prova", fmtAb(d.media, 1), "de 10", d.notas.length + " notas registradas; só corrigidos") +
+    var cards = kpiAb("Média da prova", fmtAb(d.media, 1), "de 10", d.notas.length + " notas registradas; só corrigidos" +
+      (nivelDe(d.media) ? " · " + nivelDe(d.media) : "")) +
       kpiAb("Folhas corrigidas", fmtAb(d.corrigidos.length), "de " + d.alunos.length, "Uma correção por aluno") +
       kpiAb("Sem leitura", fmtAb(d.semLeitura), "", "Sem nota; não entra na média") +
       kpiAb("Leituras para revisar", fmtAb(d.revisao), "", "Marcações sinalizadas pelo leitor");
@@ -1937,6 +2052,7 @@
     var menorHab = habilidades.filter(function (h) { return h.taxa !== null; })[0];
     var relatoHab = menorHab ? "Neste recorte, “" + menorHab.descricao + "” tem " + pctAb(menorHab.taxa) + " de acerto. " + (menorHab.questoes.length === 1 ? "É apenas 1 questão" : "São apenas " + menorHab.questoes.length + " questões") + ": uma pista para retomar os textos e ouvir justificativas, não uma medida definitiva." : "Sem respostas suficientes para interpretar habilidades.";
     box.innerHTML = '<div class="ab-kpis">' + cards + '</div><div class="ab-resumo-grade"><article class="ab-card"><h3>Como as notas se distribuem</h3><p>Número de alunos por faixa de nota.</p>' + graficoDistribuicao() + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoNotas) + '</p></article><article class="ab-card"><h3>Comparação entre turmas</h3><p>Média de nota, de 0 a 10 · somente corrigidos.</p><div class="ab-comparacao">' + comparacao + '</div><p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoTurmas) + '</p></article><article class="ab-card"><h3>Acerto por questão</h3><p>Toque numa barra para abrir o item.</p>' + graficoItens + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoItens) + '</p></article><article class="ab-card"><h3>Onde vale retomar</h3><p>Acerto por habilidade · menores taxas primeiro.</p>' + graficoHab + '<p class="ab-relato"><strong>Leitura rápida.</strong> ' + esc(relatoHab) + "</p></article></div>";
+    desenharResumoPartes();
   }
 
   function alunosFiltrados() {
@@ -1959,7 +2075,7 @@
     if (statusEl) statusEl.textContent = lista.length + " de " + ab.dados.alunos.length + " alunos neste filtro · toque para abrir a ficha.";
     box.innerHTML = lista.length ? lista.map(function (a) {
       var c = a.correcao, iniciais = a.nome.split(/\s+/).filter(Boolean).slice(0, 2).map(function (p) { return p.charAt(0); }).join("");
-      return '<button type="button" class="ab-aluno-linha" data-ab-aluno="' + esc(a.id) + '" aria-label="Abrir ficha de ' + esc(a.nome) + '"><span class="ab-avatar" aria-hidden="true">' + esc(iniciais) + '</span><span class="ab-aluno-nome"><strong>' + esc(a.nome) + "</strong><small>" + esc(nomeTurmaAnalise(a.turma_id)) + (a.numero !== "" ? " · Nº " + esc(a.numero) : "") + "<br>Matrícula " + esc(a.matricula || "não informada") + '</small></span><span class="ab-aluno-nota"><strong>' + (c && c.nota !== null ? fmtAb(c.nota, 1) : "—") + "</strong><small>" + (c ? c.acertos + "/" + c.total + " acertos" : "Sem nota") + '</small></span><span class="ab-aluno-situacao">' + (c ? "Corrigido" + (c.confusao.length ? " · revisar leitura" : "") : "Sem leitura") + "</span></button>";
+      return '<button type="button" class="ab-aluno-linha" data-ab-aluno="' + esc(a.id) + '" aria-label="Abrir ficha de ' + esc(a.nome) + '"><span class="ab-avatar" aria-hidden="true">' + esc(iniciais) + '</span><span class="ab-aluno-nome"><strong>' + esc(a.nome) + "</strong><small>" + esc(nomeTurmaAnalise(a.turma_id)) + (a.numero !== "" ? " · Nº " + esc(a.numero) : "") + "<br>Matrícula " + esc(a.matricula || "não informada") + '</small></span><span class="ab-aluno-nota"><strong>' + (c && c.nota !== null ? fmtAb(c.nota, 1) : "—") + "</strong><small>" + (c ? c.acertos + "/" + c.total + " acertos" : "Sem nota") + '</small>' + (c && c.nota !== null ? seloNivel(c.nota) : "") + '</span><span class="ab-aluno-situacao">' + (c ? "Corrigido" + (c.confusao.length ? " · revisar leitura" : "") : "Sem leitura") + "</span></button>";
     }).join("") : vazioAb("Nenhum aluno neste filtro", "Tente outro nome, matrícula ou situação de leitura.");
   }
 
@@ -2004,6 +2120,7 @@
       var disc = it.discriminacao === null ? "Não disponível para este recorte." : "Índice: " + fmtAb(it.discriminacao, 3) + ".";
       var cabecalho = indicadorQuestao(q.numero, false) + '<span><strong>' + esc(tituloHabilidade(q)) + '</strong><small>' +
         esc(q.descritor || "Sem descritor") + (q.bncc ? " · BNCC " + esc(q.bncc) : "") +
+        (q.parte ? ' · <span class="ana-parte">' + esc(q.parte) + "</span>" : "") +
         '</small></span><span class="ab-item-taxa"><strong>' + pctAb(it.taxa) + '</strong><small>' +
         it.acertos + "/" + it.participantes + " acertos</small></span>";
       var textoQuestao = '<div class="ab-enunciado">' + esc(q.enunciado || "Enunciado não informado.") +
@@ -2028,7 +2145,7 @@
     if (!ab.dados) { box.innerHTML = ""; if (statusEl) statusEl.textContent = "Escolha a prova para ver o desempenho por descritor."; return; }
     if (statusEl) statusEl.textContent = ab.dados.descritores.length + " descritores neste recorte. Abra um para ver a composição.";
     box.innerHTML = ab.dados.descritores.length ? ab.dados.descritores.map(function (d, i) {
-      return '<details class="ab-item ab-descritor" data-ab-codigo="' + esc(d.codigo) + '"' + (ab.descritor === d.codigo ? " open" : "") + '><summary><span><strong>' + esc(d.descricao) + "</strong><small>" + esc(d.codigo === "__sem_descritor__" ? "Código não informado" : d.codigo) + " · " + plural(d.questoes.length, "questão", "questões") + " · " + d.acertos + "/" + d.total + ' acertos</small></span><span class="ab-item-taxa"><strong>' + pctAb(d.taxa) + '</strong><small>nesta prova</small></span></summary><div class="ab-item-corpo"><p class="text-muted">A taxa reúne respostas aos itens desta habilidade; não representa quantos alunos a dominam.</p>' + barraAb(d.taxa, "Taxa de acerto") + d.questoes.map(function (it) { var q = it.questao || it; return '<div class="ab-descritor-questao"><div><strong>Questão ' + esc(q.numero) + " · " + pctAb(it.taxa) + "</strong><p>" + esc(q.comando || String(q.enunciado || "").slice(0, 180) || "Texto disponível na aba Questões") + '</p></div><button type="button" class="btn-ghost" data-ab-questao="' + esc(q.numero) + '">Abrir questão</button></div>'; }).join("") + "</div></details>";
+      return '<details class="ab-item ab-descritor" data-ab-codigo="' + esc(d.codigo) + '"' + (ab.descritor === d.codigo ? " open" : "") + '><summary><span><strong>' + esc(d.descricao) + "</strong><small>" + esc(d.codigo === "__sem_descritor__" ? "Código não informado" : d.codigo) + " · " + plural(d.questoes.length, "questão", "questões") + " · " + d.acertos + "/" + d.total + ' acertos</small></span><span class="ab-item-taxa"><strong>' + pctAb(d.taxa) + '</strong><small>nesta prova</small></span></summary><div class="ab-item-corpo"><p class="text-muted">A taxa reúne respostas aos itens desta habilidade; não representa quantos alunos a dominam.</p>' + barraAb(d.taxa, "Taxa de acerto") + d.questoes.map(function (it) { var q = it.questao || it; return '<div class="ab-descritor-questao"><div><strong>Questão ' + esc(q.numero) + " · " + pctAb(it.taxa) + (q.parte ? " · " + esc(q.parte) : "") + "</strong><p>" + esc(q.comando || String(q.enunciado || "").slice(0, 180) || "Texto disponível na aba Questões") + '</p></div><button type="button" class="btn-ghost" data-ab-questao="' + esc(q.numero) + '">Abrir questão</button></div>'; }).join("") + "</div></details>";
     }).join("") : vazioAb("Nenhum descritor vinculado", "Vincule descritores às questões na revisão da prova.");
     ab.descritor = null;
   }
@@ -2079,8 +2196,8 @@
       linhas.push(["Aluno", "Matrícula", "Turma", "Situação", "Nota", "Acertos", "Brancos / inválidas", "Revisar no caderno"]);
       alunosFiltrados().forEach(function (a) { var c = a.correcao; linhas.push([a.nome, a.matricula, nomeTurmaAnalise(a.turma_id), c ? "Corrigido" : "Sem leitura", c && c.nota !== null ? fmtAb(c.nota, 2) : "", c ? c.acertos : "", c ? c.branco : "", c ? c.confusao.join(", ") : ""]); });
     } else if (ab.painel === "ab-questao") {
-      linhas.push(["Questão", "Habilidade", "Descritor", "Gabarito", "Acertos", "Participantes", "Acerto (%)", "Brancos", "Inválidas", "Discriminação"]);
-      itensPainelOrdenados().forEach(function (it) { var q = questaoDoItem(it); linhas.push([q.numero, tituloHabilidade(q), q.descritor, q.gabarito, it.acertos, it.participantes, it.taxa === null ? "" : fmtAb(it.taxa, 2), it.branco, it.outras, it.discriminacao === null ? "" : fmtAb(it.discriminacao, 3)]); });
+      linhas.push(["Questão", "Parte", "Habilidade", "Descritor", "Gabarito", "Acertos", "Participantes", "Acerto (%)", "Brancos", "Inválidas", "Discriminação"]);
+      itensPainelOrdenados().forEach(function (it) { var q = questaoDoItem(it); linhas.push([q.numero, q.parte || "", tituloHabilidade(q), q.descritor, q.gabarito, it.acertos, it.participantes, it.taxa === null ? "" : fmtAb(it.taxa, 2), it.branco, it.outras, it.discriminacao === null ? "" : fmtAb(it.discriminacao, 3)]); });
     } else {
       linhas.push(["Habilidade", "Descritor", "Questões base", "Acertos", "Respostas em itens com gabarito", "Acerto (%)"]);
       d.descritores.forEach(function (x) { linhas.push([x.descricao, x.codigo === "__sem_descritor__" ? "" : x.codigo, x.questoes.map(function (it) { return (it.questao || it).numero; }).join(", "), x.acertos, x.total, x.taxa === null ? "" : fmtAb(x.taxa, 2)]); });
@@ -2354,6 +2471,11 @@
     if (csv) csv.addEventListener("click", baixarCsvAnalise);
     var csvPainel = $("ab-csv");
     if (csvPainel) csvPainel.addEventListener("click", baixarCsvPainel);
+    var cortesSalvar = $("ana-cortes-salvar");
+    if (cortesSalvar) cortesSalvar.addEventListener("click", salvarCortes);
+    var cortesPadrao = $("ana-cortes-padrao");
+    if (cortesPadrao) cortesPadrao.addEventListener("click", voltarCortesPadrao);
+    desenharCortes();
     var buscaAluno = $("ab-aluno-busca"), filtroAluno = $("ab-aluno-filtro");
     if (buscaAluno) buscaAluno.addEventListener("input", desenharBasicaAluno);
     if (filtroAluno) filtroAluno.addEventListener("change", desenharBasicaAluno);

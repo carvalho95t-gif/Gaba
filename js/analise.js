@@ -10,6 +10,7 @@
 
   var LETTERS = ["A", "B", "C", "D", "E"];
   var MIN_PARA_DISCRIMINAR = 6;
+  var SEM_PARTE = "Geral";
 
   function numeroDe(v) {
     var n = Number(v);
@@ -18,6 +19,41 @@
 
   function arredonda(v) {
     return Math.round(v * 1000) / 1000;
+  }
+
+  function parteDaQuestao(q) {
+    return String((q && q.parte) || "").trim() || SEM_PARTE;
+  }
+
+  /* as partes distintas na ordem em que aparecem no banco */
+  function partesDaProva(prova) {
+    var out = [];
+    ((prova && prova.questoes) || []).forEach(function (q) {
+      var p = parteDaQuestao(q);
+      if (out.indexOf(p) < 0) out.push(p);
+    });
+    return out;
+  }
+
+  function pesoDa(q) {
+    return numeroDe(q && q.peso) > 0 ? numeroDe(q.peso) : 1;
+  }
+
+  /* nota que a folha tirou só dentro de uma parte, na mesma escala 0-10 da nota da
+     correção: é esta nota, e não a geral, que decide quem entra no grupo de cima e no
+     de baixo daquela disciplina. */
+  function notaNaParte(prova, folha, parte) {
+    var questoes = (prova && prova.questoes) || [];
+    var respostas = (folha && folha.respostas) || [];
+    var ponderado = 0, maximo = 0;
+    for (var i = 0; i < questoes.length; i++) {
+      if (parteDaQuestao(questoes[i]) !== parte) continue;
+      var peso = pesoDa(questoes[i]);
+      var certa = String(questoes[i].gabarito || "").toUpperCase().charAt(0);
+      maximo += peso;
+      if (certa && String(respostas[i] || "").toUpperCase().charAt(0) === certa) ponderado += peso;
+    }
+    return maximo ? Math.round((ponderado / maximo) * 1000) / 100 : 0;
   }
 
   /* as folhas do banco já chegam na ordem da base; as que só estão no aparelho
@@ -50,9 +86,10 @@
     return achada ? String(achada.texto || "") : "";
   }
 
-  function gruposPorNota(folhas) {
+  function gruposPorNota(folhas, chaveDaNota) {
+    var chave = typeof chaveDaNota === "function" ? chaveDaNota : function (r) { return numeroDe(r.nota); };
     var ordenadas = folhas.slice().sort(function (a, b) {
-      return numeroDe(b.nota) - numeroDe(a.nota);
+      return chave(b) - chave(a);
     });
     var n = Math.max(1, Math.floor(ordenadas.length * 0.25));
     return { altos: ordenadas.slice(0, n), baixos: ordenadas.slice(ordenadas.length - n) };
@@ -113,6 +150,7 @@
       numero: i + 1,
       gabarito: gabarito,
       peso: numeroDe(q.peso) > 0 ? numeroDe(q.peso) : 1,
+      parte: parteDaQuestao(q),
       descritor: q.descritor || "",
       habilidade_bncc: q.habilidade_bncc || "",
       participantes: participantes,
@@ -138,20 +176,61 @@
     "poucos-alunos": "poucos alunos para medir a discriminação"
   };
 
-  function itens(prova, correcoes) {
-    var total = ((prova && prova.questoes) || []).length;
-    var folhas = folhasDaProva(prova, correcoes);
-    var grupos = folhas.length >= MIN_PARA_DISCRIMINAR ? gruposPorNota(folhas) : { altos: [], baixos: [] };
-    var out = [];
-    for (var i = 0; i < total; i++) out.push(itemDaQuestao(prova, i, folhas, grupos));
+  /* grupos de referência por parte. Com mais de uma disciplina na mesma prova, o
+     topo e a base são medidos pela nota daquela parte: senão o aluno bom só em
+     Matemática conta como "fraco" nas questões de Português e a discriminação sai errada. */
+  function gruposPorParte(prova, folhas, partes) {
+    var out = {};
+    if (folhas.length < MIN_PARA_DISCRIMINAR) return out;
+    var usaGlobal = partes.length < 2;
+    partes.forEach(function (parte) {
+      out[parte] = usaGlobal
+        ? gruposPorNota(folhas, null)
+        : gruposPorNota(folhas, function (r) { return notaNaParte(prova, r, parte); });
+    });
     return out;
+  }
+
+  var SEM_GRUPO = { altos: [], baixos: [] };
+
+  function itens(prova, correcoes) {
+    var questoes = (prova && prova.questoes) || [];
+    var total = questoes.length;
+    var folhas = folhasDaProva(prova, correcoes);
+    var grupos = gruposPorParte(prova, folhas, partesDaProva(prova));
+    var out = [];
+    for (var i = 0; i < total; i++) {
+      out.push(itemDaQuestao(prova, i, folhas, grupos[parteDaQuestao(questoes[i])] || SEM_GRUPO));
+    }
+    return out;
+  }
+
+  function soma(a, b) { return a + b; }
+
+  function agregadoPorParte(prova, folhas, partes, lista) {
+    return partes.map(function (parte) {
+      var daParte = lista.filter(function (it) { return it.parte === parte; });
+      var disc = daParte.filter(function (it) { return it.discriminacao !== null; });
+      var notas = folhas.map(function (r) { return notaNaParte(prova, r, parte); });
+      return {
+        parte: parte,
+        itens: daParte.length,
+        numeros: daParte.map(function (it) { return it.numero; }),
+        media: notas.length ? arredonda(notas.reduce(soma, 0) / notas.length) : 0,
+        mediaDiscriminacao: disc.length
+          ? arredonda(disc.reduce(function (s, it) { return s + it.discriminacao; }, 0) / disc.length)
+          : null,
+        revisar: daParte.filter(function (it) { return it.bandeiras.length > 0; })
+          .map(function (it) { return it.numero; })
+      };
+    });
   }
 
   function resumo(prova, correcoes) {
     var lista = itens(prova, correcoes);
     var folhas = folhasDaProva(prova, correcoes);
     var notas = folhas.map(function (r) { return numeroDe(r.nota); });
-    var media = notas.length ? arredonda(notas.reduce(function (a, b) { return a + b; }, 0) / notas.length) : 0;
+    var media = notas.length ? arredonda(notas.reduce(soma, 0) / notas.length) : 0;
     function comBandeira(nome) {
       return lista.filter(function (it) { return it.bandeiras.indexOf(nome) >= 0; }).map(function (it) { return it.numero; });
     }
@@ -160,6 +239,7 @@
       alunos: folhas.length,
       media: media,
       itens: lista.length,
+      porParte: agregadoPorParte(prova, folhas, partesDaProva(prova), lista),
       revisar: lista.filter(function (it) { return it.bandeiras.length > 0; }).map(function (it) { return it.numero; }),
       semGabarito: comBandeira("sem-gabarito"),
       faceis: comBandeira("muito-facil"),
@@ -178,7 +258,11 @@
 
   return {
     LETTERS: LETTERS,
+    SEM_PARTE: SEM_PARTE,
     folhasDaProva: folhasDaProva,
+    parteDaQuestao: parteDaQuestao,
+    partesDaProva: partesDaProva,
+    notaNaParte: notaNaParte,
     itens: itens,
     resumo: resumo,
     rotuloBandeira: rotuloBandeira

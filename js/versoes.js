@@ -140,6 +140,7 @@
         enunciado: origem.enunciado || "",
         comando: origem.comando || "",
         peso: typeof origem.peso === "number" ? origem.peso : 1,
+        parte: origem.parte || "",
         descritor: origem.descritor || "",
         habilidade_bncc: origem.habilidade_bncc || "",
         alternativas: map.map(function (idx, k) {
@@ -175,19 +176,30 @@
     return out;
   }
 
+  /* a nota geral continua ponderada pelo total de questoes da prova; porParte da o recorte
+     de cada disciplina com a mesma regra, para a nota relativa sair comparavel */
   function corrigir(prova, v, respostas) {
     var base = (prova && prova.questoes) || [];
     var porQuestao = [];
     var acertos = 0, ponderado = 0, maximo = 0, branco = 0;
+    var partes = {}, ordemPartes = [];
     for (var q = 0; q < v.total; q++) {
       var banco = v.ordem[q];
       var peso = typeof base[banco].peso === "number" && base[banco].peso > 0 ? base[banco].peso : 1;
       var resposta = String((respostas || [])[q] || "").toUpperCase();
       var certa = v.gabarito[q] || "";
       var ok = Boolean(certa) && resposta === certa;
+      var rotulo = String(base[banco].parte || "").trim() || "Geral";
+      var balde = partes[rotulo];
+      if (!balde) {
+        balde = partes[rotulo] = { parte: rotulo, questoes: 0, acertos: 0, branco: 0, ponderado: 0, maximo: 0 };
+        ordemPartes.push(rotulo);
+      }
       maximo += peso;
-      if (ok) { acertos += 1; ponderado += peso; }
-      if (!resposta) branco += 1;
+      balde.questoes += 1;
+      balde.maximo += peso;
+      if (ok) { acertos += 1; ponderado += peso; balde.acertos += 1; balde.ponderado += peso; }
+      if (!resposta) { branco += 1; balde.branco += 1; }
       porQuestao.push({
         numero: q + 1,
         numero_original: banco + 1,
@@ -195,10 +207,20 @@
         gabarito: certa,
         correto: ok,
         peso: peso,
+        parte: rotulo,
         descritor: base[banco].descritor || "",
         habilidade_bncc: base[banco].habilidade_bncc || ""
       });
     }
+    var porParte = ordemPartes.map(function (nome) {
+      var p = partes[nome];
+      return {
+        parte: p.parte, questoes: p.questoes, acertos: p.acertos, branco: p.branco,
+        ponderado: p.ponderado, maximo: p.maximo,
+        proporcao: p.maximo ? Math.round((p.ponderado / p.maximo) * 1000) / 1000 : 0,
+        nota: p.maximo ? Math.round((p.ponderado / p.maximo) * 1000) / 100 : 0
+      };
+    });
     return {
       acertos: acertos,
       branco: branco,
@@ -206,6 +228,7 @@
       ponderado: ponderado,
       maximo: maximo,
       nota: maximo ? Math.round((ponderado / maximo) * 1000) / 100 : 0,
+      porParte: porParte,
       respostas_banco: paraBanco(v, respostas),
       porQuestao: porQuestao
     };

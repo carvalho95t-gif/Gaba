@@ -184,7 +184,8 @@
       return { indice: i, numero: Number.isInteger(numero) && numero > 0 ? numero : i + 1,
         enunciado: textoPainel(q.enunciado), comando: textoPainel(q.comando), alternativas: alternativas,
         gabarito: gab, peso: peso !== null && peso > 0 ? peso : null,
-        descritor: textoPainel(q.descritor).trim(), bncc: textoPainel(q.habilidade_bncc || q.bncc) };
+        descritor: textoPainel(q.descritor).trim(), bncc: textoPainel(q.habilidade_bncc || q.bncc),
+        parte: textoPainel(q.parte).trim() };
     });
     var porTurma = new Map(), porAluno = new Map(), roster = new Set(), aliases = new Map();
     function incluirTurma(id, nome) {

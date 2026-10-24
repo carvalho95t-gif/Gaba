@@ -971,8 +971,8 @@ async function dirigirAnalise(marcos) {
   function linhaDaTabela(tr) {
     var c = [].slice.call(tr.cells).map(function (td) { return td.textContent.replace(/\s+/g, " ").trim(); });
     return {
-      q: tr.dataset.q, gab: c[1], acertos: c[3], pc: c[4], branco: c[5], disc: c[6],
-      ped: c[8], flags: [].slice.call(tr.querySelectorAll(".ana-chip")).map(function (x) { return x.textContent; }),
+      q: tr.dataset.q, gab: c[1], peso: c[2], parte: c[3], acertos: c[4], pc: c[5], branco: c[6], disc: c[7],
+      ped: c[9], flags: [].slice.call(tr.querySelectorAll(".ana-chip")).map(function (x) { return x.textContent; }),
       distr: [].slice.call(tr.querySelectorAll(".ana-distr")).map(function (d) {
         return { letra: d.textContent.trim().charAt(0),
           qtd: Number((d.querySelector("b") || {}).textContent || 0), forte: d.classList.contains("forte"),
@@ -1016,7 +1016,7 @@ async function dirigirAnalise(marcos) {
   ordenar.dispatchEvent(new Event("change", { bubbles: true }));
   r.primeiraPorAcerto = (document.querySelector("#ana-itens tbody tr") || {}).dataset
     ? document.querySelector("#ana-itens tbody tr").dataset.q : "";
-  r.primeiraCelula = ((document.querySelector("#ana-itens tbody tr td:nth-child(4)") || {}).textContent || "").trim();
+  r.primeiraCelula = ((document.querySelector("#ana-itens tbody tr td:nth-child(5)") || {}).textContent || "").trim();
   ordenar.value = "numero";
   ordenar.dispatchEvent(new Event("change", { bubbles: true }));
 
@@ -2328,9 +2328,9 @@ var LISTA = {
     check("filtrar por turma refaz a conta só com as folhas daquela turma",
       /2 folhas /.test(an.statusSoTurma || "") && an.cartoesSoTurma[0] === "2",
       [an.statusSoTurma, an.cartoesSoTurma]);
-    check("o CSV traz uma linha por questão com as 17 colunas",
-      an.csvLinhas === an.total + 1 && an.csvColunas === 17 &&
-      /Distrator mais forte/.test(an.csvCabecalho) && /\d,\d/.test(an.csv),
+    check("o CSV traz uma linha por questão com as 18 colunas",
+      an.csvLinhas === an.total + 1 && an.csvColunas === 18 &&
+      /Parte;/.test(an.csvCabecalho) && /Distrator mais forte/.test(an.csvCabecalho) && /\d,\d/.test(an.csv),
       [an.csvLinhas, an.csvColunas, an.csvCabecalho, an.csv.split(/\r\n/)[1]]);
     check("o botão de baixar responde em português", /CSV da análise gerado/.test(an.statusCsv || ""), an.statusCsv);
 
@@ -2389,7 +2389,7 @@ var LISTA = {
     check("o CSV opcional sai com BOM e segue a parte aberta da análise",
       pa.csvs.length === 4 && pa.csvs.every(function (x) { return x.bom && /^text\/csv/.test(x.tipo); }) &&
       csvDe("resumo").linhas === 10 && csvDe("questao").linhas === an.total + 5 &&
-      /^Questão;Habilidade/.test(csvDe("questao").cabecalho) && csvDe("descritor").linhas >= pa.habilidades.length + 5 &&
+      /^Questão;Parte;Habilidade/.test(csvDe("questao").cabecalho) && csvDe("descritor").linhas >= pa.habilidades.length + 5 &&
       csvDe("aluno").linhas === 8 + 5, pa.csvs);
     check("o teste devolve o download do navegador como estava", pa.cliqueRestaurado === true, pa.cliqueRestaurado);
     check("o gabarito manual usa o selo 01, 02… ligado ao seletor",
