@@ -370,13 +370,14 @@
       if (!grupos.has(codigo)) grupos.set(codigo, { codigo: codigo,
         descricao: Object.prototype.hasOwnProperty.call(modelo.descricoes, codigo) ? modelo.descricoes[codigo] :
           q.descritor ? "Habilidade sem descrição no catálogo" : "Questões sem descritor informado",
-        questoes: [], acertos: 0, total: 0 });
+        questoes: [], acertos: 0, total: 0, partes: [] });
       var d = grupos.get(codigo);
       d.questoes.push(q);
+      if (q.parte && d.partes.indexOf(q.parte) < 0) d.partes.push(q.parte);
       if (q.gabarito) { d.acertos += q.acertos; d.total += q.participantes; }
     });
     var descritores = Array.from(grupos.values()).map(function (d) {
-      return Object.assign({}, d, { taxa: d.total ? d.acertos / d.total * 100 : null });
+      return Object.assign({}, d, { parte: d.partes.join(" / "), taxa: d.total ? d.acertos / d.total * 100 : null });
     }).sort(function (a, b) {
       return (a.taxa === null ? Infinity : a.taxa) - (b.taxa === null ? Infinity : b.taxa) || a.codigo.localeCompare(b.codigo);
     });

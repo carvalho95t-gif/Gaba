@@ -120,6 +120,24 @@ async function dirigir() {
   window.switchAnalise("ab-descritor");
   out.tabelaDescritores = [].slice.call(document.querySelectorAll("#ab-desc-conteudo .ab-descritor summary"))
     .slice(0, 6).map(texto);
+  /* o mesmo painel em CSV: a coluna Parte tem de sair preenchida */
+  var bolar = [], criarUrl = URL.createObjectURL, clicarA = HTMLAnchorElement.prototype.click;
+  var eraProprio = Object.prototype.hasOwnProperty.call(HTMLAnchorElement.prototype, "click");
+  URL.createObjectURL = function (blob) { bolar.push(blob); return criarUrl.call(URL, blob); };
+  HTMLAnchorElement.prototype.click = function () {};
+  try {
+    document.getElementById("ab-csv").click();
+  } finally {
+    URL.createObjectURL = criarUrl;
+    if (eraProprio) HTMLAnchorElement.prototype.click = clicarA;
+    else delete HTMLAnchorElement.prototype.click;
+  }
+  out.csvDescritor = [];
+  for (var bc = 0; bc < bolar.length; bc++) {
+    var br = new Uint8Array(await bolar[bc].arrayBuffer());
+    out.csvDescritor = new TextDecoder("utf-8").decode(br)
+      .replace(/^/, "").replace(/\r\n$/, "").split("\r\n").slice(4, 6);
+  }
   window.switchAnalise("ab-questao");
   out.itens = [].slice.call(document.querySelectorAll("#ab-questao-conteudo .ab-item summary"))
     .slice(0, 4).map(texto);
@@ -206,6 +224,8 @@ async function dirigirDocx(b64) {
     r.tabelaDescritores.forEach(function (l) { console.log("  " + l); });
     console.log("\nITENS (4 primeiras linhas)");
     r.itens.forEach(function (l) { console.log("  " + l); });
+    console.log("\nCSV POR DESCRITOR (cabecalho + 1a linha)");
+    (r.csvDescritor || []).forEach(function (l) { console.log("  " + l); });
     console.log("parte marcada nos 4 primeiros itens: " + (r.partesNasQuestoes || []).join(", "));
     var contagem = {};
     r.niveisNasNotas.forEach(function (n) { contagem[n] = (contagem[n] || 0) + 1; });
@@ -224,8 +244,15 @@ async function dirigirDocx(b64) {
       }
       if (r.corteAposInvalido !== 4.5) furos.push("o corte foi zerado por um valor invalido: " + r.corteAposInvalido);
     }
+    var csvLinhas = r.csvDescritor || [];
+    if (!/^Habilidade;Parte;Descritor;/.test(csvLinhas[0] || "")) {
+      furos.push("o CSV por descritor nao tem a coluna Parte: \"" + (csvLinhas[0] || "") + "\"");
+    } else if ((csvLinhas[1] || "").split(";")[1] !== "Platão" &&
+               (csvLinhas[1] || "").split(";")[1] !== "Aristóteles") {
+      furos.push("a linha do CSV por descritor veio sem parte: \"" + (csvLinhas[1] || "") + "\"");
+    }
     if (furos.length) {
-      console.error("FALHA nos cortes: " + furos.join(" | "));
+      console.error("FALHA na demonstração: " + furos.join(" | "));
       process.exitCode = 1;
     }
 

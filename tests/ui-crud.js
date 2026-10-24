@@ -2390,6 +2390,7 @@ var LISTA = {
       pa.csvs.length === 4 && pa.csvs.every(function (x) { return x.bom && /^text\/csv/.test(x.tipo); }) &&
       csvDe("resumo").linhas === 10 && csvDe("questao").linhas === an.total + 5 &&
       /^Questão;Parte;Habilidade/.test(csvDe("questao").cabecalho) && csvDe("descritor").linhas >= pa.habilidades.length + 5 &&
+      /^Habilidade;Parte;Descritor/.test(csvDe("descritor").cabecalho) &&
       csvDe("aluno").linhas === 8 + 5, pa.csvs);
     check("o teste devolve o download do navegador como estava", pa.cliqueRestaurado === true, pa.cliqueRestaurado);
     check("o gabarito manual usa o selo 01, 02… ligado ao seletor",

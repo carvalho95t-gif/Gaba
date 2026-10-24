@@ -71,6 +71,21 @@ var doisSemGab = B.analisarPainel(B.montarPainel({ id: "sg", questoes: [
 ] }, [{ prova_id: "sg", aluno_id: "a", respostas: ["A", "B"], nota: null }], [], [], [], []), "").descritores[0];
 check("habilidade com dois itens sem gabarito continua sem taxa", doisSemGab.questoes.length === 2 && doisSemGab.total === 0 && doisSemGab.taxa === null, doisSemGab);
 
+var grupoPartes = B.analisarPainel(B.montarPainel({ id: "pt", titulo: "Duas partes", gabarito: ["A", "B", "C"], questoes: [
+  { numero: 1, descritor: "H1", parte: "Platão", alternativas: [{ letra: "A", texto: "A" }, { letra: "B", texto: "B" }] },
+  { numero: 2, descritor: "H1", parte: "Aristóteles", alternativas: [{ letra: "A", texto: "A" }, { letra: "B", texto: "B" }] },
+  { numero: 3, descritor: "H2", parte: "Aristóteles", alternativas: [{ letra: "C", texto: "C" }, { letra: "B", texto: "B" }] }
+] }, [{ prova_id: "pt", aluno_id: "a", respostas: ["A", "B", "C"], nota: 10 }], [], [], [], []), "").descritores;
+var h1 = grupoPartes.filter(function (d) { return d.codigo === "H1"; })[0];
+var h2 = grupoPartes.filter(function (d) { return d.codigo === "H2"; })[0];
+check("habilidade que cruza duas partes mostra as duas, na ordem das questões",
+  h1.parte === "Platão / Aristóteles", h1.parte);
+check("habilidade dentro de uma parte mostra só aquela parte", h2.parte === "Aristóteles", h2.parte);
+var semPartePainel = B.analisarPainel(B.montarPainel({ id: "sp", questoes: [
+  { numero: 1, descritor: "H", alternativas: [{ letra: "A", texto: "A" }] }
+] }, [{ prova_id: "sp", aluno_id: "a", respostas: ["A"], nota: 10 }], [], [], [], []), "").descritores[0];
+check("habilidade sem parte informada não inventa etiqueta", semPartePainel.parte === "", semPartePainel.parte);
+
 var especiais = { id: "esp", gabarito: ["A", "B"], questoes: [
   { descritor: "__proto__" }, { descritor: "constructor" }
 ] };
