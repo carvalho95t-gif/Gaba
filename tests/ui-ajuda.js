@@ -12,6 +12,11 @@ var porta = Number(process.argv[2] || 8791);
 var BASE = "http://127.0.0.1:" + porta;
 var falhas = 0;
 
+/* A versão mora no sw.js. Comparar com o arquivo de verdade pega payload e app
+   desalinhados sem deixar aqui um número que precisa ser retocado a cada release. */
+var CACHE_SW = (fs.readFileSync(path.join(__dirname, "..", "sw.js"), "utf8")
+  .match(/const CACHE\s*=\s*"([^"]+)"/) || [])[1] || "";
+
 function check(nome, cond, extra) {
   console.log((cond ? "ok   " : "FALHA ") + nome +
     (extra !== undefined ? " — " + JSON.stringify(extra) : ""));
@@ -52,7 +57,7 @@ function check(nome, cond, extra) {
   check("a quinta aba Ajuda existe na navegação", montada.abas === 5 && montada.rotulo === "Ajuda", montada);
   check("o guia entrou inteiro no app, com as telas reais",
     montada.indice > 30 && montada.artigoTela === true, montada);
-  check("a versão do payload é a mesma do service worker", montada.versao === "gaba-omr-v17", montada.versao);
+  check("a versão do payload é a mesma do service worker", montada.versao === CACHE_SW && Boolean(CACHE_SW), montada.versao);
 
   var contexto = await c.naPagina(function () {
     switchTab("scanner");
@@ -71,7 +76,7 @@ function check(nome, cond, extra) {
   check("a aba Ajuda abre pelo switchTab como as outras",
     contexto.ativa === true && contexto.duvidas === true &&
     contexto.sugestoes === false && contexto.problemas === false, contexto);
-  check("o cabeçalho lembra a última tela usada", contexto.contexto === "Leitor" && contexto.versao === "gaba-omr-v17", contexto);
+  check("o cabeçalho lembra a última tela usada", contexto.contexto === "Leitor" && contexto.versao === CACHE_SW, contexto);
   check("o formulário de sugestão já vem na última tela usada", contexto.telaSugestao === "scanner", contexto);
 
   var busca = await c.naPagina(function () {
@@ -192,6 +197,7 @@ function check(nome, cond, extra) {
     function dispara(msg) {
       window.dispatchEvent(new ErrorEvent("error", {
         message: msg,
+        error: new Error(msg),
         filename: location.origin + "/js/uiScanner.js",
         lineno: 88
       }));
@@ -216,6 +222,10 @@ function check(nome, cond, extra) {
   check("a captura também limpa o nome de aluno",
     captura.erros[0].mensagem.indexOf("[aluno]") >= 0 &&
     JSON.stringify(captura.erros).indexOf("Maria Clara Souza") < 0, captura.erros[0].mensagem);
+  check("a pilha de execução vem junto na captura e também sai limpa",
+    /at /.test(captura.erros[0].pilha || "") &&
+    (captura.erros[0].pilha || "").indexOf("Maria Clara Souza") < 0 &&
+    (captura.erros[0].pilha || "").indexOf("[aluno]") >= 0, captura.erros[0].pilha);
   check("o erro fica como não relatado e não entra na fila",
     captura.erros[0].relatado === false && captura.erros[0].status === "" &&
     /não relatado/.test(captura.lista) && captura.pendentes === 2, captura.lista);
@@ -250,7 +260,8 @@ function check(nome, cond, extra) {
   check("“Relatar este problema” preenche a descrição e o payload sem o nome",
     relato.antes.aba === true && relato.antes.tecnico === true &&
     relato.antes.texto.indexOf("[aluno]") >= 0 && relato.antes.texto.indexOf("Maria") < 0 &&
-    relato.antes.payload.indexOf("[aluno]") >= 0 && relato.antes.payload.indexOf("Maria") < 0,
+    relato.antes.payload.indexOf("[aluno]") >= 0 && relato.antes.payload.indexOf("Maria") < 0 &&
+    /"assinatura": "fnv1-[0-9a-f]{8}"/.test(relato.antes.payload),
     relato.antes);
   check("o relato marca o erro como enviado para a fila, com a descrição",
     Boolean(relato.item) && relato.item.relatado === true && relato.item.status === "fila" &&
@@ -342,8 +353,13 @@ function check(nome, cond, extra) {
   check("o erro relatado sobe com o texto do professor e a mensagem técnica",
     Boolean(erroEnviado) && erroEnviado.linha.texto_usuario === "A câmera não abriu durante a chamada." &&
     erroEnviado.linha.mensagem_tecnica.indexOf("[aluno]") >= 0 &&
-    erroEnviado.linha.origem === "captura" && erroEnviado.linha.versao === "gaba-omr-v17",
+    erroEnviado.linha.origem === "captura" && erroEnviado.linha.versao === CACHE_SW &&
+    /^fnv1-[0-9a-f]{8}$/.test(erroEnviado.linha.assinatura || ""),
     erroEnviado && erroEnviado.linha);
+  check("a pilha capturada sobe dentro da mensagem técnica, já sem o nome",
+    Boolean(erroEnviado) && /at /.test(erroEnviado.linha.mensagem_tecnica) &&
+    erroEnviado.linha.mensagem_tecnica.indexOf("Maria Clara Souza") < 0,
+    erroEnviado && erroEnviado.linha.mensagem_tecnica.slice(0, 160));
 
   var idempotente = await c.naPagina(async function () {
     window.__erroFake = { code: "23505", message: "duplicate key value violates unique constraint" };
@@ -402,6 +418,97 @@ function check(nome, cond, extra) {
     falha.status === "fila" && /permission denied/.test(falha.erro) && falha.pendentes === 1, falha);
   check("quando o banco volta, a fila tenta de novo e esvazia",
     falha.depois.pendentes === 0 && falha.depois.status === "enviado" && falha.depois.erro === "", falha.depois);
+
+  /* o filtro ampliado e o funil de aviso() entram no fim da sequência: antes
+     disso eles mudariam qual captura o botão "Relatar" pega logo acima */
+  var filtro = await c.naPagina(function () {
+    var antes = document.querySelectorAll("#erros-lista .ajuda-item").length;
+    var pendentesAntes = GabaAjuda.pendentes();
+    GabaApp.estado.alunos = (GabaApp.estado.alunos || []).concat([{
+      nome: "Joana Pereira Lima", matricula: "12345678",
+      responsavel: "Sebastião Lima Ferreira",
+      email_responsavel: "sebastiao.lima@exemplo.br",
+      telefone_responsavel: "27 99988-7766"
+    }, {
+      nome: "Pedro Henrique Alves", responsavel: "Marlene"
+    }, {
+      /* placeholder de importacao: se virasse token, apagaria "nao" de meia mensagem */
+      nome: "Lucas Ribeiro Nunes", responsavel: "Não informado"
+    }]);
+    GabaApp.estado.turmas = (GabaApp.estado.turmas || []).concat([{ nome: "Turma 801 Norte" }]);
+    GabaApp.estado.escolas = (GabaApp.estado.escolas || []).concat([{ nome: "Escola Estadual Modelo" }]);
+    var casos = [
+      "Falha ao salvar a ficha de Joana Pereira Lima",
+      "Matrícula 12345678 não encontrada no banco",
+      "Sem telefone do responsável: 27 99988-7766",
+      "E-mail sebastiao.lima@exemplo.br recusado",
+      "Turma 801 Norte travou o cadastro na Escola Estadual Modelo",
+      "Nenhuma turma selecionada no cadastro da escola",
+      "A prova tem 95 questões e o caderno suporta até 90",
+      "Recado para Marlene não chegou",
+      "Ainda não foi informado o motivo da falha"
+    ].map(function (texto) {
+      var r = GabaAjuda.varredura(texto);
+      return { limpo: r.limpo, trocas: r.trocas };
+    });
+    /* o funil de aviso() registra o erro que o professor já viu, sem toast por cima */
+    GabaApp.aviso("Falha de teste no funil: leitura de Joana Pereira Lima presa", "erro");
+    var dados = JSON.parse(localStorage.getItem(GabaSync.chaveLocal("ajuda")) || "null");
+    var novo = dados.erros[0];
+    return {
+      casos: casos, antes: antes,
+      itens: document.querySelectorAll("#erros-lista .ajuda-item").length,
+      pendentesAntes: pendentesAntes, pendentes: GabaAjuda.pendentes(),
+      funil: novo && { mensagem: novo.mensagem, relatado: novo.relatado, origem: novo.origem },
+      bruto: JSON.stringify(dados.erros).indexOf("Joana") >= 0
+    };
+  }, []);
+  check("o filtro pega primeiro nome, matrícula, telefone e e-mail do responsável",
+    filtro.casos.slice(0, 4).every(function (r) {
+      return !/Joana|Pereira|Lima|Sebasti|12345678|99988|7766|sebastiao/i.test(r.limpo) && r.trocas > 0;
+    }), filtro.casos.slice(0, 4));
+  check("turma e escola saem por inteiro, sem rasurar a palavra comum da mensagem",
+    filtro.casos[4].limpo.indexOf("801 Norte") < 0 &&
+    filtro.casos[4].limpo.indexOf("Estadual Modelo") < 0 &&
+    filtro.casos[4].trocas === 2 &&
+    filtro.casos[5].limpo === "Nenhuma turma selecionada no cadastro da escola" &&
+    filtro.casos[5].trocas === 0, filtro.casos.slice(4, 6));
+  check("número de questão não é dado de aluno e continua na mensagem",
+    filtro.casos[6].limpo === "A prova tem 95 questões e o caderno suporta até 90" &&
+    filtro.casos[6].trocas === 0, filtro.casos[6]);
+  check("responsavel cadastrado so com o primeiro nome tambem sai da mensagem",
+    filtro.casos[7].limpo === "Recado para [aluno] não chegou" &&
+    filtro.casos[7].trocas === 1, filtro.casos[7]);
+  check("palavra do placeholder importado não vira marcador de nome",
+    filtro.casos[8].limpo === "Ainda não foi informado o motivo da falha" &&
+    filtro.casos[8].trocas === 0, filtro.casos[8]);
+  check("o aviso de erro do app entra na lista, sem segundo toast e sem subir sozinho",
+    filtro.itens === filtro.antes + 1 && Boolean(filtro.funil) &&
+    filtro.funil.relatado === false && filtro.funil.origem === "captura" &&
+    filtro.pendentes === filtro.pendentesAntes && filtro.bruto === false, filtro);
+
+  /* agrupamento por assinatura: aritmética sobre texto já filtrado, não mexe em estado */
+  var assinaturas = await c.naPagina(function () {
+    function s(m, tela) { return GabaAjuda.assinaturaDe(m, tela, "gaba-omr-v1"); }
+    return {
+      quarenta: s("Leitor travou com 42 questões", "scanner"),
+      quarentaCinco: s("Leitor travou com 45 questões", "scanner"),
+      comLinha: s("Leitor travou com 42 questões (uiScanner.js:88)", "scanner"),
+      outraTela: s("Leitor travou com 42 questões", "dashboard"),
+      outroBug: s("QR da folha 7 não decodifica", "scanner"),
+      comNome: s("Leitor travou na ficha de Joana Pereira Lima", "scanner"),
+      formato: /^fnv1-[0-9a-f]{8}$/.test(s("x", "scanner"))
+    };
+  }, []);
+  check("o mesmo número escrito de um jeito diferente continua no mesmo grupo",
+    assinaturas.quarenta === assinaturas.quarentaCinco &&
+    assinaturas.quarenta === assinaturas.comLinha &&
+    assinaturas.quarenta !== assinaturas.outroBug, assinaturas);
+  check("o mesmo texto em outra tela não vira o mesmo grupo",
+    assinaturas.outraTela !== assinaturas.quarenta, assinaturas);
+  check("o que viaja é o resumo, nunca a mensagem com o nome",
+    assinaturas.formato === true && assinaturas.comNome.length === 13 &&
+    assinaturas.comNome !== assinaturas.quarenta, assinaturas);
 
   await c.naPagina(function () {
     if (window.__gabaDBOriginal) {

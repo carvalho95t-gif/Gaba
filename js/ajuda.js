@@ -4,9 +4,10 @@
 (function (global) {
   "use strict";
 
-  var VERSAO = "gaba-omr-v17";
+  var VERSAO = "gaba-omr-v21";
   var TEXTO_MAX = 4000;
   var MSG_MAX = 8000;
+  var PILHA_MAX = 6000;
   var CAPTURAS_ABERTAS = 8;
   var CAPTURAS_TOTAL = 40;
   var CAPTURAS_JANELA = 45000;
@@ -169,31 +170,167 @@
     tentarFila();
   }
 
-  /* ------------------------------------------------------------ nomes de alunos */
+  /* ------------------------------------------------------------ dado de pessoa */
+  /* Tudo que sai do aparelho passa por aqui. A versão anterior só cobria nome
+     completo dos alunos carregados na tela: matrícula, responsável, escola,
+     turma e os alunos de "saidas" passavam direto para o banco. */
 
-  function nomesDeAlunos() {
-    var alunos = (global.GabaApp && global.GabaApp.estado && global.GabaApp.estado.alunos) || [];
+  var PALAVRAS_TECNICAS = /^(error|undefined|null|nan|json|http|https|script|promise|token|type|range|reference|syntax|uri|assert|failed|cannot|invalid|object|string|number|boolean|function|array|window|document|chrome|moz|safari)$/i;
+
+  /* Nome de uma palavra só entra no filtro, mas uma palavra comum do app não pode
+     entrar: cadastro importado vem cheio de "não informado" e "responsável" no
+     campo de nome, e isso apagaria meia mensagem de erro. */
+  var PALAVRAS_BANAIS = {};
+  [
+    "error", "undefined", "null", "json", "http", "https", "script", "promise", "token", "object",
+    "string", "number", "boolean", "function", "array", "window", "document", "failed", "cannot",
+    "invalid", "syntax", "reference", "type", "range", "assert", "uri", "nan", "safari", "chrome",
+    "aluno", "aluna", "alunos", "alunas", "estudante", "crianca", "menor", "turma", "turmas",
+    "escola", "escolas", "unidade", "serie", "series", "ano", "anos", "bimestre", "etapa",
+    "professor", "professora", "docente", "secretaria", "direcao", "coordenacao", "pedagogico",
+    "responsavel", "responsaveis", "pai", "mae", "avo", "avo", "tutor", "cuidador",
+    "nome", "matricula", "numero", "telefone", "celular", "whatsapp", "email", "endereco",
+    "prova", "provas", "caderno", "folha", "folhas", "questao", "questoes", "alternativa",
+    "alternativas", "gabarito", "resposta", "respostas", "branco", "confusao", "nota", "notas",
+    "leitura", "leituras", "camera", "foto", "fotos", "imagem", "arquivo", "documento",
+    "banco", "aparelho", "conexao", "internet", "login", "senha", "conta", "sessao", "usuario",
+    "sistema", "cadastro", "salvar", "salvou", "carregar", "carregou", "abrir", "abriu",
+    "fechar", "fechou", "enviar", "enviou", "receber", "recebeu", "tentar", "tentou", "tentativa",
+    "nao", "sim", "todos", "todas", "nenhum", "nenhuma", "informado", "informada", "pendente",
+    "concluido", "concluida", "sucesso", "falha", "falhou", "erro", "erros", "aviso", "avisos",
+    "hoje", "ontem", "agora", "depois", "antes", "sempre", "nunca", "ainda", "duplicado",
+    "visual", "mobile", "desktop", "padrao", "normal", "teste", "exemplo", "dados", "lista"
+  ].forEach(function (palavra) { PALAVRAS_BANAIS[palavra] = true; });
+
+  function banal(texto) {
+    var limpo = String(texto || "").normalize("NFD").replace(/\u0300-\u036f/g, "")
+      .toLowerCase().replace(/[^a-z]/g, "");
+    return !limpo || PALAVRAS_BANAIS[limpo] === true || PALAVRAS_TECNICAS.test(texto);
+  }
+
+  function escaparRegex(texto) {
+    return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function tokensDeIdentidade() {
+    var st = (global.GabaApp && global.GabaApp.estado) || {};
     var nomes = {};
-    alunos.forEach(function (a) {
-      var nome = corta(a && a.nome, 120);
-      if (nome.length < 6 || nome.indexOf(" ") < 0) return;
+    function partesDo(nome) {
+      return nome.split(/\s+/).filter(function (parte) {
+        return parte.length >= 5 && !banal(parte);
+      });
+    }
+    /* Pessoa: o nome completo e cada parte com 5+ caracteres, porque primeiro nome
+       sozinho identifica do mesmo jeito. */
+    function addPessoa(valor) {
+      var nome = corta(valor, 120);
+      if (nome.length < 5) return;
+      if (nome.indexOf(" ") < 0) {
+        /* Responsavel quase sempre vem so com o primeiro nome, e nome proprio
+           sozinho identifica do mesmo jeito que o completo. */
+        if (!banal(nome)) nomes[nome] = true;
+        return;
+      }
       nomes[nome] = true;
       var partes = nome.split(/\s+/);
       if (partes.length > 2) nomes[partes[0] + " " + partes[partes.length - 1]] = true;
+      partesDo(nome).forEach(function (parte) { nomes[parte] = true; });
+    }
+    /* Escola e turma: só o nome inteiro. Sem isso, "Turma" e "Escola" — palavras
+       comuns das mensagens — virariam marcador e o erro ficava ilegível. */
+    function addEntidade(valor) {
+      var nome = corta(valor, 120);
+      if (nome.length < 6 || nome.indexOf(" ") < 0) return;
+      nomes[nome] = true;
+    }
+    function addLiteral(valor) {
+      var literal = corta(valor, 120);
+      if (literal.length >= 5) nomes[literal] = true;
+    }
+    (Array.isArray(st.alunos) ? st.alunos : []).forEach(function (item) {
+      addPessoa(item && item.nome);
+      addPessoa(item && item.responsavel);
+      addLiteral(item && item.matricula);
+      addLiteral(item && item.telefone_responsavel);
+      addLiteral(item && item.email_responsavel);
     });
+    (Array.isArray(st.saidas) ? st.saidas : []).forEach(function (item) { addPessoa(item && item.nome); });
+    (Array.isArray(st.turmas) ? st.turmas : []).forEach(function (item) { addEntidade(item && item.nome); });
+    (Array.isArray(st.escolas) ? st.escolas : []).forEach(function (item) { addEntidade(item && item.nome); });
     return Object.keys(nomes).sort(function (a, b) { return b.length - a.length; });
   }
 
+  var regexGuardada = { chave: "", re: null };
+
+  function regexDeTokens() {
+    var lista = tokensDeIdentidade();
+    var chaveLista = lista.join(",");
+    if (chaveLista !== regexGuardada.chave) {
+      regexGuardada.chave = chaveLista;
+      regexGuardada.re = lista.length
+        ? new RegExp(lista.map(escaparRegex).join("|"), "gi")
+        : null;
+    }
+    return regexGuardada.re;
+  }
+
+  function varredura(texto) {
+    var saida = String(texto == null ? "" : texto);
+    var trocas = 0;
+    function marcar(marcador) {
+      return function () { trocas += 1; return marcador; };
+    }
+    var re = regexDeTokens();
+    if (re) saida = saida.replace(re, marcar("[aluno]"));
+    saida = saida.replace(/[^\s@]+@[^\s@.]+\.[^\s@]{2,}/g, marcar("[email]"));
+    saida = saida.replace(/\+?\d{2}[\s.\-]?\d{4,5}[\s.\-]?\d{4}\b/g, marcar("[telefone]"));
+    saida = saida.replace(/\d{5,}/g, marcar("[num]"));
+    return { limpo: saida, trocas: trocas };
+  }
+
   function limparNomes(texto) {
-    var saida = String(texto || "");
-    nomesDeAlunos().forEach(function (nome) {
-      var seguro = nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      saida = saida.replace(new RegExp(seguro, "gi"), "[aluno]");
-    });
-    return saida;
+    return varredura(texto).limpo;
   }
 
   /* ------------------------------------------------------------ gravação no banco */
+
+  /* Mensagem técnica + pilha cabem na mesma coluna do banco (8000). A pilha entra
+     depois da mensagem, e é o que sobra do espaço que a mensagem não usou. */
+  function tecnicoDe(item) {
+    var mensagem = limparNomes(item.mensagem || "");
+    var pilha = limparNomes(item.pilha || "");
+    if (!pilha) return mensagem;
+    var espaco = MSG_MAX - mensagem.length - 1;
+    if (espaco <= 0) return mensagem.slice(0, MSG_MAX);
+    return mensagem + "\n" + pilha.slice(0, espaco);
+  }
+
+  /* Agrupamento do mesmo bug: hash da mensagem já filtrada + tela + versão. A
+     pilha fica fora de propósito — ela muda entre builds e quebraria o grupo. */
+  function normalizarTexto(texto) {
+    return String(texto == null ? "" : texto)
+      .toLowerCase()
+      /* "uiScanner.js:88" de hoje e ":91" da próxima build são o mesmo bug: o
+         número da linha muda sozinho e não pode dividir o grupo. */
+      .replace(/\(?[\w./-]+\.(js|mjs|ts)(:\d+){0,2}\)?/g, "")
+      .replace(/\d+/g, "#")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function hash32(texto) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < texto.length; i += 1) {
+      h ^= texto.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+
+  function assinaturaDe(mensagem, tela, versao) {
+    var base = [normalizarTexto(limparNomes(mensagem)), normalizarTexto(tela), normalizarTexto(versao)].join("|");
+    return "fnv1-" + ("00000000" + hash32(base).toString(16)).slice(-8);
+  }
 
   function linha(tabela, item) {
     var p = professorAtual();
@@ -213,9 +350,10 @@
         item.importancia : "Seria bom";
     } else {
       base.texto_usuario = corta(limparNomes(item.texto), TEXTO_MAX);
-      base.mensagem_tecnica = corta(limparNomes(item.mensagem), MSG_MAX);
+      base.mensagem_tecnica = corta(tecnicoDe(item), MSG_MAX);
       base.navegador = corta(item.navegador || resumoNavegador(), 600);
       base.versao = corta(item.versao || VERSAO, 40);
+      base.assinatura = item.mensagem ? assinaturaDe(item.mensagem, base.tela, base.versao) : null;
       base.origem = item.origem === "captura" ? "captura" : "manual";
     }
     return base;
@@ -439,6 +577,7 @@
         '<div class="ajuda-item-cab"><strong>' + esc(rotuloTela(e.tela)) + "</strong>" + situacao +
         "<time>" + esc(quandoCurto(e.criado_em)) + "</time></div>" +
         "<p><code>" + esc(limparNomes(e.mensagem || "(sem mensagem técnica)")) + "</code></p>" +
+        (e.pilha ? "<p><small>Pilha de execução guardada junto.</small></p>" : "") +
         (e.texto ? "<p>" + esc(limparNomes(e.texto)) + "</p>" : "") + acao + "</div>";
     }).join("");
   }
@@ -477,19 +616,36 @@
     return alvo ? limparNomes(alvo.mensagem || "") : "";
   }
 
+  function ultimaPilha() {
+    var abertos = estado.erros.filter(function (e) { return !e.relatado; });
+    var alvo = abertos[0] || estado.erros[0];
+    return alvo ? (alvo.pilha || "") : "";
+  }
+
   function atualizarPayload() {
     var pre = $("payload-pre");
     if (!pre) return;
     var anexar = $("prob-tecnico").checked;
     var alvo = capturaAlvo();
+    var digitado = varredura($("prob-texto").value.trim());
+    var tecnico = anexar ? (alvo ? corta(tecnicoDe(alvo), MSG_MAX) : limparNomes(ultimaMensagem())) : "";
     var dados = {
       tela: rotuloTela(alvo ? alvo.tela : ultimaTela),
       versao: VERSAO,
       navegador: resumoNavegador(),
       anexar_erros_tecnicos: anexar,
-      mensagem_tecnica: anexar ? limparNomes(alvo ? alvo.mensagem : ultimaMensagem()) : "",
-      texto: limparNomes($("prob-texto").value.trim()),
-      nomes_de_alunos: "nenhum"
+      mensagem_tecnica: tecnico,
+      pilha_anexada: Boolean(anexar && alvo && alvo.pilha),
+      /* o mesmo resumo que a linha do banco recebe: dá para conferir no painel
+         que o grupo bate com a mensagem técnica deste relato */
+      assinatura: anexar && (alvo ? alvo.mensagem : ultimaMensagem())
+        ? assinaturaDe(alvo ? alvo.mensagem : ultimaMensagem(), alvo ? alvo.tela : ultimaTela, VERSAO)
+        : null,
+      texto: digitado.limpo,
+      /* o número vem do filtro rodando sobre o texto digitado agora, não de um
+         texto fixo: captura já nasce limpa, então só o professor pode introduzir
+         nome de aqui */
+      trocas_do_filtro: digitado.trocas
     };
     pre.textContent = JSON.stringify(dados, null, 2);
   }
@@ -504,10 +660,10 @@
     if (estado.erros.length > CAPTURAS_TOTAL) estado.erros = estado.erros.slice(0, CAPTURAS_TOTAL);
   }
 
-  function capturar(mensagem, tela) {
-    var limpa = limparNomes(String(mensagem || "")).trim();
+  function capturar(mensagem, tela, pilha, silencioso) {
+    var limpa = corta(varredura(String(mensagem || "")).limpo.trim(), MSG_MAX);
     if (!limpa || limpa === "Script error.") return;
-    limpa = corta(limpa, MSG_MAX);
+    var pilhaLimpa = corta(varredura(pilha).limpo, PILHA_MAX);
     var repetida = estado.erros.some(function (e) {
       return !e.relatado && e.mensagem === limpa &&
         Math.abs(Date.now() - new Date(e.criado_em).getTime()) < CAPTURAS_JANELA;
@@ -516,13 +672,20 @@
     estado.erros.unshift({
       id: uuid(), criado_em: agora(), tela: tela || telaAtual,
       professor_nome: "", professor_email: "",
-      mensagem: limpa, navegador: resumoNavegador(), versao: VERSAO,
+      mensagem: limpa, pilha: pilhaLimpa, navegador: resumoNavegador(), versao: VERSAO,
       texto: "", status: "", relatado: false, origem: "captura"
     });
     podarCapturas();
     salvar();
     if (iniciado) { renderErros(); atualizarPayload(); }
-    toast("Erro capturado. Ele está em Ajuda › Problemas.", "erro");
+    /* erro que o professor já viu na tela não precisa de segundo aviso por cima */
+    if (!silencioso) toast("Erro capturado. Ele está em Ajuda › Problemas.", "erro");
+  }
+
+  /* GabaApp.aviso e o status do leitor chamam isto quando mostram um erro na
+     tela. Registra no aparelho; continua sem subir nada sem o clique do professor. */
+  function registrarErroVisto(mensagem) {
+    try { capturar(mensagem, telaAtual, "", true); } catch (err) { /* nunca quebrar o fluxo do app */ }
   }
 
   function instalarCaptura() {
@@ -532,13 +695,14 @@
       var origem = String(ev.filename || "");
       if (/^(chrome|moz|safari|safari-web)-extension:\/\//.test(origem)) return;
       var onde = origem.split("/").pop();
-      capturar(ev.message + (onde ? " (" + onde + ":" + (ev.lineno || 0) + ")" : ""), telaAtual);
+      capturar(ev.message + (onde ? " (" + onde + ":" + (ev.lineno || 0) + ")" : ""), telaAtual,
+        ev.error && ev.error.stack);
     });
     global.addEventListener("unhandledrejection", function (ev) {
       var motivo = ev.reason;
       var msg = motivo && (motivo.message || motivo.reason) ? (motivo.message || motivo.reason) : String(motivo || "");
       if (!msg) return;
-      capturar(msg, telaAtual);
+      capturar(msg, telaAtual, motivo && motivo.stack);
     });
   }
 
@@ -619,6 +783,7 @@
         id: uuid(), criado_em: agora(), tela: ultimaTela,
         professor_nome: p.nome, professor_email: p.email,
         mensagem: anexar ? limparNomes(ultimaMensagem()) : "",
+        pilha: anexar ? ultimaPilha() : "",
         navegador: resumoNavegador(), versao: VERSAO,
         texto: texto, status: "fila", relatado: true, origem: "manual"
       };
@@ -818,6 +983,9 @@
     aoAbrir: aoAbrir,
     registrarTela: registrarTela,
     reiniciarConta: reiniciarConta,
+    registrarErroVisto: registrarErroVisto,
+    varredura: varredura,
+    assinaturaDe: assinaturaDe,
     versao: VERSAO,
     pendentes: function () {
       var n = 0;

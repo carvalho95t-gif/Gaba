@@ -28,6 +28,9 @@
   }
 
   function aviso(msg, tipo) {
+    if (tipo === "erro" && msg && window.GabaAjuda && GabaAjuda.registrarErroVisto) {
+      GabaAjuda.registrarErroVisto(msg);
+    }
     var el = $("app-status");
     if (!el) return;
     el.textContent = msg || "";
@@ -2997,6 +3000,7 @@
     carregarTudo: carregarTudo,
     provaDoFormulario: provaDoFormulario,
     mensagemErro: mensagemErro,
+    aviso: aviso,
     esc: esc,
     chave: chave,
     abrirNoCaderno: abrirNoCaderno,

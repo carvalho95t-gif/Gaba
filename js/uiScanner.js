@@ -54,6 +54,9 @@
   }
 
   function status(msg, classe) {
+    if (classe === "erro" && msg && window.GabaAjuda && GabaAjuda.registrarErroVisto) {
+      GabaAjuda.registrarErroVisto(msg);
+    }
     var el = $("scan-status");
     if (!el) return;
     el.textContent = msg;

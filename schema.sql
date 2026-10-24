@@ -32,6 +32,11 @@
 --                   confusao, branco, acertos, nota, engine
 --   professores   — nome e e-mail do professor (chave fica no aparelho)
 --
+-- As tres tabelas da aba Ajuda (ajuda_duvidas, ajuda_sugestoes, ajuda_erros) tem
+-- DDL proprio em supabase/ajuda.sql: sao insert-only, o professor nao tem
+-- permissao de leitura, e nada delas depende do resto do app. Em ambiente novo,
+-- rode os dois arquivos.
+--
 -- A coluna correcoes.respostas vem na ordem da prova base; respostas_originais na
 -- ordem embaralhada que o aluno viu no caderno. confusao sao os numeros de
 -- questao NA ORDEM DO CADERNO (como no papel), porque e assim que o professor
