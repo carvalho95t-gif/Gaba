@@ -14,8 +14,25 @@ var RAIZ = path.join(__dirname, "..");
 var SCHEMA = fs.readFileSync(path.join(RAIZ, "supabase", "schema.sql"), "utf8");
 var MIGRACAO = fs.readFileSync(path.join(RAIZ, "supabase", "isolar-por-professor.sql"), "utf8");
 var TABELAS = ["turmas", "escolas", "alunos", "provas", "correcoes", "prova_versoes", "professores"];
+/* saidas (quem saiu da turma) nasceu depois da tranca por dono: o schema.sql a cria e isola do
+   mesmo jeito; a migracao nao tem linha antiga para entregar nela, entao fica fora de TABELAS */
+var LISTAS = {
+  schema: {
+    tabelas: ["turmas", "escolas", "alunos", "saidas", "provas", "correcoes", "prova_versoes", "professores"],
+    drop: "('turmas', 'escolas', 'alunos', 'saidas', 'provas', 'correcoes', 'professores', 'prova_versoes')",
+    acesso: "public.turmas, public.escolas, public.alunos, public.saidas, public.provas, public.correcoes, public.professores, public.prova_versoes",
+    comDono: 8
+  },
+  migracao: {
+    tabelas: TABELAS,
+    drop: "('turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'professores', 'prova_versoes')",
+    acesso: "public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes",
+    comDono: 7
+  }
+};
 var PAIS = {
   alunos: "from public.turmas t where t.id = alunos.turma_id and t.dono = (select auth.uid())",
+  saidas: "from public.turmas t where t.id = saidas.turma_id and t.dono = (select auth.uid())",
   correcoes: "from public.provas p where p.id = correcoes.prova_id and p.dono = (select auth.uid())",
   prova_versoes: "from public.provas p where p.id = prova_versoes.prova_id and p.dono = (select auth.uid())"
 };
@@ -43,10 +60,10 @@ function funcaoVe(sql) {
   return m ? espaco(m[0]) : "";
 }
 
-function conferirTexto(rotulo, sql) {
+function conferirTexto(rotulo, sql, lista) {
   console.log("\n== " + rotulo + " ==");
   var todas = regras(sql);
-  TABELAS.forEach(function (t) {
+  lista.tabelas.forEach(function (t) {
     check(t + ": coluna dono com o default da conta logada",
       sql.indexOf("alter table public." + t + " add column if not exists dono uuid;") >= 0 &&
       sql.indexOf("alter table public." + t + " alter column dono set default auth.uid();") >= 0);
@@ -77,20 +94,22 @@ function conferirTexto(rotulo, sql) {
         por.insert[0].corpo.indexOf(PAIS[t]) >= 0 && por.update[0].corpo.indexOf(PAIS[t]) >= 0);
     }
   });
-  check("apaga toda regra antiga das 7 tabelas pelo pg_policies",
+  check("apaga toda regra antiga das " + lista.tabelas.length + " tabelas pelo pg_policies",
     /for r in\s+select schemaname, tablename, policyname\s+from pg_policies/i.test(sql) &&
-    sql.indexOf("tablename in ('turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'professores', 'prova_versoes')") >= 0);
-  check("tira as 7 tabelas da chave publica",
-    sql.indexOf("revoke all on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes from anon, public;") >= 0);
+    sql.indexOf("tablename in " + lista.drop) >= 0, lista.drop);
+  check("tira as " + lista.tabelas.length + " tabelas da chave publica",
+    sql.indexOf("revoke all on " + lista.acesso + " from anon, public;") >= 0);
+  check("e so authenticated ganha acesso a elas",
+    sql.indexOf("grant select, insert, update, delete on " + lista.acesso + " to authenticated;") >= 0);
   check("gaba_ve compara com a conta logada e fixa o search_path",
     /returns boolean language sql stable set search_path = '' as \$\$ select dono = auth\.uid\(\) \$\$;/i.test(funcaoVe(sql)), funcaoVe(sql));
 }
 
-conferirTexto("supabase/schema.sql", SCHEMA);
+conferirTexto("supabase/schema.sql", SCHEMA, LISTAS.schema);
 check("descritores continua aberto para leitura do anon",
   SCHEMA.indexOf('create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);') >= 0);
 
-conferirTexto("supabase/isolar-por-professor.sql", MIGRACAO);
+conferirTexto("supabase/isolar-por-professor.sql", MIGRACAO, LISTAS.migracao);
 check("a migracao nao apaga dado nem tabela",
   !/\b(drop table|truncate|delete from|drop column)\b/i.test(MIGRACAO));
 check("a migracao vai para o git com o e-mail de exemplo, numa linha so",
@@ -187,6 +206,10 @@ async function bancoNovo(PGlite) {
 /* o banco de hoje: tabelas sem dono e a tranca v2 (logado le tudo) */
 async function bancoDeHoje(PGlite) {
   var db = await bancoNovo(PGlite);
+  /* o banco do professor nao tem saidas: ela so aparece quando o schema.sql novo for colado.
+     Tira-la aqui e o que deixa a tranca antiga de pe, porque as regras dela dependem do gaba_ve
+     que a linha abaixo derruba. */
+  await db.exec("drop table public.saidas;");
   for (var i = 0; i < TABELAS.length; i += 1) {
     await db.exec("alter table public." + TABELAS[i] + " drop column dono cascade;" +
       "create policy \"" + TABELAS[i] + "_aberta\" on public." + TABELAS[i] +
@@ -242,7 +265,7 @@ async function noBanco(PGlite) {
   var e3 = await erro(db.exec(migracaoCom("prof.a@escola.br")));
   var cols = await colunasDono(db);
   check("rodar de novo nao quebra nem muda nada", e3 === null && (await contar(db, A, "turmas")) === 1, e3);
-  check("dono obrigatorio e preenchido por auth.uid() nas 7 tabelas",
+  check("dono obrigatorio e preenchido por auth.uid() nas 7 tabelas da migracao",
     cols.length === 7 && cols.every(function (c) { return c.nulo === "NO" && /auth\.uid\(\)/.test(c.def); }), cols);
 
   await asContas(db);
@@ -250,6 +273,16 @@ async function noBanco(PGlite) {
   console.log("\n== schema.sql de novo por cima do banco migrado ==");
   var e4 = await erro(db.exec(SCHEMA_PG));
   check("roda sem erro", e4 === null, e4);
+  var colsDepois = await colunasDono(db);
+  check("e acrescenta saidas com dono obrigatorio e da conta logada",
+    colsDepois.length === 8 && colsDepois.some(function (c) { return c.t === "saidas"; }) &&
+    colsDepois.every(function (c) { return c.nulo === "NO" && /auth\.uid\(\)/.test(c.def); }), colsDepois);
+  var turmaVelha = (await linhas(db, "select id from public.turmas where escola = 'EEFM FICTICIA'"))[0];
+  var sdVelho = await como(db, A, "insert into public.saidas (turma_id, chave, numero, nome, situacao)" +
+    " values ($1, 'n:2', 2, 'Aluno Ficticio Oito', 'SEM FREQUENCIA') returning dono::text", [turmaVelha.id]);
+  check("num banco ja migrado, saidas grava com o dono e so ele le",
+    sdVelho.rows[0] && sdVelho.rows[0].dono === A && (await contar(db, B, "saidas")) === 0 &&
+    (await contar(db, A, "saidas")) === 1, sdVelho.rows);
   check("e nao reabre: B continua sem ver a turma de A, A continua vendo",
     (await contar(db, B, "turmas")) === 1 && (await contar(db, A, "turmas")) === 1 &&
     (await linhas(db, "select count(*)::int n from pg_policies where schemaname = 'public' and (qual = 'true' or with_check = 'true')" +
@@ -261,13 +294,34 @@ async function noBanco(PGlite) {
   var e5 = await erro(novo.exec(SCHEMA_PG));
   var colsNovo = await colunasDono(novo);
   check("roda duas vezes e ja nasce com dono obrigatorio", e5 === null &&
-    colsNovo.length === 7 && colsNovo.every(function (c) { return c.nulo === "NO"; }), e5 || colsNovo);
+    colsNovo.length === 8 && colsNovo.every(function (c) { return c.nulo === "NO"; }), e5 || colsNovo);
   var tb = await como(novo, B, "insert into public.turmas (nome) values ('8o B') returning dono::text");
   check("a turma criada por B e de B; A nao ve",
     tb.rows[0].dono === B && (await contar(novo, A, "turmas")) === 0 && (await contar(novo, B, "turmas")) === 1);
   var e6 = await erro(novo.exec(migracaoCom("prof.a@escola.br")));
   check("a migracao num banco novo tambem passa e nao mexe na turma de B",
     e6 === null && (await contar(novo, B, "turmas")) === 1 && (await contar(novo, A, "turmas")) === 0, e6);
+
+  console.log("\n== saidas no banco novo ==");
+  var turmaA = (await como(novo, A, "insert into public.turmas (nome) values ('9o A de A') returning id")).rows[0];
+  var sd = await como(novo, A, "insert into public.saidas (turma_id, chave, numero, nome, situacao)" +
+    " values ($1, 'n:2', 2, 'Aluno Ficticio Cinco', 'TRANSFERIDO') returning dono::text", [turmaA.id]);
+  check("saidas: sem mandar dono, o banco poe A", sd.rows[0] && sd.rows[0].dono === A, sd.rows);
+  check("saidas: B nao ve a saida guardada de A", (await contar(novo, B, "saidas")) === 0);
+  var sdAlheia = await erro(como(novo, B,
+    "insert into public.saidas (turma_id, chave, nome) values ($1, 'n:3', 'Aluno Ficticio Seis')", [turmaA.id]));
+  check("saidas: B nao anota saida na turma de A", sdAlheia && /row-level security/.test(sdAlheia), sdAlheia);
+  var sdUp = "insert into public.saidas (turma_id, chave, nome, situacao) values ($1, $2, $3, 'REMANEJADO')" +
+    " on conflict (turma_id, chave) do update set situacao = excluded.situacao returning id";
+  await como(novo, A, sdUp, [turmaA.id, "a:alunoficticiocinco", "Aluno Ficticio Cinco"]);
+  await como(novo, A, sdUp, [turmaA.id, "a:alunoficticiocinco", "Aluno Ficticio Cinco"]);
+  var chaves = await linhas(novo, "select chave, situacao from public.saidas where turma_id = $1 order by chave", [turmaA.id]);
+  check("saidas: reimportar sem numero de chamada atualiza a mesma linha pelo nome",
+    chaves.length === 2 && chaves[0].situacao === "REMANEJADO", chaves);
+  var repetida = await erro(como(novo, A,
+    "insert into public.saidas (turma_id, chave, nome) values ($1, 'n:2', 'Aluno Ficticio Sete')", [turmaA.id]));
+  check("saidas: o mesmo numero de chamada na mesma turma nao vira segunda linha",
+    repetida && /duplicate key/.test(repetida), repetida);
   await novo.close();
 }
 

@@ -38,7 +38,7 @@ function instalarFake(cfg) {
   CHAVES.forEach(function (k) { antes[k] = localStorage.getItem(k); });
   var estado = {
     antes: antes, fetchOriginal: window.fetch, reqs: [], seq: 0,
-    mb: { turmas: [], alunos: [], provas: [], correcoes: [], escolas: [], professores: [] },
+    mb: { turmas: [], alunos: [], provas: [], correcoes: [], escolas: [], professores: [], saidas: [] },
     auth: { usuarios: [], pedeConfirmacao: false, seq: 0, tokens: [] }
   };
   window.__gaba = estado;
@@ -74,7 +74,11 @@ function instalarFake(cfg) {
       var atual = row[f[0]];
       if (op === "eq") return String(atual === null || atual === undefined ? "" : atual) === val;
       if (op === "is") return atual === null || atual === undefined;
-      if (op === "in") return val.replace(/[()]/g, "").split(",").indexOf(String(atual)) >= 0;
+      if (op === "in") {
+        /* supabase-js escreve in.("a","b"): as aspas nao fazem parte do valor */
+        var lista = val.replace(/[()]/g, "").split(",").map(function (v) { return v.replace(/^"|"$/g, ""); });
+        return lista.indexOf(String(atual)) >= 0;
+      }
       return true;
     });
   }
@@ -99,7 +103,8 @@ function instalarFake(cfg) {
     });
   }
   /* as unicidades que supabase/schema.sql cria de verdade */
-  var UNICAS = { turmas: ["id"], alunos: ["turma_id", "numero"], provas: ["id"], correcoes: ["prova_id", "qr_payload"] };
+  var UNICAS = { turmas: ["id"], alunos: ["turma_id", "numero"], provas: ["id"], correcoes: ["prova_id", "qr_payload"],
+    saidas: ["turma_id", "chave"] };
   function duplicado(tabela, linha) {
     var cols = UNICAS[tabela] || ["id"];
     var outro = mb[tabela].filter(function (row) {
@@ -199,7 +204,7 @@ function instalarFake(cfg) {
        entrou. leitura sem sessao devolve lista vazia (e o que o PostgREST faz de
        verdade) e escrita sem sessao volta 42501. descritores fica de fora porque no
        banco real continua aberto ao anon. */
-    var SO_LOGADO = ["turmas", "escolas", "alunos", "provas", "correcoes", "professores", "prova_versoes"];
+    var SO_LOGADO = ["turmas", "escolas", "alunos", "saidas", "provas", "correcoes", "professores", "prova_versoes"];
     function dentro(hd) {
       var portador = String(hd.authorization || "").replace(/^Bearer\s+/i, "");
       return auth.tokens.indexOf(portador) >= 0;
@@ -745,7 +750,12 @@ async function dirigirLista(marcos) {
   });
   r.ultimoLote = pedidos.length ? pedidos[pedidos.length - 1] : null;
   r.tamanhoLote = r.ultimoLote ? JSON.parse(r.ultimoLote.body).length : 0;
-  r.painel = document.getElementById("dash-alunos-count").textContent;
+  /* o painel so vira 47 quando a recarga inteira (turmas, alunos, provas, correcoes, saidas)
+     terminar: espera o numero, nao le uma vez so */
+  r.painel = await espera(function () {
+    var n = document.getElementById("dash-alunos-count").textContent;
+    return n === "47" ? n : null;
+  }, 20000).catch(function () { return document.getElementById("dash-alunos-count").textContent; });
   return r;
 }
 
@@ -1790,6 +1800,141 @@ async function dirigirImportarTurmas(marcos) {
       return GabaEscolas.chave(t.escola) === GabaEscolas.chave(escolaB);
     }) };
 
+  GabaEscolas.setFiltro(nomeA);
+  await GabaApp.carregarTudo();
+
+  /* ---- a situacao de quem ficou de fora fica no banco, nao so no painel aberto */
+  var DITA = "7º W (saidas teste)";
+  var VOLTA = "7º X (voltou teste)";
+  function chamadaSaida(nome, linhas) {
+    return new File(["Turma;Nº;Nome do aluno;Situação\n"].concat(linhas.map(function (l) {
+      return nome + ";" + l[0] + ";" + l[1] + ";" + (l[2] || "") + "\n";
+    })), "chamada-" + nome + ".csv", { type: "text/csv" });
+  }
+  function turmaDoBanco(nome) {
+    return window.__gaba.mb.turmas.filter(function (t) { return t.nome === nome; })[0] || null;
+  }
+  function saidasDoBanco(t) {
+    var mb = window.__gaba.mb.saidas || [];
+    return t ? mb.filter(function (s) { return String(s.turma_id) === String(t.id); })
+      .map(function (s) {
+        return { chave: s.chave, numero: s.numero, nome: s.nome, situacao: s.situacao, fonte: s.fonte };
+      }).sort(function (a, b) { return a.chave < b.chave ? -1 : 1; }) : [];
+  }
+  function ficha(nome) {
+    var d = [].slice.call(document.querySelectorAll("#lista-turmas .item-lista")).filter(function (x) {
+      return x.querySelector(".item-cab strong").textContent === nome;
+    })[0];
+    if (!d) return null;
+    return {
+      texto: d.querySelector(".item-cab").textContent.replace(/\s+/g, " ").trim(),
+      fora: [].slice.call(d.querySelectorAll(".linha-aluno")).filter(function (r) {
+        return r.querySelector(".badge-off");
+      }).map(function (r) {
+        return [].slice.call(r.children).map(function (c) { return c.textContent.trim(); }).join("|");
+      }),
+      selos: [].slice.call(d.querySelectorAll(".badge-off")).map(function (b) {
+        return (b.getAttribute("title") || "");
+      })
+    };
+  }
+
+  var arqDita = chamadaSaida(DITA, [["1", "ALFA DITA TESTE"], ["2", "BRAVO DITA TESTE", "TRANSFERIDO"],
+    ["3", "CHARLIE DITA TESTE", "NÃO FREQUENTA"]]);
+  botaoDe("#lista-escolas-cad", "importar-turmas", nomeA).click();
+  mandar(arqDita);
+  await espera(function () { return painel().linhas.length === 1; }, 8000);
+  document.getElementById("impt-salvar").click();
+  r.saidasPainel = await espera(function () { var p = painel(); return /Pronto/.test(p.status) ? p : null; }, 15000)
+    .catch(painel);
+  r.saidasDoBanco = saidasDoBanco(turmaDoBanco(DITA));
+  r.alunosDaDita = alunosDe(turmaDoBanco(DITA));
+  r.fonteEsperada = arqDita.name;
+  document.getElementById("impt-cancelar").click();
+
+  /* o painel fecha, o aparelho recarrega: o que continua na tela foi buscado no banco */
+  await GabaApp.carregarTudo();
+  r.fichaDita = await espera(function () { return ficha(DITA); }, 8000)
+    .catch(function () { return ficha(DITA); });
+
+  /* a chamada seguinte traz o transferido de volta para a sala */
+  botaoDe("#lista-escolas-cad", "importar-turmas", nomeA).click();
+  mandar(chamadaSaida(DITA, [["1", "ALFA DITA TESTE"], ["2", "BRAVO DITA TESTE"],
+    ["3", "CHARLIE DITA TESTE", "NÃO FREQUENTA"], ["4", "DELTA DITA TESTE"]]));
+  await espera(function () { return painel().linhas.length === 1; }, 8000);
+  document.getElementById("impt-salvar").click();
+  r.voltou = await espera(function () { var p = painel(); return /Pronto/.test(p.status) ? p : null; }, 15000)
+    .catch(painel);
+  r.saidasDepoisDeVoltar = saidasDoBanco(turmaDoBanco(DITA));
+  r.alunosDepoisDeVoltar = alunosDe(turmaDoBanco(DITA));
+  document.getElementById("impt-cancelar").click();
+  await GabaApp.carregarTudo();
+  r.fichaDepoisDeVoltar = ficha(DITA);
+
+  /* banco que ainda nao rodou o schema.sql: a tabela falta, o resto do import acontece */
+  var guardaSaidas = window.__gaba.mb.saidas;
+  var antesDeSumir = guardaSaidas.length;
+  window.__gaba.mb.saidas = null;
+  botaoDe("#lista-escolas-cad", "importar-turmas", nomeA).click();
+  mandar(chamadaSaida(VOLTA, [["1", "ECHO VOLTA TESTE"], ["2", "FOXTROT VOLTA TESTE", "REMANEJADO"]]));
+  await espera(function () { return painel().linhas.length === 1; }, 8000);
+  document.getElementById("impt-salvar").click();
+  r.semTabela = await espera(function () { var p = painel(); return /Pronto/.test(p.status) ? p : null; }, 15000)
+    .catch(painel);
+  r.semTabelaTurma = { criada: Boolean(turmaDoBanco(VOLTA)), alunos: alunosDe(turmaDoBanco(VOLTA)) };
+  document.getElementById("impt-cancelar").click();
+  window.__gaba.mb.saidas = guardaSaidas;
+  r.saidasSemTabela = { volta: saidasDoBanco(turmaDoBanco(VOLTA)), antes: antesDeSumir,
+    total: guardaSaidas.length, daDita: saidasDoBanco(turmaDoBanco(DITA)).length };
+
+  /* o download do app, lido sem sair da pagina: createObjectURL guarda o blob e o click do
+     <a> anota o nome. Vai aqui dentro porque so a funcao do motorista e serializada para a pagina. */
+  async function capturaDownload(fn) {
+    var pega = [], cria = URL.createObjectURL, clickOriginal = HTMLAnchorElement.prototype.click;
+    var tinhaPropria = Object.prototype.hasOwnProperty.call(HTMLAnchorElement.prototype, "click");
+    var erro = null;
+    URL.createObjectURL = function (blob) { pega.push({ blob: blob }); return cria.call(URL, blob); };
+    HTMLAnchorElement.prototype.click = function () {
+      if (pega.length) pega[pega.length - 1].nome = this.download;
+    };
+    try {
+      await fn();
+    } catch (err) {
+      erro = String((err && err.message) || err);
+    } finally {
+      URL.createObjectURL = cria;
+      if (tinhaPropria) HTMLAnchorElement.prototype.click = clickOriginal;
+      else delete HTMLAnchorElement.prototype.click;
+    }
+    var saida = { erro: erro, nome: (pega[0] || {}).nome || null, objeto: null };
+    if (pega.length) saida.objeto = JSON.parse(await pega[0].blob.text());
+    return saida;
+  }
+
+  /* a copia de seguranca: as saidas vao junto, e um banco sem a tabela nao derruba a copia.
+     feita com o banco ainda sem saidas, a copia em si e conferida so no fim do arquivo. */
+  window.__gaba.mb.saidas = null;
+  r.backupSemTabela = await capturaDownload(function () { return window.GabaBackup.exportar(); });
+  window.__gaba.mb.saidas = guardaSaidas;
+  r.backupComSaidas = await capturaDownload(function () { return window.GabaBackup.exportar(); });
+  var copia = r.backupComSaidas.objeto;
+  var envelopeSem = { gaba_backup: 1, data: new Date().toISOString(), tabelas: {
+    saidas: copia.tabelas.saidas.map(function (s) { return Object.assign({}, s, { chave: "n:9", numero: 9 }); }),
+    correcoes: copia.tabelas.correcoes } };
+  r.restaurarSemTabela = null;
+  window.__gaba.mb.saidas = null;
+  try {
+    r.restaurarSemTabela = await window.GabaBackup.restaurar(envelopeSem);
+  } catch (err) {
+    r.restaurarSemTabela = { erro: String(err.message || err) };
+  }
+  window.__gaba.mb.saidas = guardaSaidas;
+  r.saidasDepoisDeRestaurar = guardaSaidas.length;
+  /* a marca de "ultima copia" sai com as saidas contadas, e o teste nao deixa rastro no aparelho */
+  var marca = JSON.parse(localStorage.getItem(window.GabaSync.chaveLocal("gaba_ultimo_backup")) || "{}");
+  r.marcaDaCopia = { saidas: (marca.contagens || {}).saidas, temData: Boolean(marca.data) };
+  localStorage.removeItem(window.GabaSync.chaveLocal("gaba_ultimo_backup"));
+
   GabaEscolas.setFiltro("");
   await GabaApp.carregarTudo();
   return r;
@@ -2659,6 +2804,64 @@ var LISTA = {
       it.gemelas.quantidade === 2 && it.gemelas.entrouEmB &&
       it.gemelas.escolas[0] !== it.gemelas.escolas[1] &&
       it.gemelas.alunos.slice().sort().join("|") === "1:ALFA GEMEA TESTE|1:BRAVO GEMEA TESTE", it.gemelas);
+
+    console.log("\n== a situacao de quem ficou de fora fica guardada ==");
+    var DITA = "7º W (saidas teste)";
+    var SAIDAS_TOTAIS = 2; /* a primeira importacao desta pagina tambem deixou a sua saida guardada */
+    check("o painel avisa quantos nomes ficaram guardados na turma",
+      it.saidasPainel && /2 nomes anotados como fora da turma/.test((it.saidasPainel.avisos || []).join(" ")) &&
+      /2 saídas anotadas/.test(it.saidasPainel.resumo), [it.saidasPainel && it.saidasPainel.avisos,
+        it.saidasPainel && it.saidasPainel.resumo]);
+    check("cada saida vai para o banco com a chave da chamada, o motivo e o arquivo de onde veio",
+      it.saidasDoBanco.length === 2 &&
+      it.saidasDoBanco.map(function (s) { return [s.chave, s.numero, s.nome, s.situacao].join("|"); }).join(" ") ===
+        "n:2|2|BRAVO DITA TESTE|TRANSFERIDO n:3|3|CHARLIE DITA TESTE|NÃO FREQUENTA" &&
+      it.saidasDoBanco.every(function (s) { return s.fonte === it.fonteEsperada; }), it.saidasDoBanco);
+    check("o transferido nao vira aluno: a turma fica com os que ficaram",
+      it.alunosDaDita.join("|") === "1:ALFA DITA TESTE", it.alunosDaDita);
+    check("fechado o painel e recarregada a pagina, o card mostra o motivo de cada um",
+      /1 aluno · 2 ficaram de fora/.test((it.fichaDita || {}).texto || "") &&
+      (it.fichaDita || {}).fora.join(" ") === "2|BRAVO DITA TESTE|TRANSFERIDO 3|CHARLIE DITA TESTE|NÃO FREQUENTA" &&
+      it.fichaDita.selos.every(function (f) { return f === it.fonteEsperada; }), it.fichaDita);
+    check("a chamada seguinte com o aluno de volta apaga a saida dele e mantem a dos outros",
+      it.saidasDepoisDeVoltar.length === 1 && it.saidasDepoisDeVoltar[0].chave === "n:3" &&
+      /1 nome que voltou saiu da lista de quem ficou de fora/.test((it.voltou.avisos || []).join(" ")),
+      [it.saidasDepoisDeVoltar, it.voltou.avisos]);
+    check("ele volta para a lista de alunos e o card passa a contar um so",
+      it.alunosDepoisDeVoltar.join("|") === "1:ALFA DITA TESTE|2:BRAVO DITA TESTE|4:DELTA DITA TESTE" &&
+      /1 ficou de fora/.test((it.fichaDepoisDeVoltar || {}).texto || "") &&
+      (it.fichaDepoisDeVoltar || {}).fora.join("|") === "3|CHARLIE DITA TESTE|NÃO FREQUENTA",
+      [it.alunosDepoisDeVoltar, it.fichaDepoisDeVoltar]);
+    check("banco sem a tabela saidas ainda importa a turma e os alunos, e diz o que falta",
+      it.semTabelaTurma.criada && it.semTabelaTurma.alunos.join("|") === "1:ECHO VOLTA TESTE" &&
+      /Pronto/.test(it.semTabela.status) &&
+      it.semTabela.avisos.some(function (a) { return /não tem a tabela "saidas".*schema\.sql/.test(a); }),
+      [it.semTabelaTurma, it.semTabela.avisos]);
+    check("e nada e gravado as escondidas enquanto a tabela nao existe",
+      it.saidasSemTabela.volta.length === 0 && it.saidasSemTabela.total === SAIDAS_TOTAIS &&
+      it.saidasSemTabela.antes === SAIDAS_TOTAIS && it.saidasSemTabela.daDita === 1, it.saidasSemTabela);
+
+    console.log("\n== a copia de seguranca leva quem ficou de fora junto ==");
+    var bk = it.backupComSaidas.objeto || { tabelas: {} };
+    var bkSem = it.backupSemTabela.objeto || { tabelas: {} };
+    check("o arquivo da copia traz as saidas com numero, motivo e arquivo",
+      !it.backupComSaidas.erro && /^gaba-backup-\d{4}-\d\d-\d\d\.json$/.test(it.backupComSaidas.nome || "") &&
+      (bk.tabelas.saidas || []).length === SAIDAS_TOTAIS &&
+      bk.tabelas.saidas.every(function (s) { return s.chave && s.nome && s.situacao && s.fonte; }) &&
+      bk.tabelas.saidas.some(function (s) { return s.situacao === "NÃO FREQUENTA" && s.numero === 3; }),
+      [it.backupComSaidas.erro, it.backupComSaidas.nome, bk.tabelas.saidas]);
+    check("banco sem a tabela saidas nao derruba a copia: o resto sai inteiro e ela vem vazia",
+      !it.backupSemTabela.erro && (bkSem.tabelas.saidas || []).length === 0 &&
+      (bkSem.tabelas.alunos || []).length === (bk.tabelas.alunos || []).length &&
+      (bkSem.tabelas.turmas || []).length === (bk.tabelas.turmas || []).length &&
+      bkSem.tabelas.turmas.length > 0,
+      [it.backupSemTabela.erro, bkSem.tabelas.saidas, (bkSem.tabelas.turmas || []).length]);
+    check("e na restauracao a tabela que falta e contada como zero, sem parar as outras",
+      !it.restaurarSemTabela.erro && it.restaurarSemTabela.saidas === 0 &&
+      it.restaurarSemTabela.correcoes === 1 && it.saidasDepoisDeRestaurar === SAIDAS_TOTAIS,
+      [it.restaurarSemTabela, it.saidasDepoisDeRestaurar]);
+    check("a marca de ultima copia conta as saidas e o teste nao deixa nada no aparelho",
+      it.marcaDaCopia.temData && it.marcaDaCopia.saidas === SAIDAS_TOTAIS, it.marcaDaCopia);
 
     console.log("\n== o professor entra com e-mail e senha ==");
     var LG = { nome: "Profa. Ana (teste)", email: "ana.teste@example.test", senha: "gaba-teste-1",

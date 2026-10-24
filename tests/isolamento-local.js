@@ -18,6 +18,7 @@ function prepararPagina() {
   t.P = "22222222-0000-4000-8000-000000000001";
   t.T = "11111111-0000-4000-8000-000000000001";
   t.AL = "33333333-0000-4000-8000-000000000001";
+  t.S = "55555555-0000-4000-8000-000000000001";
   t.escola = "ESCOLA FICTICIA COMPARTILHADA";
   t.copy = function (x) { return JSON.parse(JSON.stringify(x)); };
   t.defer = function () {
@@ -158,7 +159,7 @@ function prepararPagina() {
     get: function () { return exportsDB; },
     set: function (api) {
       exportsDB = api;
-      ["listTurmas", "listAlunos", "listProvas", "fetchCorrecoes", "listEscolas", "listProvaVersoes"].forEach(function (m) {
+      ["listTurmas", "listAlunos", "listProvas", "fetchCorrecoes", "listEscolas", "listProvaVersoes", "listSaidas"].forEach(function (m) {
         api[m] = function () { return ler(m); };
       });
       t.upsertProvaVersoesReal = api.upsertProvaVersoes;
@@ -171,8 +172,12 @@ function prepararPagina() {
 async function executarCasos() {
   "use strict";
   var t = window.__isolamento;
-  function check(nome, ok) {
-    if (!ok) { t.falhou = nome; throw new Error("Falha: " + nome); }
+  function check(nome, ok, detalhe) {
+    /* detalhe so aceita booleanos, numeros e os ids ficticios: nada de nome, url ou stack */
+    if (!ok) {
+      t.falhou = nome + (detalhe === undefined ? "" : " [" + JSON.stringify(detalhe) + "]");
+      throw new Error("Falha: " + nome);
+    }
     t.casos.push(nome);
   }
   function el(id) { var x = document.getElementById(id); if (!x) throw new Error("controle de teste ausente"); return x; }
@@ -197,7 +202,9 @@ async function executarCasos() {
     t.dados[JSON.stringify([t.url, u.id])] = {
       listTurmas: [{ id: t.T, nome: "TURMA FICTICIA " + m, ano: "9", escola: t.escola, marcador: m }],
       listAlunos: [{ id: t.AL, turma_id: t.T, nome: "Aluno Ficticio " + m, numero: 1, marcador: m }],
-      listProvas: [prova(m)], fetchCorrecoes: [row(m)], listEscolas: [], listProvaVersoes: []
+      listProvas: [prova(m)], fetchCorrecoes: [row(m)], listEscolas: [], listProvaVersoes: [],
+      listSaidas: [{ id: t.S, turma_id: t.T, chave: "n:9", numero: 9, nome: "Aluno Ficticio " + m,
+        situacao: "Transferido", fonte: "CHAMADA FICTICIA " + m, marcador: m }]
     };
   }
   async function login(u) {
@@ -277,7 +284,7 @@ async function executarCasos() {
   }
   function semMarcadorA() {
     var a = GabaApp.estado, c = GabaCaderno.estado, s = GabaScanner.estado;
-    var rows = [].concat(a.turmas, a.alunos, a.provas, a.locais, a.correcoes, a.leituras, a.escolas,
+    var rows = [].concat(a.turmas, a.alunos, a.provas, a.locais, a.correcoes, a.leituras, a.escolas, a.saidas,
       c.provasLocais, c.provasSupabase, c.turmas, c.alunos, s.provas, s.alunos, s.resultados);
     return rows.every(function (r) { return !r || r.marcador !== "A"; }) &&
       document.body.textContent.indexOf("TURMA FICTICIA A") < 0 && document.body.textContent.indexOf("PROVA FICTICIA A") < 0 &&
@@ -306,6 +313,13 @@ async function executarCasos() {
   await login(t.A);
   var aVazio = await snapshot();
   check("login A nao herda fila, resultados ou provas guest", aVazio.fila.length === 0 && aVazio.resultados.length === 0 && aVazio.provas.length === 0 && t.enviados.length === enviadosAntes);
+  var cardA = el("lista-turmas").textContent;
+  check("pre-condicao A: a turma traz o aluno que saiu da sala",
+    (GabaApp.estado.saidas || []).some(function (s) { return s.marcador === "A"; }),
+    { ditas: (GabaApp.estado.saidas || []).length });
+  check("pre-condicao A: o card da turma mostra quem ficou de fora",
+    cardA.indexOf("ficou de fora") >= 0 && cardA.indexOf("Transferido") >= 0,
+    { noCard: cardA.indexOf("ficou de fora") >= 0, situacao: cardA.indexOf("Transferido") >= 0 });
   var a = await gravar("A"); locais("A");
   await primeUI("A");
   /* Gerar preview pode atualizar o lote e a configuração: guardar o conteúdo exato próprio. */
@@ -335,7 +349,7 @@ async function executarCasos() {
 
   /* App, caderno e scanner capturam A antes da troca; liberar depois de B carregar. */
   var gateLoad = t.defer(); gateLoad.userId = t.A.id;
-  gateLoad.metodos = ["listTurmas", "listAlunos", "listProvas", "fetchCorrecoes", "listProvaVersoes"];
+  gateLoad.metodos = ["listTurmas", "listAlunos", "listProvas", "fetchCorrecoes", "listProvaVersoes", "listSaidas"];
   t.gateLeitura = gateLoad;
   var loadA = GabaApp.carregarTudo();
   var loadCadernoA = GabaCaderno.carregarListas();
@@ -350,7 +364,11 @@ async function executarCasos() {
   await logout(); await login(t.B);
   t.gateLeitura = null; gateLoad.resolve();
   await Promise.all([loadA, loadCadernoA, loadScannerA]);
-  check("respostas tardias de carregarTudo/carregarListas A nao repovoam B", GabaApp.estado.professor.id === t.B.id && semMarcadorA() && somente(GabaApp.estado.provas, "B"));
+  var tardia = { professor: GabaApp.estado.professor.id, marcadorA: semMarcadorA(),
+    provas: (GabaApp.estado.provas || []).map(function (p) { return p.marcador; }).join(","),
+    saidas: (GabaApp.estado.saidas || []).map(function (s) { return s.marcador; }).join(",") };
+  check("respostas tardias de carregarTudo/carregarListas A nao repovoam B",
+    GabaApp.estado.professor.id === t.B.id && semMarcadorA() && somente(GabaApp.estado.provas, "B"), tardia);
   check("indice async tardio do scanner A nao restaura receita nem versoes em B", cachesLimpos());
 
   /* Somente B sobe; insertCorrecao REAL deve fixar o dono no payload. */

@@ -241,6 +241,23 @@ function check(nome, cond, detalhe) {
     GabaLista.avisoDeSaidas(1) === "1 aluno marcado como transferido, remanejado ou sem frequência ficou de fora." &&
     /3 alunos marcados/.test(GabaLista.avisoDeSaidas(3)), GabaLista.avisoDeSaidas(1));
 
+  console.log("\n== a chave que identifica quem saiu na turma ==");
+  check("com numero de chamada a chave e o numero, que e o que a chamada garante",
+    GabaLista.chaveDeSaida({ numero: 7, nome: "ALFA BRAVO" }) === "n:7" &&
+    GabaLista.chaveDeSaida({ numero: 7, nome: "DELTA ECO" }) === "n:7");
+  check("sem numero a chave e o nome sem acento, espaco nem caixa",
+    GabaLista.chaveDeSaida({ numero: null, nome: "MARÍA ÁNGELICA" }) === "a:mariaangelica" &&
+    GabaLista.chaveDeSaida({ numero: null, nome: "Maria  angelica" }) === "a:mariaangelica");
+  check("sem numero e sem nome nao ha chave: a linha nao tem o que gravar",
+    GabaLista.chaveDeSaida({ numero: null, nome: "   " }) === "" && GabaLista.chaveDeSaida(null) === "");
+  check("quem voltou cobre o numero E o nome, porque o numero de chamada pode ser outro",
+    GabaLista.chavesDeAtivo({ numero: 3, nome: "GOLF HOTEL" }).join("|") === "n:3|a:golfhotel");
+  var foraSemNumero = GabaLista.montar([["Nº", "Nome do Estudante", "Situação"],
+    ["", "SIERRA TANGO", "TRANSFERIDO"]]);
+  check("a saida que a chamada deixou sem numero sai pelo nome",
+    foraSemNumero.fora.length === 1 && foraSemNumero.fora[0].numero === null &&
+    GabaLista.chaveDeSaida(foraSemNumero.fora[0]) === "a:sierratango", foraSemNumero.fora);
+
   var secretaria = GabaLista.turmasDaPasta([{ rotulo: "escola.csv", arquivo: "escola.csv", linhas: [
     ["Turma", "Nº", "Nome do aluno"],
     ["7º A", "1", "ALFA UM"],

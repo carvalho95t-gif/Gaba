@@ -3,8 +3,15 @@
   "use strict";
 
   var STORAGE_KEY = "gaba_ultimo_backup";
-  var TABELAS = ["escolas", "turmas", "alunos", "provas", "prova_versoes", "correcoes", "professores"];
+  var TABELAS = ["escolas", "turmas", "alunos", "saidas", "provas", "prova_versoes", "correcoes", "professores"];
   var VERSAO = 1;
+
+  /* o banco do professor pode ainda nao ter uma tabela nova (o schema.sql nao foi rodado de
+     novo): a copia segue valendo para o resto, em vez de quebrar no meio */
+  function tabelaFalta(t, error) {
+    var m = String((error && error.message) || error || "");
+    return m.indexOf(t) >= 0 && /does not exist|42P01|PGRST205/i.test(m);
+  }
 
   function ultimoBackup() {
     try {
@@ -29,6 +36,7 @@
       var limite = t === "correcoes" ? 50000 : 10000;
       var { data, error } = await client.from(t).select("*").limit(limite);
       verificar();
+      if (tabelaFalta(t, error)) { dados[t] = []; continue; }
       if (error) throw new Error("Erro ao ler " + t + ": " + (error.message || error));
       dados[t] = data || [];
     }
@@ -83,7 +91,7 @@
     });
   }
 
-  var ORDEM_RESTAURAR = ["escolas", "professores", "turmas", "provas", "alunos", "prova_versoes", "correcoes"];
+  var ORDEM_RESTAURAR = ["escolas", "professores", "turmas", "provas", "alunos", "saidas", "prova_versoes", "correcoes"];
 
   async function restaurar(envelope, progresso) {
     var verificar = global.GabaSync.verificadorConta();
@@ -103,6 +111,7 @@
         verificar();
         var { error } = await client.from(t).upsert(lote, { onConflict: "id" }).select();
         verificar();
+        if (tabelaFalta(t, error)) { resultado[t] = 0; continue; }
         if (error) throw new Error("Erro ao restaurar " + t + ": " + (error.message || error));
         gravados += lote.length;
       }

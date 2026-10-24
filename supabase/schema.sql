@@ -30,6 +30,24 @@ create table if not exists public.alunos (
   created_at timestamptz not null default now()
 );
 
+-- Quem a chamada marcou como transferido, remanejado ou sem frequencia. Mora numa tabela a
+-- parte de proposito: a lista de alunos e o que vira caderno impresso e leitura de folha, e um
+-- aluno "transferido" dentro de alunos geraria folha em branco para quem nao esta mais na sala.
+-- A linha guarda o numero de chamada que a pessoa tinha, o motivo que a planilha trouxe e de
+-- qual arquivo veio, para o professor consultar depois de fechar o painel de importacao.
+-- chave = a identidade dentro da turma: "n:<numero>" quando a chamada deu numero, senao
+-- "a:<nome sem acento nem espaco>". numero pode ser nulo, por isso a unicidade e na chave.
+create table if not exists public.saidas (
+  id uuid primary key default gen_random_uuid(),
+  turma_id uuid not null references public.turmas(id) on delete cascade,
+  chave text not null,
+  numero integer,
+  nome text not null,
+  situacao text,
+  fonte text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.provas (
   id uuid primary key default gen_random_uuid(),
   titulo text not null,
@@ -116,6 +134,14 @@ alter table public.alunos add column if not exists telefone_responsavel text;
 alter table public.alunos add column if not exists tipo integer;
 alter table public.alunos add column if not exists created_at timestamptz not null default now();
 
+-- Tabela criada por uma versao antiga deste arquivo pode nao ter alguma dessas colunas.
+alter table public.saidas add column if not exists chave text;
+alter table public.saidas add column if not exists numero integer;
+alter table public.saidas add column if not exists nome text;
+alter table public.saidas add column if not exists situacao text;
+alter table public.saidas add column if not exists fonte text;
+alter table public.saidas add column if not exists created_at timestamptz not null default now();
+
 alter table public.provas add column if not exists titulo text;
 alter table public.provas add column if not exists disciplina text;
 alter table public.provas add column if not exists escola text;
@@ -167,6 +193,7 @@ alter table public.professores add column if not exists created_at timestamptz n
 alter table public.turmas add column if not exists dono uuid;
 alter table public.escolas add column if not exists dono uuid;
 alter table public.alunos add column if not exists dono uuid;
+alter table public.saidas add column if not exists dono uuid;
 alter table public.provas add column if not exists dono uuid;
 alter table public.correcoes add column if not exists dono uuid;
 alter table public.prova_versoes add column if not exists dono uuid;
@@ -175,6 +202,7 @@ alter table public.professores add column if not exists dono uuid;
 alter table public.turmas alter column dono set default auth.uid();
 alter table public.escolas alter column dono set default auth.uid();
 alter table public.alunos alter column dono set default auth.uid();
+alter table public.saidas alter column dono set default auth.uid();
 alter table public.provas alter column dono set default auth.uid();
 alter table public.correcoes alter column dono set default auth.uid();
 alter table public.prova_versoes alter column dono set default auth.uid();
@@ -346,6 +374,10 @@ begin
 end $$;
 
 create unique index if not exists alunos_turma_numero_uidx on public.alunos (turma_id, numero);
+-- Reimportar a mesma chamada atualiza o motivo em vez de acumular uma linha por leitura: a chave
+-- (numero de chamada, ou o nome quando a chamada nao deu numero) identifica dentro da turma.
+create index if not exists saidas_turma_id_idx on public.saidas (turma_id);
+create unique index if not exists saidas_turma_chave_uidx on public.saidas (turma_id, chave);
 create index if not exists correcoes_prova_id_idx on public.correcoes (prova_id);
 create index if not exists correcoes_aluno_id_idx on public.correcoes (aluno_id);
 create index if not exists correcoes_created_at_idx on public.correcoes (created_at desc);
@@ -422,7 +454,7 @@ declare
   t text;
   sem_dono boolean;
 begin
-  foreach t in array array['turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'prova_versoes', 'professores'] loop
+  foreach t in array array['turmas', 'escolas', 'alunos', 'saidas', 'provas', 'correcoes', 'prova_versoes', 'professores'] loop
     execute format('create index if not exists %I on public.%I (dono)', t || '_dono_idx', t);
     execute format('select exists (select 1 from public.%I where dono is null)', t) into sem_dono;
     if not sem_dono then
@@ -434,13 +466,14 @@ end $$;
 alter table public.turmas enable row level security;
 alter table public.escolas enable row level security;
 alter table public.alunos enable row level security;
+alter table public.saidas enable row level security;
 alter table public.provas enable row level security;
 alter table public.correcoes enable row level security;
 alter table public.professores enable row level security;
 alter table public.prova_versoes enable row level security;
 alter table public.descritores enable row level security;
 
--- Apaga toda regra antiga das 7 tabelas, tenha o nome que tiver: uma "using (true)"
+-- Apaga toda regra antiga das 8 tabelas, tenha o nome que tiver: uma "using (true)"
 -- esquecida abriria tudo de novo, porque regras do mesmo comando se somam.
 do $$
 declare
@@ -450,7 +483,7 @@ begin
     select schemaname, tablename, policyname
     from pg_policies
     where schemaname = 'public'
-      and tablename in ('turmas', 'escolas', 'alunos', 'provas', 'correcoes', 'professores', 'prova_versoes')
+      and tablename in ('turmas', 'escolas', 'alunos', 'saidas', 'provas', 'correcoes', 'professores', 'prova_versoes')
   loop
     execute format('drop policy %I on %I.%I', r.policyname, r.schemaname, r.tablename);
   end loop;
@@ -486,6 +519,20 @@ create policy "alunos_update_dono" on public.alunos for update to authenticated
   with check (dono = (select auth.uid())
     and exists (select 1 from public.turmas t where t.id = alunos.turma_id and t.dono = (select auth.uid())));
 create policy "alunos_delete_dono" on public.alunos for delete to authenticated
+  using (dono = (select auth.uid()));
+
+-- saidas tem o mesmo pai de alunos: so entra linha numa turma de quem grava, e o motivo da saida
+-- nao pode ser lido por outro professor porque traz nome de estudante.
+create policy "saidas_select_dono" on public.saidas for select to authenticated
+  using (public.gaba_ve(dono));
+create policy "saidas_insert_dono" on public.saidas for insert to authenticated
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.turmas t where t.id = saidas.turma_id and t.dono = (select auth.uid())));
+create policy "saidas_update_dono" on public.saidas for update to authenticated
+  using (dono = (select auth.uid()))
+  with check (dono = (select auth.uid())
+    and exists (select 1 from public.turmas t where t.id = saidas.turma_id and t.dono = (select auth.uid())));
+create policy "saidas_delete_dono" on public.saidas for delete to authenticated
   using (dono = (select auth.uid()));
 
 -- provas.turma_id e referencia solta (a turma pode ter sido apagada): nao entra na checagem.
@@ -538,8 +585,8 @@ drop policy if exists "descritores_select_anon" on public.descritores;
 
 create policy "descritores_select_anon" on public.descritores for select to anon, authenticated using (true);
 
-revoke all on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes from anon, public;
+revoke all on public.turmas, public.escolas, public.alunos, public.saidas, public.provas, public.correcoes, public.professores, public.prova_versoes from anon, public;
 
 grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.provas, public.correcoes, public.professores, public.prova_versoes to authenticated;
+grant select, insert, update, delete on public.turmas, public.escolas, public.alunos, public.saidas, public.provas, public.correcoes, public.professores, public.prova_versoes to authenticated;
 grant select on public.descritores to anon, authenticated;

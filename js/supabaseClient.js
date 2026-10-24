@@ -531,7 +531,7 @@
       verificar();
       var resposta = await client.from("alunos").upsert(lote, { onConflict: "turma_id,numero" }).select();
       verificar();
-      if (resposta.error && faltaColuna(resposta.error, "tipo")) {
+      if (resposta.error && faltaNoBanco(resposta.error, "tipo")) {
         /* o banco do professor ainda pode nao ter rodado a migracao do tipo */
         lote.forEach(function (l) { delete l.tipo; });
         verificar();
@@ -545,9 +545,109 @@
     return { gravados: gravados.length, problemas: problemas, alunos: gravados };
   }
 
-  function faltaColuna(error, coluna) {
+  function faltaNoBanco(error, nome) {
     var m = String((error && error.message) || error || "");
-    return m.indexOf(coluna) >= 0 && /does not exist|PGRST204|42703/i.test(m);
+    return m.indexOf(nome) >= 0 && /does not exist|PGRST204|42703/i.test(m);
+  }
+
+  /* ------------------------------------------- quem saiu da turma, com o motivo
+
+     A tabela e a parte visivel de "ficaram de fora": o professor precisa saber quem e por que,
+     mesmo depois de fechar o painel. Ela fica fora de alunos de proposito: a lista de alunos e o
+     que vira caderno impresso, e um transferido ali dentro geraria folha em branco para quem nao
+     esta mais na sala. O banco do professor pode ainda nao ter a tabela (schema.sql nao rodado):
+     aqui isso e um aviso, nao um erro, e a importacao dos alunos continua. */
+
+  async function buscaSaidas(client, turmaId) {
+    var out = { dados: [], semTabela: false };
+    var query = client.from("saidas").select("*");
+    if (turmaId) query = query.eq("turma_id", turmaId);
+    var { data, error } = await query.order("numero").limit(2000);
+    if (error) {
+      if (faltaNoBanco(error, "saidas")) return out;
+      throw error;
+    }
+    out.dados = (data || []).map(function (s) {
+      return Object.assign({}, s, { numero: s.numero != null ? s.numero : "" });
+    });
+    return out;
+  }
+
+  async function listSaidas(turmaId) {
+    var client = getClient();
+    if (!client) return [];
+    return (await buscaSaidas(client, turmaId)).dados;
+  }
+
+  /* saidas: a lista lida agora; ativos: os alunos que ficaram na turma, para apagar a linha de
+     quem voltou; a chave do aluno ativo e o numero ou o nome, entao quem voltou com outro numero
+     de chamada tambem sai da lista. */
+  async function salvarSaidas(turmaId, opc) {
+    var verificar = global.GabaSync.verificadorConta();
+    var client = getClient();
+    if (!client) throw new Error("Supabase não configurado.");
+    if (!eUuid(turmaId)) throw new Error("Escolha primeiro a turma que vai receber a lista.");
+    var L = global.GabaLista;
+    var resultado = { gravadas: 0, apagadas: 0, semTabela: false };
+    var novas = {};
+    var linhas = [];
+    ((opc || {}).saidas || []).forEach(function (s) {
+      var chave = L.chaveDeSaida(s);
+      if (!chave || novas[chave]) return;
+      novas[chave] = true;
+      var numero = parseInt(s.numero, 10);
+      linhas.push({
+        turma_id: turmaId,
+        chave: chave,
+        numero: numero > 0 ? numero : null,
+        nome: String(s.nome || "").trim().slice(0, 200),
+        situacao: String(s.situacao || "").trim().slice(0, 120) || null,
+        fonte: String(s.fonte || "").trim().slice(0, 160) || null
+      });
+    });
+    var ativos = {};
+    var temAtivo = false;
+    ((opc || {}).ativos || []).forEach(function (a) {
+      L.chavesDeAtivo(a).forEach(function (k) { ativos[k] = true; temAtivo = true; });
+    });
+    if (temAtivo) {
+      var antigas = await buscaSaidas(client, turmaId);
+      verificar();
+      if (antigas.semTabela) {
+        resultado.semTabela = true;
+        return resultado;
+      }
+      var ides = antigas.dados.filter(function (r) {
+        return ativos[r.chave] && !novas[r.chave];
+      }).map(function (r) { return r.id; });
+      if (ides.length) {
+        var apag = await client.from("saidas").delete().in("id", ides);
+        verificar();
+        if (apag.error) {
+          if (faltaNoBanco(apag.error, "saidas")) {
+            resultado.semTabela = true;
+            return resultado;
+          }
+          throw apag.error;
+        }
+        resultado.apagadas = ides.length;
+      }
+    }
+    for (var i = 0; i < linhas.length; i += 200) {
+      var lote = linhas.slice(i, i + 200);
+      verificar();
+      var resposta = await client.from("saidas").upsert(lote, { onConflict: "turma_id,chave" }).select();
+      verificar();
+      if (resposta.error) {
+        if (faltaNoBanco(resposta.error, "saidas")) {
+          resultado.semTabela = true;
+          return resultado;
+        }
+        throw resposta.error;
+      }
+      resultado.gravadas += (resposta.data || []).length;
+    }
+    return resultado;
   }
 
   async function salvarProva(prova) {
@@ -640,6 +740,8 @@
     excluirTurma: excluirTurma,
     salvarAluno: salvarAluno,
     salvarAlunosEmLote: salvarAlunosEmLote,
+    listSaidas: listSaidas,
+    salvarSaidas: salvarSaidas,
     excluirAluno: excluirAluno,
     salvarProva: salvarProva,
     excluirProva: excluirProva,

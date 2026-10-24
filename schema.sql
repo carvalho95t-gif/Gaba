@@ -17,6 +17,9 @@
 --   turmas        — nome, ano, escola, professor_id
 --   alunos        — turma_id, matricula, nome, numero, tipo, responsavel,
 --                   email_responsavel, telefone_responsavel
+--   saidas        — turma_id, chave, numero, nome, situacao, fonte: quem a chamada
+--                   marcou como transferido/remanejado/sem frequencia. Nao entra em
+--                   alunos de proposito: aluno e o que vira caderno impresso
 --   provas        — gabarito, questoes (jsonb com enunciado, alternativas,
 --                   gabarito, peso, descritor, habilidade_bncc), pesos,
 --                   descritores, tipos, modo (fixa|turma|aluno), num_tipos,

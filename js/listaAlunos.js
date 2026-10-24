@@ -87,6 +87,27 @@
       : n + " alunos marcados como transferidos, remanejados ou sem frequência ficaram de fora.";
   }
 
+  /* A identidade de quem saiu dentro da turma: o numero de chamada quando a planilha trouxe,
+     senao o nome, que sem numero e a unica identidade que existe. E a chave do upsert em saidas:
+     sem ela, reimportar a mesma chamada criaria uma segunda copia da mesma pessoa. */
+  function chaveDeSaida(f) {
+    var n = parseInt(f && f.numero, 10);
+    if (n > 0) return "n:" + n;
+    var k = limpo((f && f.nome) || "");
+    return k ? "a:" + k : "";
+  }
+
+  /* as chaves que um aluno ativo cobre na mesma turma: o nome entra junto com o numero porque
+     quem voltou pode ter mudado de numero de chamada, e a saida antiga dele tem que sumir */
+  function chavesDeAtivo(a) {
+    var out = [];
+    var n = parseInt(a && a.numero, 10);
+    if (n > 0) out.push("n:" + n);
+    var k = limpo((a && a.nome) || "");
+    if (k) out.push("a:" + k);
+    return out;
+  }
+
   var AVISO_SEM_CABECALHO = "A lista não tem linha de cabeçalho: usei a primeira coluna com números como Nº e a coluna de texto mais longo como nome.";
 
   function ehRodape(texto) {
@@ -500,6 +521,8 @@
     tipoDe: tipoDe,
     emailValido: emailValido,
     avisoDeSaidas: avisoDeSaidas,
+    chaveDeSaida: chaveDeSaida,
+    chavesDeAtivo: chavesDeAtivo,
     limpo: limpo
   };
 })(typeof window !== "undefined" ? window : globalThis);

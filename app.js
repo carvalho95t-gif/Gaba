@@ -7,6 +7,7 @@
   var app = {
     turmas: [],
     alunos: [],
+    saidas: [],
     provas: [],
     locais: [],
     correcoes: [],
@@ -188,6 +189,11 @@
       app.leituras = [];
     }
     if (dbOk()) {
+      /* saidas sai junto, mas fora do lote: quem ficou de fora e um detalhe da turma e nao pode
+         custar as turmas, os alunos e as provas do painel quando o banco ainda nao tem a tabela. */
+      var saidasPronta = GabaDB.listSaidas
+        ? GabaDB.listSaidas().then(function (linhas) { return linhas || []; }, function () { return []; })
+        : Promise.resolve([]);
       try {
         var tudo = await Promise.all([
           GabaDB.listTurmas(), GabaDB.listAlunos(), GabaDB.listProvas(), GabaDB.fetchCorrecoes()
@@ -201,9 +207,13 @@
         if (!vigente()) return;
         aviso(mensagemErro(err), "erro");
       }
+      var sd = await saidasPronta;
+      if (!vigente()) return;
+      app.saidas = sd;
     } else {
       app.turmas = [];
       app.alunos = [];
+      app.saidas = [];
       app.provas = [];
       app.correcoes = [];
     }
@@ -587,7 +597,7 @@
 
   /* ------------------------------------------------ importar a lista de chamada inteira */
 
-  var imp = { alunos: [], problemas: [], fonte: "", colunas: null, puladas: 0, salvo: 0 };
+  var imp = { alunos: [], fora: [], problemas: [], fonte: "", colunas: null, puladas: 0, salvo: 0 };
 
   /* o que o professor abriu na aba Ajustes: nada disso sobrevive a uma troca de aba */
   var ajustes = { contaAberta: false, credencialAberta: false };
@@ -662,6 +672,7 @@
     var escolha = avaliados.length ? L.melhorDasListas(avaliados) : null;
     if (!escolha) {
       imp.alunos = [];
+      imp.fora = [];
       imp.problemas = [];
       imp.fonte = "";
       imp.colunas = null;
@@ -672,6 +683,9 @@
       return;
     }
     imp.alunos = escolha.lista.alunos;
+    imp.fora = (escolha.lista.fora || []).map(function (f) {
+      return Object.assign({ fonte: escolha.fonte || "" }, f);
+    });
     imp.problemas = escolha.lista.problemas.slice();
     imp.fonte = escolha.fonte || "";
     imp.colunas = escolha.lista.colunas || null;
@@ -750,10 +764,15 @@
       var r = await GabaDB.salvarAlunosEmLote(turmaId, imp.alunos);
       if (versao !== versaoConta) return;
       imp.salvo = r.gravados;
+      var sd = GabaDB.salvarSaidas && (imp.fora.length || saidasDaTurma(turmaId).length)
+        ? await GabaDB.salvarSaidas(turmaId, { saidas: imp.fora, ativos: imp.alunos })
+        : null;
+      if (versao !== versaoConta) return;
       await carregarTudo();
       if (versao !== versaoConta) return;
       var sobra = imp.alunos.length - r.gravados;
       (r.problemas || []).forEach(function (p) { imp.problemas.push(p); });
+      avisosDeSaidas(sd).forEach(function (a) { imp.problemas.push(a); });
       desenharPrevia(r.gravados ? "" : "Nada foi salvo.");
       impStatus(plural(r.gravados, "aluno salvo", "alunos salvos") + " em \"" + nomeTurma(turmaId) + "\"" +
         (sobra ? ", " + sobra + (sobra === 1 ? " ficou" : " ficaram") + " de fora" : "") +
@@ -774,6 +793,7 @@
 
   function limparLista() {
     imp.alunos = [];
+    imp.fora = [];
     imp.problemas = [];
     imp.fonte = "";
     imp.colunas = null;
@@ -891,6 +911,31 @@
     link.download = "Gaba-ficaram-de-fora-" + String(impt.arquivo || "chamada").replace(/\.[a-z0-9]{2,4}$/i, "") + ".csv";
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
+  /* quem a chamada marcou como fora da turma e ficou guardado no banco: a lista continua visivel
+     depois de fechar o painel, e esses nomes nunca entram no caderno porque nao sao mais alunos */
+  function saidasDaTurma(id) {
+    return app.saidas.filter(function (s) { return String(s.turma_id) === String(id); })
+      .sort(function (a, b) { return (Number(a.numero) || 0) - (Number(b.numero) || 0); });
+  }
+
+  /* as frases que a gravacao das saidas devolve, iguais nas duas entradas de importacao */
+  function avisosDeSaidas(sd) {
+    if (!sd || !sd.gravadas && !sd.apagadas && !sd.semTabela) return [];
+    if (sd.semTabela) {
+      return ['O banco ainda não tem a tabela "saidas" (rode supabase/schema.sql): ' +
+        "quem ficou de fora aparece aqui, mas não fica guardado na turma."];
+    }
+    var out = [];
+    if (sd.gravadas) {
+      out.push(plural(sd.gravadas, "nome anotado como fora da turma", "nomes anotados como fora da turma") + ".");
+    }
+    if (sd.apagadas) {
+      out.push(plural(sd.apagadas, "nome que voltou saiu", "nomes que voltaram saíram") +
+        " da lista de quem ficou de fora.");
+    }
+    return out;
   }
 
   function desenharImportacaoTurmas() {
@@ -1060,6 +1105,7 @@
     var novas = 0;
     var existentes = 0;
     var gravados = 0;
+    var somas = { gravadas: 0, apagadas: 0, semTabela: false };
     var problemas = [];
     var atual = "";
     try {
@@ -1084,6 +1130,21 @@
           gravados += r.gravados;
           (r.problemas || []).forEach(function (p) { problemas.push(x.nome + ": " + p); });
         }
+        /* o motivo de quem ficou de fora fica anotado na turma; sem linha nova e sem linha
+           conhecida, nao ha o que gravar nem o que conferir */
+        var fora = x.t.fora || [];
+        if (GabaDB.salvarSaidas && (fora.length || saidasDaTurma(id).length)) {
+          var sd = await GabaDB.salvarSaidas(id, {
+            saidas: fora.map(function (f) {
+              return Object.assign({ fonte: x.t.fonte || impt.arquivo }, f);
+            }),
+            ativos: x.t.alunos
+          });
+          if (versao !== versaoConta) return;
+          somas.gravadas += sd.gravadas;
+          somas.apagadas += sd.apagadas;
+          if (sd.semTabela) somas.semTabela = true;
+        }
       }
     } catch (err) {
       if (versao !== versaoConta) return;
@@ -1096,12 +1157,14 @@
       return;
     }
     if (window.GabaEscolas) GabaEscolas.setFiltro(escola);
+    avisosDeSaidas(somas).forEach(function (a) { problemas.push(a); });
     var partes = [];
     if (novas) partes.push(plural(novas, "turma nova", "turmas novas"));
     if (existentes) partes.push(plural(existentes, "já existia", "já existiam"));
     impt.feito = {
       resumo: "<strong>" + esc(partes.join(", ")) + "</strong> em \"<em>" + esc(escola) + "</em>\"" +
-        (gravados ? " &middot; " + plural(gravados, "aluno salvo", "alunos salvos") : ""),
+        (gravados ? " &middot; " + plural(gravados, "aluno salvo", "alunos salvos") : "") +
+        (somas.gravadas ? " &middot; " + plural(somas.gravadas, "saída anotada", "saídas anotadas") : ""),
       avisos: problemas,
       status: "Pronto. As turmas já aparecem na lista abaixo e o topo mostra só esta escola.",
       tipo: "ok"
@@ -1405,18 +1468,27 @@
     box.innerHTML = visiveis.map(function (t) {
       var alunos = app.alunos.filter(function (a) { return String(a.turma_id) === String(t.id); })
         .sort(function (a, b) { return (Number(a.numero) || 0) - (Number(b.numero) || 0); });
+      var fora = saidasDaTurma(t.id);
       var roster = alunos.map(function (a) {
         return '<div class="linha-aluno"><span>' + esc(a.numero || "-") + "</span><span>" + esc(a.nome) +
           "</span><span>" + botao("apagar-aluno", a.id, "Apagar", "btn-ghost pequeno") + "</span></div>";
       }).join("");
+      var foraRoster = fora.map(function (s) {
+        return '<div class="linha-aluno"><span>' + esc(s.numero || "-") + "</span><span>" + esc(s.nome) +
+          '</span><span><span class="badge badge-off" title="' + esc(s.fonte || "") + '">' +
+          esc(s.situacao || "fora da turma") + "</span></span></div>";
+      }).join("");
       return '<div class="item-lista"><div class="item-cab"><strong>' + esc(t.nome) + "</strong>" +
         "<span>" + esc(t.ano || "") + "</span>" +
         (mostrarEscola ? "<span>" + esc(rotuloEscola(t)) + "</span>" : "") +
-        "<span>" + plural(alunos.length, "aluno", "alunos") + "</span></div>" +
+        "<span>" + plural(alunos.length, "aluno", "alunos") +
+        (fora.length ? " &middot; " + plural(fora.length, "ficou de fora", "ficaram de fora") : "") +
+        "</span></div>" +
         '<div class="item-acoes item-acoes-linha">' + botao("renomear-turma", t.id, "Renomear") +
         botao("escola-turma", t.id, "Mudar escola") +
         botao("apagar-turma", t.id, "Apagar", "btn-danger") + "</div>" +
         "<details><summary>Ver alunos</summary>" + (roster || '<p class="text-muted">Nenhum aluno ainda.</p>') +
+        (fora.length ? '<p class="text-muted">Fora da turma: n&atilde;o entram no caderno.</p>' + foraRoster : "") +
         "</details></div>";
     }).join("");
   }
