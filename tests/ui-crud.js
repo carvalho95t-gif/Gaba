@@ -31,8 +31,9 @@ function vigiarErros() {
 }
 
 function instalarFake(cfg) {
-  var CHAVES = ["gaba_supabase_url", "gaba_supabase_key", "gaba_supabase_anon_key",
-    "gaba_escolas_registro", "gaba_professor_id", "gaba_professor_nome", "gaba_professor_email"];
+  var CHAVES = ["gaba_supabase_url", "gaba_supabase_key", "gaba_supabase_anon_key"].concat(
+    ["gaba_escolas_registro", "gaba_professor_id", "gaba_professor_nome", "gaba_professor_email"]
+      .map(function (k) { return GabaSync.chaveLocal(k); }));
   var antes = {};
   CHAVES.forEach(function (k) { antes[k] = localStorage.getItem(k); });
   var estado = {
@@ -835,7 +836,7 @@ async function dirigirEscolas(marcos) {
     var t = tela();
     return t.linhas.indexOf(marcos.turmaSerra) >= 0 && t.linhas.indexOf(marcos.turmaAnhanguera) < 0 ? t : null;
   }, 8000).catch(tela);
-  r.chaveGuardada = localStorage.getItem("gaba_escola_filtro");
+  r.chaveGuardada = localStorage.getItem(GabaSync.chaveLocal("gaba_escola_filtro"));
 
   sel.value = ANHANGUERA;
   sel.dispatchEvent(new Event("change", { bubbles: true }));
@@ -861,7 +862,7 @@ async function dirigirEscolas(marcos) {
     var t = tela();
     return t.filtro === "" && t.linhas.length >= 4 ? t : null;
   }, 8000).catch(tela);
-  r.filtroDepois = { guardado: localStorage.getItem("gaba_escola_filtro"), escondido: box.hidden };
+  r.filtroDepois = { guardado: localStorage.getItem(GabaSync.chaveLocal("gaba_escola_filtro")), escondido: box.hidden };
 
   /* 5. o caderno pega a escola da turma, mas nunca por cima do que foi digitado */
   await GabaCaderno.carregarListas();
@@ -888,7 +889,7 @@ async function dirigirEscolas(marcos) {
   r.digitadoSemTurmaComEscola = campoEscola.value;
 
   /* 6. a folha impressa leva a escola que estava na caixa */
-  var cfg = JSON.parse(localStorage.getItem("gaba_caderno_cfg") || "{}");
+  var cfg = JSON.parse(localStorage.getItem(GabaSync.chaveLocal("gaba_caderno_cfg")) || "{}");
   r.cfgEscola = cfg.escola;
   r.cfgAuto = cfg.escolaAuto;
   return r;
@@ -1303,7 +1304,7 @@ function sondarVazamento(idLocal) {
 
 async function apagarLeituraDeTeste(ids) {
   var db = await new Promise(function (resolve, reject) {
-    var req = indexedDB.open("gaba-omr", 2);
+    var req = indexedDB.open(GabaSync.nomeBanco(), 2);
     req.onsuccess = function () { resolve(req.result); };
     req.onerror = function () { reject(req.error); };
   });
@@ -1323,7 +1324,7 @@ function restaurar() {
   var g = window.__gaba;
   var r = {};
   window.fetch = g.fetchOriginal;
-  localStorage.removeItem("gaba_escola_filtro");
+  localStorage.removeItem(GabaSync.chaveLocal("gaba_escola_filtro"));
   Object.keys(localStorage).filter(function (k) {
     return /^sb-.*-auth-token$/.test(k);
   }).forEach(function (k) { localStorage.removeItem(k); });
@@ -1336,8 +1337,8 @@ function restaurar() {
   r.url = localStorage.getItem("gaba_supabase_url");
   r.key = localStorage.getItem("gaba_supabase_key");
   r.anon = localStorage.getItem("gaba_supabase_anon_key");
-  r.escolaFiltro = localStorage.getItem("gaba_escola_filtro");
-  r.escolasRegistro = localStorage.getItem("gaba_escolas_registro");
+  r.escolaFiltro = localStorage.getItem(GabaSync.chaveLocal("gaba_escola_filtro"));
+  r.escolasRegistro = localStorage.getItem(GabaSync.chaveLocal("gaba_escolas_registro"));
   r.tokenParado = Object.keys(localStorage).filter(function (k) {
     return /^sb-.*-auth-token$/.test(k);
   }).length;
@@ -1412,7 +1413,7 @@ async function dirigirEscada(marcos) {
   }, 8000).catch(topo);
   r.filtroJa = topo().valor;
   r.escolaPreenchida = document.getElementById("turma-escola").value;
-  r.registro = localStorage.getItem("gaba_escolas_registro");
+  r.registro = localStorage.getItem(GabaSync.chaveLocal("gaba_escolas_registro"));
 
   /* 2. o mesmo nome de novo nao vira uma segunda escola */
   preenche("escola-nome", NOVA.toUpperCase());
@@ -1477,7 +1478,7 @@ async function dirigirEscada(marcos) {
 
   /* o que o banco tem, o aparelho herda: a escola criada continua no cadastro */
   r.cadastroFinal = cards();
-  r.registroFinal = localStorage.getItem("gaba_escolas_registro");
+  r.registroFinal = localStorage.getItem(GabaSync.chaveLocal("gaba_escolas_registro"));
   GabaEscolas.setFiltro("");
   return r;
 }
@@ -1722,6 +1723,8 @@ async function dirigirImportarTurmas(marcos) {
 }
 
 async function dirigirDicas() {
+  GabaEscolas.adicionar("ESCOLA FICTÍCIA DAS DICAS");
+  await GabaApp.carregarTudo();
   var r = {};
   var box = document.getElementById("gaba-dica");
   var tab = document.querySelector('.tabs-polegar [data-tab="dashboard"]');
@@ -1803,6 +1806,8 @@ async function dirigirDicas() {
   r.permanece = aberta();
   tab.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   tab.removeAttribute("aria-describedby");
+  GabaEscolas.remover("ESCOLA FICTÍCIA DAS DICAS");
+  await GabaApp.carregarTudo();
   return r;
 }
 
@@ -1856,9 +1861,9 @@ async function dirigirLogin(marcos) {
   r.criada = await espera(function () { return tela().logado ? tela() : null; }, 12000).catch(tela);
   r.professorNoBanco = window.__gaba.mb.professores.map(function (p) { return p.nome + " <" + p.email + ">"; });
   r.guardadoNoAparelho = {
-    id: localStorage.getItem("gaba_professor_id"),
-    nome: localStorage.getItem("gaba_professor_nome"),
-    email: localStorage.getItem("gaba_professor_email")
+    id: localStorage.getItem(GabaSync.chaveLocal("gaba_professor_id")),
+    nome: localStorage.getItem(GabaSync.chaveLocal("gaba_professor_nome")),
+    email: localStorage.getItem(GabaSync.chaveLocal("gaba_professor_email"))
   };
   r.depoisDeEntrar = tela();
 

@@ -7,6 +7,17 @@
   var FPS_ALVO = 8;
   var LEITURAS_IGUAIS = 2;
   var PAUSA_APOS_LER = 1800;
+  var geracaoConta = 0;
+  var sessaoCamera = 0;
+  var frameId = null;
+
+  function snapshotConta() {
+    return { conta: global.GabaSync.contaAtual(), geracao: geracaoConta };
+  }
+
+  function contaValida(s) {
+    return s.conta === global.GabaSync.contaAtual() && s.geracao === geracaoConta;
+  }
 
   var estado = {
     provas: [],
@@ -76,6 +87,7 @@
   }
 
   function montarIndice() {
+    var conta = snapshotConta();
     var prova = estado.prova;
     if (!prova) return Promise.resolve();
     var V = global.GabaVersoes;
@@ -107,6 +119,7 @@
     if (!(prova.questoes || []).length && global.GabaDB && GabaDB.isConfigured() && GabaDB.listProvaVersoes) {
       /* outro aparelho imprimiu esta prova: as versoes vindas do banco tem a chave de cada aluno */
       return GabaDB.listProvaVersoes(prova.id).then(function (itens) {
+        if (!contaValida(conta)) return;
         if (!itens || !itens.length) {
           indexar([], receita, "prova do banco sem versoes impressas");
           return;
@@ -120,6 +133,7 @@
           embaralharAlternativas: prova.embaralhar_alternativas !== false
         }, "versoes do banco (lote " + String(itens[0].lote_id || "?") + ")");
       }).catch(function (err) {
+        if (!contaValida(conta)) return;
         status("Nao deu para ler as versoes do banco: " + (err && err.message ? err.message : err), "erro");
         indexar([], receita, "banco indisponivel");
       });
@@ -165,8 +179,11 @@
 
   function worker() {
     if (estado.worker) return estado.worker;
+    var conta = snapshotConta();
+    var sessao = sessaoCamera;
     var w = new Worker("js/omrWorker.js");
     w.onmessage = function (event) {
+      if (!contaValida(conta) || sessao !== sessaoCamera || estado.worker !== w) return;
       var msg = event.data || {};
       if (msg.type === "ready") {
         estado.engine = msg.engine;
@@ -178,10 +195,11 @@
         status("Erro no motor OMR: " + msg.error, "erro");
       } else if (msg.type === "result") {
         estado.pendente = false;
-        if (msg.requestId === estado.requestId) tratar(msg);
+        if (estado.rodando && msg.requestId === estado.requestId) tratar(msg);
       }
     };
     w.onerror = function (e) {
+      if (!contaValida(conta) || sessao !== sessaoCamera || estado.worker !== w) return;
       estado.pendente = false;
       status("Falha no worker: " + (e && e.message ? e.message : "erro"), "erro");
     };
@@ -336,18 +354,32 @@
 
   function salvar(registro) {
     if (!global.GabaSync) return;
+    var conta = snapshotConta();
     GabaSync.enqueue(registro).then(function () {
+      if (!contaValida(conta)) return;
       return GabaSync.flush();
     }).then(function (f) {
+      if (!contaValida(conta)) return;
       var fila = $("scan-fila");
       return GabaSync.countPending().then(function (n) {
+        if (!contaValida(conta)) return;
         if (fila) fila.textContent = String(n);
         if (f && f.reason === "unauthenticated") status("Salvo no aparelho: entre na aba Ajustes para isso subir para o banco.", "erro");
         else if (f && f.failed) status("Salvo no aparelho; " + f.failed + " nao subiu para o banco.", "erro");
       });
     }).catch(function (err) {
+      if (!contaValida(conta)) return;
       status("Nao conseguiu salvar: " + (err && err.message ? err.message : err), "erro");
     });
+  }
+
+  function atualizarFila() {
+    var conta = snapshotConta();
+    return GabaSync.countPending().then(function (n) {
+      if (!contaValida(conta)) return;
+      var fila = $("scan-fila");
+      if (fila) fila.textContent = String(n);
+    }).catch(function () { /* uma notificacao antiga nao deve desenhar a fila antiga */ });
   }
 
   function desenharOverlay(corners) {
@@ -403,55 +435,87 @@
   }
 
   var ultimoFrame = 0;
-  function laco() {
-    if (!estado.rodando) return;
+  function laco(conta, sessao) {
+    if (!contaValida(conta) || sessao !== sessaoCamera || !estado.rodando) return;
     var agora = Date.now();
     if (!estado.pendente && agora - ultimoFrame > 1000 / FPS_ALVO) {
       ultimoFrame = agora;
       try { enviarFrame(); } catch (err) { status("Frame falhou: " + (err.message || err), "erro"); }
     }
-    global.requestAnimationFrame(laco);
+    frameId = global.requestAnimationFrame(function () { laco(conta, sessao); });
   }
 
   async function iniciar() {
+    if (estado.rodando) return;
+    var conta = snapshotConta();
     var prova = opcoesProva();
     if (!prova) { status("Escolha a prova antes de ligar a câmera.", "erro"); return; }
+    parar();
+    var sessao = sessaoCamera;
+    function ativa() { return contaValida(conta) && sessao === sessaoCamera; }
     estado.prova = prova;
-    await carregarAlunos();
-    await montarIndice();
-    if (!estado.totalQuestoes || !Object.keys(estado.porAluno).length) {
-      status("Não deu para montar as versões desta prova (" + (estado.fonte || "sem índice") +
-        "). Abra a aba Cadernos, importe o documento e faça a prévia do lote primeiro.", "erro");
-      return;
-    }
+    var stream = null;
     try {
-      estado.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
-        audio: false
-      });
+      await carregarAlunos();
+      if (!ativa()) return;
+      await montarIndice();
+      if (!ativa()) return;
+      if (!estado.totalQuestoes || !Object.keys(estado.porAluno).length) {
+        status("Não deu para montar as versões desta prova (" + (estado.fonte || "sem índice") +
+          "). Abra a aba Cadernos, importe o documento e faça a prévia do lote primeiro.", "erro");
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
+          audio: false
+        });
+      } catch (err) {
+        if (!ativa()) return;
+        status("A câmera não abriu: " + (err && err.message ? err.message : err) +
+          " (o navegador só libera câmera em HTTPS ou localhost).", "erro");
+        return;
+      }
+      if (!ativa()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      estado.stream = stream;
+      var video = $("scan-video");
+      video.srcObject = stream;
+      await video.play();
+      if (!ativa()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      estado.rodando = true;
+      worker();
+      var b1 = $("scan-iniciar");
+      var b2 = $("scan-parar");
+      if (b1) b1.disabled = true;
+      if (b2) b2.disabled = false;
+      var nVersoes = Object.keys(estado.versoes).length;
+      status("Procurando folha... " + estado.totalQuestoes + " questões, " +
+        nVersoes + (nVersoes === 1 ? " versão e " : " versões e ") + estado.alunos.length +
+        (estado.alunos.length === 1 ? " aluno" : " alunos") + " (" + estado.fonte + ").");
+      frameId = global.requestAnimationFrame(function () { laco(conta, sessao); });
     } catch (err) {
-      status("A câmera não abriu: " + (err && err.message ? err.message : err) +
-        " (o navegador só libera câmera em HTTPS ou localhost).", "erro");
-      return;
+      if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+      if (!ativa()) return;
+      parar();
+      throw err;
     }
-    var video = $("scan-video");
-    video.srcObject = estado.stream;
-    await video.play();
-    estado.rodando = true;
-    worker();
-    var b1 = $("scan-iniciar");
-    var b2 = $("scan-parar");
-    if (b1) b1.disabled = true;
-    if (b2) b2.disabled = false;
-    var nVersoes = Object.keys(estado.versoes).length;
-    status("Procurando folha... " + estado.totalQuestoes + " questões, " +
-      nVersoes + (nVersoes === 1 ? " versão e " : " versões e ") + estado.alunos.length +
-      (estado.alunos.length === 1 ? " aluno" : " alunos") + " (" + estado.fonte + ").");
-    global.requestAnimationFrame(laco);
   }
 
   function parar() {
+    sessaoCamera += 1;
     estado.rodando = false;
+    if (frameId != null) global.cancelAnimationFrame(frameId);
+    frameId = null;
+    if (estado.worker) {
+      estado.worker.onmessage = null;
+      estado.worker.onerror = null;
+      estado.worker.terminate();
+      estado.worker = null;
+    }
+    estado.engine = "parado";
+    estado.pendente = false;
+    estado.requestId += 1;
+    ultimoFrame = 0;
     if (estado.stream) {
       estado.stream.getTracks().forEach(function (t) { t.stop(); });
       estado.stream = null;
@@ -466,19 +530,29 @@
   }
 
   async function carregarAlunos() {
+    var conta = snapshotConta();
     var sel = $("scan-turma");
     var turmaId = (sel && sel.value) || null;
     estado.turmaId = turmaId;
     if (estado.prova && estado.prova.__impresso) return estado.alunos;
-    if (global.GabaDB && GabaDB.isConfigured()) {
-      estado.alunos = await GabaDB.listAlunos(turmaId);
-    } else {
-      estado.alunos = (estado.prova && estado.prova.alunos) || [];
+    var alunos;
+    try {
+      if (global.GabaDB && GabaDB.isConfigured()) {
+        alunos = await GabaDB.listAlunos(turmaId);
+      } else {
+        alunos = (estado.prova && estado.prova.alunos) || [];
+      }
+    } catch (err) {
+      if (!contaValida(conta)) return [];
+      throw err;
     }
+    if (!contaValida(conta)) return [];
+    estado.alunos = alunos;
     return estado.alunos;
   }
 
   async function preencherListas(provasLocais) {
+    var conta = snapshotConta();
     var C = global.GabaCaderno;
     var provas = (provasLocais || []).slice();
     var loteProva = C && C.provaDoLote ? C.provaDoLote() : null;
@@ -489,9 +563,12 @@
     if (global.GabaDB && GabaDB.isConfigured()) {
       try {
         var todas = await GabaDB.listTurmas();
+        if (!contaValida(conta)) return;
         turmas = global.GabaEscolas ? GabaEscolas.visiveis(todas) : todas;
         provas = provas.concat(await GabaDB.listProvas());
+        if (!contaValida(conta)) return;
       } catch (err) {
+        if (!contaValida(conta)) return;
         status("Supabase indisponível: " + (err.message || err), "erro");
       }
     }
@@ -514,11 +591,66 @@
     estado.prova = opcoesProva();
     if (estado.prova) {
       await carregarAlunos();
+      if (!contaValida(conta)) return;
       await montarIndice();
+      if (!contaValida(conta)) return;
     }
     status(provas.length + (provas.length === 1 ? " prova e " : " provas e ") + estado.alunos.length +
       (estado.alunos.length === 1 ? " aluno carregado" : " alunos carregados") +
       (estado.fonte ? " — versões pelo " + estado.fonte : "") + ".");
+  }
+
+  function reiniciarConta() {
+    geracaoConta += 1;
+    parar();
+    estado.provas = [];
+    estado.lidos = {};
+    estado.resultados = [];
+    estado.versoes = {};
+    estado.porAluno = {};
+    estado.recipe = null;
+    estado.prova = null;
+    estado.alunos = [];
+    estado.turmaId = null;
+    estado.fonte = "";
+    estado.ultimaChave = null;
+    estado.repetidas = 0;
+    estado.lidaHaPouco = 0;
+    estado.totalQuestoes = 10;
+    estado.alternativas = 5;
+    estado.fps = 0;
+    canvas = null;
+    if (estado.audio) {
+      try {
+        var fechando = estado.audio.close();
+        if (fechando && fechando.catch) fechando.catch(function () {});
+      } catch (err) { /* audio nao essencial */ }
+      estado.audio = null;
+    }
+    ["scan-prova", "scan-turma"].forEach(function (id) {
+      var el = $(id);
+      if (el) { el.innerHTML = '<option value=""></option>'; el.value = ""; }
+    });
+    var ultimas = $("scan-ultimas");
+    if (ultimas) ultimas.innerHTML = "";
+    ["scan-total", "scan-duvida", "scan-fila"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.textContent = "0";
+    });
+    var alvo = $("scan-alvo");
+    if (alvo) alvo.textContent = "";
+    desenharOverlay(null);
+    status("Escolha a prova e ligue a câmera.");
+  }
+
+  function atualizarIndice() {
+    var conta = snapshotConta();
+    carregarAlunos().then(function () {
+      if (!contaValida(conta)) return;
+      return montarIndice();
+    }).catch(function (err) {
+      if (contaValida(conta)) status(String(err.message || err), "erro");
+    });
   }
 
   function init() {
@@ -526,7 +658,12 @@
     var b2 = $("scan-parar");
     var limpar = $("scan-limpar");
     var sens = $("scan-sens");
-    if (b1) b1.addEventListener("click", function () { iniciar().catch(function (e) { status(String(e.message || e), "erro"); }); });
+    if (b1) b1.addEventListener("click", function () {
+      var conta = snapshotConta();
+      iniciar().catch(function (e) {
+        if (contaValida(conta)) status(String(e.message || e), "erro");
+      });
+    });
     if (b2) b2.addEventListener("click", parar);
     if (limpar) limpar.addEventListener("click", function () {
       estado.lidos = {};
@@ -543,17 +680,15 @@
     var sel = $("scan-prova");
     if (sel) sel.addEventListener("change", function () {
       estado.prova = opcoesProva();
-      carregarAlunos().then(montarIndice);
+      atualizarIndice();
     });
     var selT = $("scan-turma");
     if (selT) selT.addEventListener("change", function () {
-      carregarAlunos().then(montarIndice);
+      atualizarIndice();
     });
     if (global.GabaSync && GabaSync.onPendingChange) {
-      GabaSync.onPendingChange(function (n) {
-        var fila = $("scan-fila");
-        if (fila) fila.textContent = String(n);
-      });
+      /* O n notificado pode pertencer a uma conta anterior; releia o escopo atual. */
+      GabaSync.onPendingChange(atualizarFila);
     }
     status("Escolha a prova e ligue a câmera.");
   }
@@ -566,6 +701,7 @@
 
   global.GabaScanner = {
     estado: estado,
+    reiniciarConta: reiniciarConta,
     iniciar: iniciar,
     parar: parar,
     tratar: tratar,

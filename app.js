@@ -104,8 +104,68 @@
 
   /* ------------------------------------------------------------------ dados */
 
+  var cargaDados = 0;
+  var versaoConta = 0;
+  var clienteObservado = null;
+  var assinaturaConta = null;
+
+  function validarConta(versao) {
+    if (versao !== versaoConta) throw new Error("A conta mudou durante a operação. Tente novamente.");
+  }
+
+  function mudarConta(usuario) {
+    app.professor = usuario ? {
+      id: usuario.id, email: usuario.email || "",
+      nome: usuario.nome || (usuario.user_metadata || {}).nome || ""
+    } : null;
+    if (!GabaSync.definirConta(app.professor)) return false;
+    versaoConta++;
+    app.turmas = []; app.alunos = []; app.provas = []; app.locais = [];
+    app.correcoes = []; app.leituras = []; app.escolas = []; app.momento = 0;
+    document.querySelectorAll("form:not(#form-config)").forEach(function (form) { form.reset(); });
+    limparLista();
+    Object.assign(impt, { alvo: "", escola: "", arquivo: "", lendo: false, salvando: false, erro: "",
+      turmas: [], ignoradas: [], repetidas: [], saidas: 0, marcadas: {}, nomes: {}, ids: Object.create(null),
+      ano: "", comAlunos: true, feito: null });
+    desenharImportacaoTurmas();
+    ana.itens = []; ana.provaId = "";
+    ab.modelo = null; ab.dados = null; ab.questao = null; ab.descritor = null; ab.retornoFicha = null;
+    provaRevisada = "";
+    if (painel.resolver) fecharPainel(null);
+    var ficha = $("ab-ficha");
+    if (ficha && ficha.open) ficha.close();
+    ["ab-ficha-titulo", "ab-ficha-subtitulo", "ab-ficha-conteudo", "prova-status", "revisao-status"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.textContent = "";
+    });
+    if (window.GabaCaderno) GabaCaderno.reiniciarConta();
+    if (window.GabaScanner) GabaScanner.reiniciarConta();
+    desenharTudo();
+    badge();
+    desenharAjustes();
+    return true;
+  }
+
+  function observarConta() {
+    var client = temConexao() ? GabaDB.getClient() : null;
+    if (client === clienteObservado) return;
+    if (assinaturaConta) assinaturaConta.unsubscribe();
+    clienteObservado = client;
+    assinaturaConta = null;
+    if (!client || !client.auth || !client.auth.onAuthStateChange) return;
+    assinaturaConta = client.auth.onAuthStateChange(function (evento, sessao) {
+      if (mudarConta(sessao && sessao.user)) {
+        setTimeout(function () { carregarTudo(); }, 0);
+      }
+    }).data.subscription;
+  }
+
   async function carregarTudo() {
+    var pedido = ++cargaDados;
     await carregarProfessor();
+    var versao = versaoConta;
+    function vigente() { return pedido === cargaDados && versao === versaoConta; }
+    if (!vigente()) return;
     badge();
     if (window.GabaCaderno && GabaCaderno.carregarProvasLocais) {
       try {
@@ -114,10 +174,14 @@
         /* fica com o que já está em memória */
       }
     }
+    if (!vigente()) return;
     app.locais = (window.GabaCaderno && GabaCaderno.estado && GabaCaderno.estado.provasLocais) || [];
     try {
-      app.leituras = window.GabaSync ? await GabaSync.listResults() : [];
+      var leituras = window.GabaSync ? await GabaSync.listResults() : [];
+      if (!vigente()) return;
+      app.leituras = leituras;
     } catch (err) {
+      if (!vigente()) return;
       app.leituras = [];
     }
     if (dbOk()) {
@@ -125,11 +189,13 @@
         var tudo = await Promise.all([
           GabaDB.listTurmas(), GabaDB.listAlunos(), GabaDB.listProvas(), GabaDB.fetchCorrecoes()
         ]);
+        if (!vigente()) return;
         app.turmas = tudo[0] || [];
         app.alunos = tudo[1] || [];
         app.provas = tudo[2] || [];
         app.correcoes = tudo[3] || [];
       } catch (err) {
+        if (!vigente()) return;
         aviso(mensagemErro(err), "erro");
       }
     } else {
@@ -139,36 +205,36 @@
       app.correcoes = [];
     }
     await carregarEscolas();
+    if (!vigente()) return;
     app.momento = Date.now();
     desenharTudo();
     desenharAjustes();
   }
 
-  /* o cadastro de escolas mora no aparelho; o banco e a copia para os outros aparelhos.
-     se a tabela ainda nao foi criada, o cadastro local continua valendo sozinho. */
   async function carregarEscolas() {
+    var versao = versaoConta;
     app.escolas = [];
     if (!dbOk() || !GabaDB.listEscolas) return;
     try {
-      app.escolas = await GabaDB.listEscolas();
+      var escolas = await GabaDB.listEscolas();
+      if (versao !== versaoConta) return;
+      app.escolas = escolas;
       if (window.GabaEscolas) GabaEscolas.sincronizar(app.escolas);
     } catch (err) {
-      app.escolas = [];
+      if (versao === versaoConta) app.escolas = [];
     }
   }
 
   async function carregarProfessor() {
-    app.professor = null;
-    if (!temConexao() || !GabaDB.usuario) return;
-    try {
-      app.professor = await GabaDB.usuario();
-    } catch (err) {
-      app.professor = null;
+    observarConta();
+    var versao = versaoConta;
+    var usuario = null;
+    if (temConexao() && GabaDB.usuario) {
+      try { usuario = await GabaDB.usuario(); } catch (err) { usuario = null; }
     }
+    if (versao === versaoConta) mudarConta(usuario);
   }
 
-  /* o que foi lido sem login esta guardado no aparelho: no instante em que o professor
-     entra, a fila inteira sobe para o banco */
   async function descerFila() {
     if (!window.GabaSync || !GabaSync.flush) return null;
     try {
@@ -356,6 +422,7 @@
   }
 
   async function executar(nome, id, extra) {
+    var versao = versaoConta;
     var alvo;
     try {
       if (nome === "turma-aqui") {
@@ -383,8 +450,9 @@
           ok: "Tirar do cadastro",
           perigo: true
         });
-        if (!tirar) return;
+        if (!tirar || versao !== versaoConta) return;
         await tirarEscola(id);
+        validarConta(versao);
         aviso("Escola fora do cadastro.", "ok");
       } else if (nome === "escola-turma") {
         var outra = app.turmas.filter(function (x) { return String(x.id) === id; })[0];
@@ -398,14 +466,16 @@
           }).concat([{ valor: "", titulo: "Sem escola", texto: "A turma fica no grupo “sem escola”.", marcado: !daTurma }]),
           outra: { titulo: "Outra escola…", rotulo: "Nome da outra escola", placeholder: "Ex.: EEFM da Serra" }
         });
-        if (escola === null) return;
+        if (escola === null || versao !== versaoConta) return;
         await GabaDB.salvarTurma({ id: id, nome: outra.nome, ano: outra.ano, escola: escola });
+        validarConta(versao);
         aviso("Escola da turma atualizada.", "ok");
       } else if (nome === "renomear-turma") {
         var t = app.turmas.filter(function (x) { return String(x.id) === id; })[0];
         var nomeNovo = t ? await pedir({ titulo: "Renomear turma", campo: { rotulo: "Nome da turma", valor: t.nome } }) : null;
-        if (nomeNovo === null) return;
+        if (nomeNovo === null || versao !== versaoConta) return;
         await GabaDB.salvarTurma({ id: id, nome: nomeNovo, ano: t ? t.ano : "", escola: t ? t.escola : "" });
+        validarConta(versao);
         aviso("Turma atualizada.", "ok");
       } else if (nome === "apagar-turma") {
         alvo = app.turmas.filter(function (x) { return String(x.id) === id; })[0];
@@ -417,8 +487,9 @@
           ok: "Apagar turma",
           perigo: true
         });
-        if (!apagarTurma) return;
+        if (!apagarTurma || versao !== versaoConta) return;
         await GabaDB.excluirTurma(id);
+        validarConta(versao);
         aviso("Turma apagada.", "ok");
       } else if (nome === "apagar-aluno") {
         alvo = app.alunos.filter(function (x) { return String(x.id) === id; })[0];
@@ -428,8 +499,9 @@
           ok: "Apagar",
           perigo: true
         });
-        if (!apagarAluno) return;
+        if (!apagarAluno || versao !== versaoConta) return;
         await GabaDB.excluirAluno(id);
+        validarConta(versao);
         aviso("Aluno apagado.", "ok");
       } else if (nome === "salvar-prova-no-banco") {
         await salvarProvaLocal(id);
@@ -442,8 +514,9 @@
           ok: "Apagar prova",
           perigo: true
         });
-        if (!apagarProva) return;
+        if (!apagarProva || versao !== versaoConta) return;
         await GabaDB.excluirProva(id);
+        validarConta(versao);
         aviso("Prova apagada.", "ok");
       } else if (nome === "revisar-prova") {
         await revisarProva(provaRevisada === id ? "" : id);
@@ -457,7 +530,9 @@
       } else if (nome === "sincronizar-fila") {
         if (!window.GabaSync) return;
         var r = await GabaSync.flush();
+        validarConta(versao);
         var restantes = await GabaSync.countPending();
+        validarConta(versao);
         if (r && r.reason === "unauthenticated") {
           aviso("Sem login o banco não atende: " + plural(restantes, "leitura presa", "leituras presas") + " neste aparelho. Entre na aba Ajustes.", "erro");
         } else {
@@ -468,27 +543,34 @@
         return;
       }
     } catch (err) {
+      if (versao !== versaoConta) return;
       aviso(mensagemErro(err), "erro");
     }
+    if (versao !== versaoConta) return;
     await carregarTudo();
   }
 
   /* uma prova importada de .docx tem id "docx-...": ao salvar no banco o id muda, entao
      as folhas impressas antes deixam de bater com as versoes novas. */
   async function salvarProvaLocal(id) {
+    var versao = versaoConta;
     var prova = (app.locais || []).filter(function (p) { return String(p.id) === id; })[0];
     if (!prova) {
       aviso("Essa prova não está mais neste aparelho.", "erro");
       return;
     }
     var salvo = await GabaDB.salvarProva(prova);
+    validarConta(versao);
     var lote = window.GabaCaderno && GabaCaderno.loteImpresso ? GabaCaderno.loteImpresso(id) : null;
     var revisando = provaRevisada === id;
     prova.__local = false;
     if (window.GabaCaderno && GabaCaderno.esquecerProvaLocal) await GabaCaderno.esquecerProvaLocal(id);
+    validarConta(versao);
     prova.id = salvo.id;
     await carregarTudo();
+    validarConta(versao);
     if (revisando) await revisarProva(salvo.id);
+    validarConta(versao);
     if (lote) {
       aviso("Prova salva no banco como \"" + salvo.titulo + "\". ATENÇÃO: você já tinha impresso " +
         plural(lote.itens.length, "caderno", "cadernos") + " com o id antigo: imprima de novo antes de ler, senão o leitor " +
@@ -615,12 +697,16 @@
   }
 
   async function lerArquivos(files) {
+    var versao = versaoConta;
     var lista = [].slice.call(files || []);
     if (!lista.length) return;
     impStatus("Lendo " + lista.map(function (f) { return f.name; }).join(", ") + " neste aparelho...", "");
     try {
-      analisar(await arquivosParaItens(lista));
+      var itens = await arquivosParaItens(lista);
+      if (versao !== versaoConta) return;
+      analisar(itens);
     } catch (err) {
+      if (versao !== versaoConta) return;
       imp.alunos = [];
       imp.problemas = [];
       imp.fonte = "";
@@ -639,6 +725,7 @@
   }
 
   async function salvarLista() {
+    var versao = versaoConta;
     if (!imp.alunos.length) {
       impStatus("Primeiro leia a lista: clique em Ver.", "erro");
       return;
@@ -656,8 +743,10 @@
     if (botao) botao.disabled = true;
     try {
       var r = await GabaDB.salvarAlunosEmLote(turmaId, imp.alunos);
+      if (versao !== versaoConta) return;
       imp.salvo = r.gravados;
       await carregarTudo();
+      if (versao !== versaoConta) return;
       var sobra = imp.alunos.length - r.gravados;
       (r.problemas || []).forEach(function (p) { imp.problemas.push(p); });
       desenharPrevia(r.gravados ? "" : "Nada foi salvo.");
@@ -672,6 +761,7 @@
         if (arquivo) arquivo.value = "";
       }
     } catch (err) {
+      if (versao !== versaoConta) return;
       impStatus(mensagemErro(err), "erro");
       if (botao) botao.disabled = false;
     }
@@ -840,6 +930,7 @@
   }
 
   async function lerTurmasDaEscola(files) {
+    var versao = versaoConta;
     if (impt.lendo || impt.salvando) return;
     var lista = [].slice.call(files || []);
     if (!lista.length || !impt.alvo) return;
@@ -858,13 +949,16 @@
     var box = $("impt-painel");
     if (box && box.scrollIntoView) box.scrollIntoView({ block: "start", behavior: "smooth" });
     try {
-      var r = GabaLista.turmasDaPasta(await arquivosParaItens(lista));
+      var itens = await arquivosParaItens(lista);
+      if (versao !== versaoConta) return;
+      var r = GabaLista.turmasDaPasta(itens);
       impt.turmas = r.turmas;
       impt.ignoradas = r.ignoradas;
       impt.repetidas = r.repetidas;
       impt.saidas = r.saidas;
       r.turmas.forEach(function (t, i) { impt.marcadas[i] = true; });
     } catch (err) {
+      if (versao !== versaoConta) return;
       impt.erro = mensagemErro(err);
     }
     impt.lendo = false;
@@ -872,6 +966,7 @@
   }
 
   async function salvarImportacaoTurmas() {
+    var versao = versaoConta;
     if (impt.salvando) return;
     if (!dbOk()) {
       imptStatus(faltaParaOBanco() + " As turmas só podem ser guardadas no banco do professor.", "erro");
@@ -924,6 +1019,7 @@
         var chaveNome = GabaLista.limpo(x.nome);
         var existe = turmaJaNaEscola(escola, x.nome) || impt.ids[chaveNome];
         var turma = existe || await GabaDB.salvarTurma({ nome: x.nome, ano: ano, escola: escola });
+        if (versao !== versaoConta) return;
         impt.ids[chaveNome] = turma;
         var id = turma.id;
         if (existe) existentes++;
@@ -933,12 +1029,15 @@
         }
         if (comAlunos && x.t.alunos.length) {
           var r = await GabaDB.salvarAlunosEmLote(id, x.t.alunos);
+          if (versao !== versaoConta) return;
           gravados += r.gravados;
           (r.problemas || []).forEach(function (p) { problemas.push(x.nome + ": " + p); });
         }
       }
     } catch (err) {
+      if (versao !== versaoConta) return;
       await carregarTudo();
+      if (versao !== versaoConta) return;
       impt.salvando = false;
       desenharImportacaoTurmas();
       imptStatus(mensagemErro(err) + ' (parou em "' + atual + '"). Salvar de novo termina o serviço sem duplicar ' +
@@ -957,6 +1056,7 @@
       tipo: "ok"
     };
     await carregarTudo();
+    if (versao !== versaoConta) return;
     impt.salvando = false;
     desenharImportacaoTurmas();
     aviso(plural(novas + existentes, "turma importada", "turmas importadas") + ' em "' + escola + '"' +
@@ -1054,14 +1154,19 @@
   /* a escola sai do aparelho e do banco junto: apagar so o cadastro local faria ela
      voltar na proxima leitura das escolas do projeto */
   async function tirarEscola(nome) {
+    var versao = versaoConta;
     var E = window.GabaEscolas;
     var linhas = app.escolas.filter(function (r) { return E.chave(r.nome) === E.chave(nome); });
-    for (var n = 0; n < linhas.length; n++) await GabaDB.excluirEscola(linhas[n].id);
+    for (var n = 0; n < linhas.length; n++) {
+      await GabaDB.excluirEscola(linhas[n].id);
+      validarConta(versao);
+    }
     E.remover(nome);
     if (E.chave(E.filtro()) === E.chave(nome)) E.setFiltro("");
   }
 
   async function criarEscola(nomeBruto) {
+    var versao = versaoConta;
     var E = window.GabaEscolas;
     var criado = E.adicionar(nomeBruto);
     if (criado.vazio) {
@@ -1072,11 +1177,13 @@
       aviso('"' + criado.nome + '" já está no cadastro.', "erro");
       return;
     }
-    /* o banco e a copia para os outros aparelhos; sem ele a escola fica neste aparelho */
     if (dbOk()) {
       try {
-        app.escolas.push(await GabaDB.salvarEscola({ nome: criado.nome }));
+        var escola = await GabaDB.salvarEscola({ nome: criado.nome });
+        if (versao !== versaoConta) return;
+        app.escolas.push(escola);
       } catch (err) {
+        if (versao !== versaoConta) return;
         aviso('Escola criada neste aparelho. No banco deu: ' + mensagemErro(err), "erro");
         desenharTudo();
         return;
@@ -1284,11 +1391,13 @@
   var provaRevisada = "";
 
   async function revisarProva(id) {
+    var versao = versaoConta;
     provaRevisada = String(id || "");
     if (provaRevisada && window.GabaCaderno) {
       var sel = $("cad-prova");
       var tem = sel && [].some.call(sel.options, function (o) { return o.value === provaRevisada; });
       if (!tem) await GabaCaderno.carregarListas();
+      if (versao !== versaoConta) return;
       if (!selecionar("cad-prova", provaRevisada)) provaRevisada = "";
     }
     desenharProvas();
@@ -1638,17 +1747,19 @@
   }
 
   async function abrirNoCaderno(id) {
+    var versao = versaoConta;
     switchTab("caderno");
     if (!window.GabaCaderno) return;
     await GabaCaderno.carregarListas();
-    selecionar("cad-prova", id);
+    if (versao === versaoConta) selecionar("cad-prova", id);
   }
 
   async function abrirNoLeitor(id) {
+    var versao = versaoConta;
     switchTab("scanner");
     if (!window.GabaScanner) return;
     await GabaScanner.preencherListas(app.locais);
-    selecionar("scan-prova", id);
+    if (versao === versaoConta) selecionar("scan-prova", id);
   }
 
   /* --------------------------------------------------------------- formularios */
@@ -2185,16 +2296,19 @@
     var formTurma = $("form-turma");
     if (formTurma) formTurma.addEventListener("submit", async function (ev) {
       ev.preventDefault();
+      var versao = versaoConta;
       try {
         await GabaDB.salvarTurma({
           nome: $("turma-nome").value,
           ano: $("turma-ano").value,
           escola: $("turma-escola") ? $("turma-escola").value : ""
         });
+        if (versao !== versaoConta) return;
         $("form-turma").reset();
         aviso("Turma salva.", "ok");
         await carregarTudo();
       } catch (err) {
+        if (versao !== versaoConta) return;
         aviso(mensagemErro(err), "erro");
       }
     });
@@ -2202,17 +2316,20 @@
     var formAluno = $("form-aluno");
     if (formAluno) formAluno.addEventListener("submit", async function (ev) {
       ev.preventDefault();
+      var versao = versaoConta;
       try {
         await GabaDB.salvarAluno({
           turma_id: $("aluno-turma-select").value,
           nome: $("aluno-nome").value,
           numero: $("aluno-numero").value
         });
+        if (versao !== versaoConta) return;
         $("aluno-nome").value = "";
         $("aluno-numero").value = "";
         aviso("Aluno salvo.", "ok");
         await carregarTudo();
       } catch (err) {
+        if (versao !== versaoConta) return;
         aviso(mensagemErro(err), "erro");
       }
     });
@@ -2220,17 +2337,20 @@
     var formProva = $("form-prova");
     if (formProva) formProva.addEventListener("submit", async function (ev) {
       ev.preventDefault();
+      var versao = versaoConta;
       if (!dbOk()) {
         aviso(faltaParaOBanco() + " Ou importe o documento da prova acima.", "erro");
         return;
       }
       try {
         var salva = await GabaDB.salvarProva(provaDoFormulario());
+        if (versao !== versaoConta) return;
         $("form-prova").reset();
         window.gerarCamposGabarito();
         aviso("Prova \"" + salva.titulo + "\" salva. Para imprimir, use Imprimir cadernos na lista.", "ok");
         await carregarTudo();
       } catch (err) {
+        if (versao !== versaoConta) return;
         aviso(mensagemErro(err), "erro");
       }
     });
@@ -2350,7 +2470,7 @@
       badge();
       desenharAjustes();
       await carregarTudo();
-      aviso("Você saiu. O banco para de atender até entrar de novo; as leituras continuam neste aparelho.", "ok");
+      aviso("Você saiu. Suas leituras ficam guardadas na sua conta neste aparelho e reaparecem quando você entrar de novo.", "ok");
     } catch (err) {
       aviso(mensagemErro(err), "erro");
     }

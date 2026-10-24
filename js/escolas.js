@@ -3,14 +3,18 @@
    o seletor do topo e a lista da aba Turmas; as turmas continuam trazendo a escola como
    texto, então nada de antes deste cadastro precisa ser migrado. */
 (function (root, factory) {
-  var api = factory();
+  var api = factory(root);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.GabaEscolas = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   "use strict";
 
   var FILTRO_KEY = "gaba_escola_filtro";
   var REGISTRO_KEY = "gaba_escolas_registro";
+
+  function chaveLocal(base) {
+    return root.GabaSync ? root.GabaSync.chaveLocal(base) : base + ":sem-conta";
+  }
   /* as turmas ainda sem escola formam um grupo proprio no filtro, senao sumiriam da tela */
   var SEM_ESCOLA = "(sem escola)";
 
@@ -32,14 +36,14 @@
   }
 
   function filtro() {
-    return guardar(function () { return normalizar(localStorage.getItem(FILTRO_KEY)); }, "");
+    return guardar(function () { return normalizar(localStorage.getItem(chaveLocal(FILTRO_KEY))); }, "");
   }
 
   function setFiltro(nome) {
     var n = normalizar(nome);
     guardar(function () {
-      if (n) localStorage.setItem(FILTRO_KEY, n);
-      else localStorage.removeItem(FILTRO_KEY);
+      if (n) localStorage.setItem(chaveLocal(FILTRO_KEY), n);
+      else localStorage.removeItem(chaveLocal(FILTRO_KEY));
     }, undefined);
     return n;
   }
@@ -49,13 +53,13 @@
      pode abrir o cadastro e ler, e uma linha quebrada nao derruba a lista inteira. */
 
   function listaCrua() {
-    return String(guardar(function () { return localStorage.getItem(REGISTRO_KEY); }, "") || "");
+    return String(guardar(function () { return localStorage.getItem(chaveLocal(REGISTRO_KEY)); }, "") || "");
   }
 
   function gravarLista(nomes) {
     guardar(function () {
-      if (nomes.length) localStorage.setItem(REGISTRO_KEY, nomes.join("\n"));
-      else localStorage.removeItem(REGISTRO_KEY);
+      if (nomes.length) localStorage.setItem(chaveLocal(REGISTRO_KEY), nomes.join("\n"));
+      else localStorage.removeItem(chaveLocal(REGISTRO_KEY));
     }, undefined);
   }
 

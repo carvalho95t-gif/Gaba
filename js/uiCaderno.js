@@ -6,6 +6,15 @@
   var NL = String.fromCharCode(10);
   var CFG_KEY = "gaba_caderno_cfg";
   var LOTE_KEY = "gaba_lote_impresso";
+  var geracaoConta = 0;
+
+  function snapshotConta() {
+    return { conta: global.GabaSync.contaAtual(), geracao: geracaoConta };
+  }
+
+  function contaValida(s) {
+    return s.conta === global.GabaSync.contaAtual() && s.geracao === geracaoConta;
+  }
 
   var estado = {
     provasSupabase: [],
@@ -46,7 +55,7 @@
 
   function lerCfg() {
     try {
-      var raw = localStorage.getItem(CFG_KEY);
+      var raw = localStorage.getItem(global.GabaSync.chaveLocal(CFG_KEY));
       var o = raw ? JSON.parse(raw) : {};
       return o && typeof o === "object" ? o : {};
     } catch (err) {
@@ -56,7 +65,7 @@
 
   function salvarCfg(patch) {
     var cfg = Object.assign(lerCfg(), patch);
-    localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+    localStorage.setItem(global.GabaSync.chaveLocal(CFG_KEY), JSON.stringify(cfg));
     return cfg;
   }
 
@@ -171,14 +180,23 @@
   }
 
   async function carregarAlunos(prova) {
+    var conta = snapshotConta();
     var turma = turmaAtual();
-    if (prova && prova.__local && (prova.alunos || []).length) {
-      estado.alunos = prova.alunos;
-    } else if (global.GabaDB && GabaDB.isConfigured() && turma) {
-      estado.alunos = await GabaDB.listAlunos(turma.id);
-    } else {
-      estado.alunos = [];
+    var alunos;
+    try {
+      if (prova && prova.__local && (prova.alunos || []).length) {
+        alunos = prova.alunos;
+      } else if (global.GabaDB && GabaDB.isConfigured() && turma) {
+        alunos = await GabaDB.listAlunos(turma.id);
+      } else {
+        alunos = [];
+      }
+    } catch (err) {
+      if (!contaValida(conta)) return [];
+      throw err;
     }
+    if (!contaValida(conta)) return [];
+    estado.alunos = alunos;
     var lista = $("cad-alunos");
     if (lista) {
       lista.hidden = false;
@@ -533,10 +551,14 @@
 
   var guardaProva = null;
   function guardarEdicao(prova) {
+    var conta = snapshotConta();
     if (global.GabaSync && GabaSync.guardarProva && prova.__local) {
       clearTimeout(guardaProva);
       guardaProva = setTimeout(function () {
+        if (!contaValida(conta)) return;
+        guardaProva = null;
         GabaSync.guardarProva(prova).then(function () {
+          if (!contaValida(conta)) return;
           estado.sujo = false;
           mostraBotaoSalvar(prova);
         }).catch(function () { /* fica só na memória e o botão continua aceso */ });
@@ -554,13 +576,15 @@
 
   /* o .docx importado morava só na memória: ao reabrir o app ele sumia */
   async function carregarProvasLocais() {
+    var conta = snapshotConta();
     if (!global.GabaSync || !GabaSync.listarProvas) return estado.provasLocais;
     var doDisco;
     try {
       doDisco = await GabaSync.listarProvas();
     } catch (err) {
-      return estado.provasLocais;
+      return contaValida(conta) ? estado.provasLocais : [];
     }
+    if (!contaValida(conta)) return [];
     var vistos = {};
     estado.provasLocais.forEach(function (p) { vistos[String(p.id)] = true; });
     doDisco.forEach(function (p) {
@@ -692,15 +716,28 @@
   }
 
   async function carregarListas() {
+    var conta = snapshotConta();
     var configurado = global.GabaDB && GabaDB.isConfigured();
-    var dbOk = configurado && Boolean(await GabaDB.usuario());
+    var dbOk;
+    try {
+      dbOk = configurado && Boolean(await GabaDB.usuario());
+    } catch (err) {
+      if (!contaValida(conta)) return;
+      throw err;
+    }
+    if (!contaValida(conta)) return;
     await carregarProvasLocais();
+    if (!contaValida(conta)) return;
     if (dbOk) {
       try {
         var todas = await GabaDB.listTurmas();
+        if (!contaValida(conta)) return;
+        var provasBanco = await GabaDB.listProvas();
+        if (!contaValida(conta)) return;
         estado.turmas = global.GabaEscolas ? GabaEscolas.visiveis(todas) : todas;
-        estado.provasSupabase = await GabaDB.listProvas();
+        estado.provasSupabase = provasBanco;
       } catch (err) {
+        if (!contaValida(conta)) return;
         status("Falha ao ler o Supabase: " + (err && err.message ? err.message : err), true);
       }
     } else {
@@ -716,6 +753,7 @@
     });
     var prova = provaSelecionada();
     await carregarAlunos(prova);
+    if (!contaValida(conta)) return;
     desenharProva(prova);
     var aviso = !configurado ? "Sem banco conectado: importe o documento na aba Provas para imprimir agora." :
       (!dbOk ? "Entre com e-mail e senha para carregar as turmas do banco. Importar o documento, na aba Provas, continua valendo." : "");
@@ -772,7 +810,7 @@
       })
     };
     try {
-      localStorage.setItem(LOTE_KEY, JSON.stringify(registro));
+      localStorage.setItem(global.GabaSync.chaveLocal(LOTE_KEY), JSON.stringify(registro));
     } catch (err) {
       status("Lote impresso nao coube no armazenamento do aparelho; o leitor tera que reconstruir as versoes.", true);
       return null;
@@ -782,6 +820,7 @@
 
   /* as versoes impressas vao para o banco para outro aparelho ler a mesma folha */
   function sincronizarLote(prova, registro, msgBase) {
+    var conta = snapshotConta();
     if (!registro || !global.GabaDB || !GabaDB.isConfigured()) return;
     if (!GabaDB.eUuid(prova.id)) {
       status(msgBase + " Este lote so existe neste aparelho: a prova ainda nao foi salva no banco.", true);
@@ -790,15 +829,17 @@
     GabaDB.upsertProvaVersoes(prova.id, registro.itens, {
       turma_id: registro.turma_id, em: registro.em, lote_id: registro.lote_id
     }).then(function (n) {
+      if (!contaValida(conta)) return;
       status(msgBase + " " + plural(n, "versão", "versões") + " no banco.");
     }).catch(function (err) {
+      if (!contaValida(conta)) return;
       status(msgBase + " Versoes ficaram só neste aparelho: " + (err && err.message ? err.message : err), true);
     });
   }
 
   function loteImpresso(provaId) {
     var o = null;
-    try { o = JSON.parse(localStorage.getItem(LOTE_KEY) || "null"); } catch (err) { o = null; }
+    try { o = JSON.parse(localStorage.getItem(global.GabaSync.chaveLocal(LOTE_KEY)) || "null"); } catch (err) { o = null; }
     if (!o || !o.itens || !o.itens.length) return null;
     if (provaId && String(o.prova_id) !== String(provaId)) return null;
     return o;
@@ -836,6 +877,7 @@
   }
 
   async function medirCorpo(prova, op, item) {
+    var conta = snapshotConta();
     if (!global.GabaFolha || !GabaFolha.medirCorpo) return null;
     try {
       return await GabaFolha.medirCorpo(prova, prova.questoes || [], {
@@ -845,12 +887,14 @@
         turmaNome: op.config.turma
       });
     } catch (err) {
+      if (!contaValida(conta)) return null;
       status("Não deu para medir o corpo no papel: " + (err && err.message ? err.message : err), true);
       return null;
     }
   }
 
   async function gerarLote() {
+    var conta = snapshotConta();
     var prova = provaSelecionada();
     if (!prova) throw new Error("Selecione uma prova.");
     if (!(prova.questoes || []).length) {
@@ -876,6 +920,7 @@
     estado.batch = batch;
     var pedido = op.config.questoesPorPagina;
     var medidas = await medirCorpo(prova, op, itemDePiorCaso(batch));
+    if (!contaValida(conta)) return null;
     var cadernos = [];
     for (var k = 0; k < batch.itens.length; k++) {
       var item = batch.itens[k];
@@ -886,6 +931,7 @@
         turmaNome: op.config.turma,
         config: op.config
       }));
+      if (!contaValida(conta)) return null;
     }
     var corpo = cadernos[0] && cadernos[0].corpo;
     var porPagina = corpo ? Math.max(1, Math.max.apply(null, corpo.map(function (p) { return p.questoes; }))) : pedido;
@@ -899,6 +945,7 @@
     root.innerHTML = estado.ultimoHtml;
     root.classList.add("previa");
     await GabaFolha.fontesProntas();
+    if (!contaValida(conta)) return null;
     /* primeiro tenta caber reduzindo o corpo das caixas fixas; o que sobrar ai sim e corte */
     estado.compactou = GabaFolha.compactarCaixas(root);
     estado.cortes = GabaFolha.conferirEncaixe(root);
@@ -933,11 +980,13 @@
   }
 
   async function aoImprimir() {
+    var conta = snapshotConta();
     var op = opcoes();
     gravarCfg();
     var root = $("print-root");
     try {
       var r = await gerarLote();
+      if (!contaValida(conta) || !r) return;
       if (estado.cortes.length) {
         status("Nao enviei a impressao: " + estado.cortes[0] +
           (estado.cortes.length > 1 ? " (mais " + (estado.cortes.length - 1) + " na lista abaixo)." : "."), true);
@@ -945,7 +994,7 @@
       }
       var prova = provaSelecionada();
       GabaFolha.imprimirNaJanela();
-      localStorage.setItem("gaba_ultimo_lote", JSON.stringify({
+      localStorage.setItem(global.GabaSync.chaveLocal("gaba_ultimo_lote"), JSON.stringify({
         prova_id: prova ? prova.id : null,
         modo: op.modo,
         alunos: r.batch.itens.map(function (it) { return it.aluno.id || it.aluno.numero; }),
@@ -953,16 +1002,20 @@
       }));
       status("Impressao enviada (" + r.folhas + " folhas). Se a janela nao abriu, use Ctrl+P.");
     } catch (err) {
+      if (!contaValida(conta)) return;
       if (root) root.classList.remove("previa");
       status(String(err && err.message ? err.message : err), true);
     }
   }
 
   async function baixarHtml() {
+    var conta = snapshotConta();
     try {
       if (!estado.ultimoHtml) await gerarLote();
+      if (!contaValida(conta)) return;
       var css = "";
       try { css = await (await fetch("style.css")).text(); } catch (err) { css = ""; }
+      if (!contaValida(conta)) return;
       var doc = "<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><title>Cadernos Gaba</title>" +
         "<style>" + css + NL + "#print-root{display:block}</style></head><body>" +
         "<div id=\"print-root\">" + estado.ultimoHtml + "</div></body></html>";
@@ -976,6 +1029,7 @@
       document.body.removeChild(a);
       status("Arquivo HTML gerado (abre no navegador e manda imprimir).");
     } catch (err) {
+      if (!contaValida(conta)) return;
       status(String(err && err.message ? err.message : err), true);
     }
   }
@@ -999,12 +1053,15 @@
   }
 
   async function importarDocx(file) {
+    var conta = snapshotConta();
     if (!file) return;
     if (!global.GabaDocx) { statusProva("O leitor de documentos não carregou.", true); return; }
     statusProva("Lendo " + file.name + "…");
     try {
       var buf = await file.arrayBuffer();
+      if (!contaValida(conta)) return;
       var parsed = await lerDocumento(buf);
+      if (!contaValida(conta)) return;
       var prova = GabaDocx.toProva(parsed, (parsed && parsed.titulo) || file.name.replace(/\.[a-z]+$/i, ""));
       prova.id = "docx-" + String(file.name || "arquivo").replace(/[^a-z0-9]+/gi, "") + "-" + (file.size || 0);
       prova.__local = true;
@@ -1024,6 +1081,7 @@
         $("cad-tipos").value = String(prova.tipos.length);
       }
       await carregarAlunos(prova);
+      if (!contaValida(conta)) return;
       desenharProva(prova);
       var guardada = false;
       if (global.GabaSync && GabaSync.guardarProva) {
@@ -1032,6 +1090,7 @@
           guardada = true;
         } catch (err) { /* segue só em memória e a próxima frase avisa */ }
       }
+      if (!contaValida(conta)) return;
       var p = problemasDaProva(prova);
       var tipos = (prova.tipos || []).length;
       var alunos = (prova.alunos || []).length;
@@ -1044,6 +1103,7 @@
       status(prontas());
       if (global.GabaApp && GabaApp.provaImportada) await GabaApp.provaImportada(prova.id);
     } catch (err) {
+      if (!contaValida(conta)) return;
       statusProva("Falha ao importar: " + (err && err.message ? err.message : err), true);
     }
   }
@@ -1058,20 +1118,29 @@
   }
 
   async function salvarProvaNoBanco() {
+    var conta = snapshotConta();
     var prova = provaSelecionada();
     if (!prova) throw new Error("Selecione a prova primeiro.");
     if (!global.GabaDB || !GabaDB.isConfigured()) throw new Error("Sem credenciais do Supabase.");
     var idLocal = String(prova.id);
-    var salvo = await GabaDB.salvarProva(prova);
-    estado.sujo = false;
-    if (!GabaDB.eUuid(prova.id)) {
-      prova.id = salvo.id;
-      prova.__local = false;
-      await esquecerProvaLocal(idLocal);
+    try {
+      var salvo = await GabaDB.salvarProva(prova);
+      if (!contaValida(conta)) return null;
+      estado.sujo = false;
+      if (!GabaDB.eUuid(prova.id)) {
+        await esquecerProvaLocal(idLocal);
+        if (!contaValida(conta)) return null;
+        prova.id = salvo.id;
+        prova.__local = false;
+      }
+      await carregarListas();
+      if (!contaValida(conta)) return null;
+      if (global.GabaApp && GabaApp.carregarTudo) await GabaApp.carregarTudo();
+      return contaValida(conta) ? salvo : null;
+    } catch (err) {
+      if (!contaValida(conta)) return null;
+      throw err;
     }
-    await carregarListas();
-    if (global.GabaApp && GabaApp.carregarTudo) await GabaApp.carregarTudo();
-    return salvo;
   }
 
   var CAMPOS_CFG = {
@@ -1089,41 +1158,88 @@
       titulo: c.titulo, disciplina: c.disciplina, professor: c.professor, ano: c.ano,
       bimestre: c.bimestre, data: c.data, instrucoes: c.instrucoes,
       questoesPorPagina: op.config.questoesPorPagina,
-      comDescritores: op.config.comDescritores, ultimaEmBranco: op.config.ultimaEmBranco
+      comDescritores: op.config.comDescritores, ultimaEmBranco: op.config.ultimaEmBranco,
+      modo: op.modo, numTipos: ($("cad-tipos") || {}).value,
+      salt: campo("cad-salt"), embaralharAlternativas: op.embaralharAlternativas
     });
   }
 
+  var defaultsCfg = {};
+  var listenersCfg = {};
+
   function restaurarCfg() {
     var cfg = lerCfg();
+    var campos = Object.assign({}, CAMPOS_CFG, {
+      "cad-por-pagina": "questoesPorPagina", "cad-branco": "ultimaEmBranco",
+      "cad-descritores": "comDescritores", "cad-modo": "modo", "cad-tipos": "numTipos",
+      "cad-salt": "salt", "cad-alt": "embaralharAlternativas"
+    });
     escolaAuto = String(cfg.escolaAuto || "");
-    Object.keys(CAMPOS_CFG).forEach(function (id) {
+    Object.keys(campos).forEach(function (id) {
       var el = $(id);
       if (!el) return;
-      el.addEventListener("change", gravarCfg);
-      var valor = cfg[CAMPOS_CFG[id]];
-      if (valor == null || valor === "") return;
-      if (el.tagName === "SELECT") {
-        for (var i = 0; i < el.options.length; i++) {
-          if (el.options[i].value === String(valor)) { el.value = String(valor); break; }
+      if (!defaultsCfg[id]) {
+        var valorDefault = el.defaultValue;
+        if (el.tagName === "SELECT") {
+          valorDefault = el.options.length ? el.options[0].value : "";
+          for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].defaultSelected) valorDefault = el.options[i].value;
+          }
         }
-      } else if (!el.value) el.value = valor;
+        defaultsCfg[id] = { valor: valorDefault == null ? "" : valorDefault, checked: el.defaultChecked };
+      }
+      el.value = defaultsCfg[id].valor;
+      if (el.type === "checkbox") el.checked = defaultsCfg[id].checked;
+      var valor = cfg[campos[id]];
+      if (valor != null) {
+        if (el.type === "checkbox") el.checked = valor === true;
+        else if (el.tagName === "SELECT") {
+          for (var j = 0; j < el.options.length; j++) {
+            if (el.options[j].value === String(valor)) { el.value = String(valor); break; }
+          }
+        } else el.value = String(valor);
+      }
+      if (!listenersCfg[id]) {
+        el.addEventListener("change", gravarCfg);
+        listenersCfg[id] = true;
+      }
     });
-    ["cad-branco", "cad-descritores"].forEach(function (id) {
+  }
+
+  function reiniciarConta() {
+    geracaoConta += 1;
+    clearTimeout(guardaProva);
+    guardaProva = null;
+    fecharPick();
+    provaDesenhada = "";
+    escolaAuto = "";
+    estado.provasLocais = [];
+    estado.provasSupabase = [];
+    estado.turmas = [];
+    estado.alunos = [];
+    estado.batch = null;
+    estado.ultimoHtml = "";
+    estado.cortes = [];
+    estado.compactou = 0;
+    estado.sujo = false;
+    ["cad-prova", "cad-turma"].forEach(function (id) {
       var el = $(id);
-      if (!el) return;
-      var chave = id === "cad-branco" ? "ultimaEmBranco" : "comDescritores";
-      if (cfg[chave] != null) el.checked = cfg[chave] === true;
-      el.addEventListener("change", gravarCfg);
+      if (el) { el.innerHTML = '<option value=""></option>'; el.value = ""; }
     });
-    var porPagina = $("cad-por-pagina");
-    if (porPagina) {
-      if (cfg.questoesPorPagina) porPagina.value = cfg.questoesPorPagina;
-      porPagina.addEventListener("change", gravarCfg);
-    }
-    ["cad-modo", "cad-tipos", "cad-salt"].forEach(function (id) {
+    ["cad-alunos", "cad-questoes", "cad-avisos", "cad-cortes", "cad-nota-prova",
+      "cad-status", "prova-status", "revisao-status"].forEach(function (id) {
       var el = $(id);
-      if (el) el.addEventListener("change", gravarCfg);
+      if (el) { el.innerHTML = ""; el.hidden = true; }
     });
+    var input = $("cad-arquivo");
+    if (input) input.value = "";
+    var root = $("print-root");
+    if (root) { root.innerHTML = ""; root.classList.remove("previa"); }
+    var imprimir = $("cad-imprimir");
+    if (imprimir) imprimir.disabled = true;
+    mostraBotaoSalvar(null);
+    restaurarCfg();
+    atualizarCaderno();
   }
 
   function init() {
@@ -1135,7 +1251,10 @@
     var input = $("cad-arquivo");
     if (btnPrev) btnPrev.addEventListener("click", function () {
       if (!global.QRCode) { status("A biblioteca de QR Code nao carregou (offline sem cache?).", true); return; }
-      gerarLote().catch(function (err) { status(String(err && err.message ? err.message : err), true); });
+      var conta = snapshotConta();
+      gerarLote().catch(function (err) {
+        if (contaValida(conta)) status(String(err && err.message ? err.message : err), true);
+      });
     });
     if (btnImp) btnImp.addEventListener("click", aoImprimir);
     if (btnBaixar) btnBaixar.addEventListener("click", baixarHtml);
@@ -1144,13 +1263,19 @@
     var selTurma = $("cad-turma");
     if (selTurma) selTurma.addEventListener("change", function () {
       herdarEscolaDaTurma();
-      carregarAlunos(provaSelecionada()).catch(function (err) { status(String(err.message || err), true); });
+      var conta = snapshotConta();
+      carregarAlunos(provaSelecionada()).catch(function (err) {
+        if (contaValida(conta)) status(String(err.message || err), true);
+      });
     });
     var selProva = $("cad-prova");
     if (selProva) selProva.addEventListener("change", function () {
       var prova = provaSelecionada();
       trocouProva(prova);
-      carregarAlunos(prova).catch(function (err) { status(String(err.message || err), true); });
+      var conta = snapshotConta();
+      carregarAlunos(prova).catch(function (err) {
+        if (contaValida(conta)) status(String(err.message || err), true);
+      });
     });
     ligarPassos();
     var painel = $("cad-questoes");
@@ -1194,9 +1319,12 @@
     window.addEventListener("resize", function () { if (pick) posicionarPick(); });
     var btnSalvarProva = $("cad-salvar-prova");
     if (btnSalvarProva) btnSalvarProva.addEventListener("click", function () {
+      var conta = snapshotConta();
       salvarProvaNoBanco().then(function (salvo) {
+        if (!contaValida(conta) || !salvo) return;
         statusRevisao("Prova \"" + salvo.titulo + "\" salva no banco com os pesos e descritores revisados.");
       }).catch(function (err) {
+        if (!contaValida(conta)) return;
         statusRevisao("Não deu para salvar no banco: " + (err && err.message ? err.message : err), true);
       });
     });
@@ -1251,6 +1379,7 @@
 
   global.GabaCaderno = {
     estado: estado,
+    reiniciarConta: reiniciarConta,
     opcoes: opcoes,
     carregarListas: carregarListas,
     carregarProvasLocais: carregarProvasLocais,
